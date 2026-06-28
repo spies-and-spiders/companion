@@ -1,0 +1,13 @@
+{
+  "name": "sns-companion",
+  "version": "0.1.0",
+  "private": true,
+  "devDependencies": {
+    "playwright": "^1.61.1",
+    "shadow-cljs": "3.4.11"
+  },
+  "scripts": {
+    "watch": "shadow-cljs watch app",
+    "release": "shadow-cljs release app"
+  }
+}

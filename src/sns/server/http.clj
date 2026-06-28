@@ -35,6 +35,11 @@
     (let [{:keys [id inputs]} (transit/read-stream body)]
       (transit-response (engine/generate eng id (or inputs {}))))))
 
+(defn- roll-handler [eng]
+  (fn [{:keys [body]}]
+    (let [{:keys [inputs]} (transit/read-stream body)]
+      (transit-response (engine/roll eng (or inputs {}))))))
+
 (defn- action-handler [eng]
   (fn [{:keys [body]}]
     (let [{:keys [id action params]} (transit/read-stream body)]
@@ -47,6 +52,7 @@
     (ring/router
       [["/api/loot-types" {:get (loot-types-handler eng)}]
        ["/api/generate" {:post (generate-handler eng)}]
+       ["/api/roll" {:post (roll-handler eng)}]
        ["/api/action" {:post (action-handler eng)}]]
       {:data {:middleware [wrap-errors]}})
     (ring/routes
