@@ -6,7 +6,6 @@
 target
 .DS_Store
 pom.xml
-resources/config.edn
 .rebel_readline_history
 5et
 .clj-kondo/*/

@@ -1,0 +1,130 @@
+(ns sns.spi.schema
+  "Malli schemas shared across the backend, plugins, and (the view-model/spec
+   subset) the ClojureScript frontend. All schemas live in one registry so they
+   can reference each other, including the recursive upgrade-graph."
+  (:require
+    [malli.core :as m]
+    [malli.error :as me]
+    [malli.util :as mu]))
+
+(def ^:private op-entries
+  "The mutation entries an upgrade option may carry. Shared by `::op` (a bare
+   op) and `::option` (an op plus identity/recursion) to avoid `:merge`, which
+   expands eagerly and cannot express the recursive graph."
+  [[:set {:optional true} [:map-of keyword? any?]]
+   ;; :roll declares random values (inclusive [min max]) rolled when the option
+   ;; is taken; the result is persisted in the path-step's :rolled and merged
+   ;; into state at derivation, so the effect re-derives deterministically.
+   [:roll {:optional true} [:map-of keyword? [:tuple number? number?]]]
+   [:inc {:optional true} [:map-of keyword? number?]]
+   [:dec {:optional true} [:map-of keyword? number?]]
+   [:append {:optional true} [:map-of keyword? string?]]
+   [:conj {:optional true} [:map-of keyword? any?]]
+   [:assoc-template {:optional true} string?]
+   [:enable {:optional true} [:sequential keyword?]]
+   [:disable {:optional true} [:sequential keyword?]]])
+
+(def schemas
+  "The project's named schemas, keyed by qualified keyword."
+  {;; --- loot specifications (drive the generic input forms) ---
+   ::field      [:map
+                 [:id keyword?]
+                 [:label string?]
+                 [:type [:enum :enum :int :text :bool]]
+                 [:default {:optional true} any?]
+                 [:options {:optional true} [:sequential any?]]]
+
+   ::loot-spec  [:map
+                 [:id keyword?]
+                 [:label string?]
+                 [:stateful? {:optional true} boolean?]
+                 [:inputs {:optional true} [:sequential ::field]]]
+
+   ;; --- view-model (the only contract the UI renderer understands) ---
+   ::action     [:map
+                 [:action/label string?]
+                 [:action/event vector?]]
+
+   ::item       [:map
+                 [:item/title {:optional true} [:maybe string?]]
+                 [:item/body string?]
+                 [:item/tags {:optional true} [:sequential string?]]
+                 [:item/change {:optional true} any?]]
+
+   ::section    [:map
+                 [:section/heading {:optional true} [:maybe string?]]
+                 [:section/items [:sequential ::item]]]
+
+   ::view-model [:map
+                 [:loot/title string?]
+                 [:loot/subtitle {:optional true} [:maybe string?]]
+                 [:loot/sections {:optional true} [:sequential ::section]]
+                 [:loot/actions {:optional true} [:sequential ::action]]]
+
+   ;; --- upgrade-graph DSL (mod state + progression) ---
+   ;; `::option` and `::upgrades` are mutually recursive, so the recursive edges
+   ;; use lazy `[:ref ...]` rather than bare keyword children.
+   ::op         (into [:map] op-entries)
+
+   ::option     (into [:map
+                       [:id keyword?]
+                       [:repeatable {:optional true} boolean?]
+                       [:upgrades {:optional true} [:ref ::upgrades]]]
+                      op-entries)
+
+   ::upgrades   [:map
+                 [:select [:enum :choice :random :all]]
+                 [:options [:sequential [:ref ::option]]]]
+
+   ::mod        [:map
+                 [:state {:optional true} [:map-of keyword? any?]]
+                 [:template string?]
+                 [:upgrades {:optional true} [:ref ::upgrades]]]
+
+   ;; --- a persisted progression step ---
+   ::path-step  [:map
+                 [:id keyword?]
+                 [:rolled {:optional true} [:map-of keyword? any?]]]
+   ::path       [:sequential ::path-step]
+
+   ;; --- application config ---
+   ::storage    [:map
+                 [:backend keyword?]
+                 [:url {:optional true} string?]
+                 [:db {:optional true} string?]
+                 [:git-remote {:optional true} string?]]
+
+   ::plugin     [:multi {:dispatch :type}
+                 [:json [:map [:type [:= :json]] [:id keyword?] [:data string?]]]
+                 [:cli [:map [:type [:= :cli]] [:id keyword?] [:command [:sequential string?]]]]
+                 [:jar [:map [:type [:= :jar]] [:id keyword?] [:jar string?] [:entrypoint symbol?]]]
+                 [:builtin [:map [:type [:= :builtin]] [:id keyword?] [:entrypoint symbol?]]]]
+
+   ::loot-entry [:map [:id keyword?] [:weight number?]]
+
+   ::config     [:map
+                 [:storage {:optional true} ::storage]
+                 [:plugins [:sequential ::plugin]]
+                 [:loot-table {:optional true} [:sequential ::loot-entry]]]})
+
+(def registry
+  "Combined registry: malli defaults + util schemas (for `:merge`) + ours."
+  (merge (m/default-schemas) (mu/schemas) schemas))
+
+(defn validate
+  "True if `value` conforms to `schema` (a keyword from `schemas` or inline)."
+  [schema value]
+  (m/validate schema value {:registry registry}))
+
+(defn explain
+  "Explain why `value` does not conform to `schema`, or nil if it does."
+  [schema value]
+  (m/explain schema value {:registry registry}))
+
+(defn assert!
+  "Throw an ex-info describing the failure if `value` does not conform."
+  [schema value]
+  (when-let [err (explain schema value)]
+    (throw (ex-info (str "Schema validation failed: " schema)
+                    {:schema schema :error (me/humanize err)})))
+  value)

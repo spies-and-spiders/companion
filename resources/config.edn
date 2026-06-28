@@ -1,0 +1,10 @@
+;; Application configuration. This is the primary way a DM defines loot types
+;; and rules — no Clojure required. Secrets (e.g. backup credentials) should be
+;; referenced via aero tags reading env vars, never written inline.
+{:storage    {:backend :chrondb :url "http://localhost:3000"}
+
+ :plugins    [{:type :builtin :id :divine-dust :entrypoint sns.builtin.dust/generator}
+              {:type :builtin :id :relics :entrypoint sns.builtin.relics/generator}]
+
+ :loot-table [{:id :divine-dust :weight 70}
+              {:id :relics :weight 30}]}
