@@ -116,7 +116,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .discipline--active .discipline__glyph { color: var(--arcane); opacity: 1; }
 
 .roll {
-  margin-top: auto;
+  margin-top: 0.5rem;
   padding: 0.85rem 1rem;
   background: linear-gradient(180deg, rgba(200, 162, 76, 0.16), rgba(200, 162, 76, 0.06));
   border: 1px solid var(--gilt);

@@ -25,8 +25,11 @@
       :progression  (progression/progression render)
       :session      session
       :rng          (or rng @r/default-rng)
+      ;; Missing weights default to 1, so a table without weights is sampled
+      ;; uniformly (and partial weights mix evenly-weighted entries in).
       :loot-sampler (when (seq table)
-                      (r/alias-method-sampler (mapv :id table) (mapv :weight table)))})))
+                      (r/alias-method-sampler (mapv :id table)
+                                              (mapv #(or (:weight %) 1) table)))})))
 
 (defn- ctx
   "Assemble the per-request context handed to a generator."
@@ -50,12 +53,15 @@
           (schema/assert! ::schema/view-model)))))
 
 (defn roll
-  "Roll the top-level loot table and generate the chosen loot type."
+  "Roll the top-level loot table and generate the chosen loot type. Returns the
+   chosen `:id` alongside its `:view-model` so callers (e.g. the UI) can reflect
+   which discipline was rolled."
   ([engine] (roll engine {}))
   ([{:keys [loot-sampler] :as engine} inputs]
    (when-not loot-sampler
      (throw (ex-info "No loot-table configured" {})))
-   (generate engine (loot-sampler) inputs)))
+   (let [id (loot-sampler)]
+     {:id id :view-model (generate engine id inputs)})))
 
 (defn handle-action
   "Dispatch a stateful follow-up `action` (with `params`) to loot type `id`,

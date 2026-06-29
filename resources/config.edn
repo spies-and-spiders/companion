@@ -7,8 +7,8 @@
 
  :plugins    [{:type :builtin :id :divine-dust :entrypoint sns.builtin.dust/generator}
               {:type :builtin :id :relics :entrypoint sns.builtin.relics/generator}
-              {:type :json :id :uniques :data "data/uniques.edn"}
-              {:type :json :id :rings :data "data/rings.edn"}]
+              {:type :data :id :uniques :source "data/uniques.edn"}
+              {:type :data :id :rings :source "data/rings.edn"}]
 
  :loot-table [{:id :divine-dust :weight 40}
               {:id :uniques :weight 25}

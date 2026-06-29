@@ -42,8 +42,18 @@
                         (result-effect ctx {:method :post :url "/api/generate" :body {:id id :inputs inputs}})))
 
 (nxr/register-effect! :fx/roll
-                      (fn [ctx _system inputs]
-                        (result-effect ctx {:method :post :url "/api/roll" :body {:inputs inputs}})))
+                      (fn [{:keys [dispatch]} _system inputs]
+                        (dispatch [[:fx/assoc-in [:loading?] true] [:fx/assoc-in [:error] nil]])
+                        (api/request {:method :post :url "/api/roll" :body {:inputs inputs}}
+                                     ;; roll returns {:id ... :view-model ...} so we can
+                                     ;; jump the picker to the discipline that was rolled.
+                                     (fn [{:keys [id view-model]}]
+                                       (dispatch [[:fx/assoc-in [:selected] id]
+                                                  [:fx/assoc-in [:inputs] {}]
+                                                  [:fx/assoc-in [:result] view-model]
+                                                  [:fx/assoc-in [:loading?] false]]))
+                                     (fn [err] (dispatch [[:fx/assoc-in [:error] (:error err)]
+                                                          [:fx/assoc-in [:loading?] false]])))))
 
 (nxr/register-effect! :fx/action
                       (fn [ctx _system id action params]

@@ -95,12 +95,12 @@
                  [:git-remote {:optional true} string?]]
 
    ::plugin     [:multi {:dispatch :type}
-                 [:json [:map [:type [:= :json]] [:id keyword?] [:data string?]]]
+                 [:data [:map [:type [:= :data]] [:id keyword?] [:source string?]]]
                  [:cli [:map [:type [:= :cli]] [:id keyword?] [:command [:sequential string?]]]]
                  [:jar [:map [:type [:= :jar]] [:id keyword?] [:jar string?] [:entrypoint symbol?]]]
                  [:builtin [:map [:type [:= :builtin]] [:id keyword?] [:entrypoint symbol?]]]]
 
-   ::loot-entry [:map [:id keyword?] [:weight number?]]
+   ::loot-entry [:map [:id keyword?] [:weight {:optional true} number?]]
 
    ::config     [:map
                  [:storage {:optional true} ::storage]

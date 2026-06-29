@@ -18,10 +18,20 @@
       (is (= {:loot/title    "Divine Dust"
               :loot/subtitle "A pinch of divine residue"}
              (engine/generate eng :divine-dust))))
-    (testing "roll picks from the loot-table and generates"
-      (is (= "Divine Dust" (:loot/title (engine/roll eng)))))
+    (testing "roll picks from the loot-table, returning the chosen id and view-model"
+      (is (= {:id         :divine-dust
+              :view-model {:loot/title    "Divine Dust"
+                           :loot/subtitle "A pinch of divine residue"}}
+             (engine/roll eng))))
     (testing "an unknown loot type is rejected"
       (is (thrown? Exception (engine/generate eng :nonexistent))))))
+
+(deftest loot-table-without-weights-is-uniform
+  (testing "a loot-table entry may omit :weight (defaults to 1, sampled uniformly)"
+    (let [eng (engine/create
+                {:plugins    [{:type :builtin :id :divine-dust :entrypoint 'sns.builtin.dust/generator}]
+                 :loot-table [{:id :divine-dust}]})]
+      (is (= :divine-dust (:id (engine/roll eng)))))))
 
 (deftest rejects-duplicate-ids
   (is (thrown? Exception

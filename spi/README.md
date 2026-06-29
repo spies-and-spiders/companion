@@ -7,7 +7,7 @@ without pulling in the application.
 
 There are **four ways** to add a loot type, in increasing order of power:
 
-1. **`:json`** — a data-only loot type (no code). The workhorse.
+1. **`:data`** — a data-only loot type (no code). The workhorse.
 2. **`:cli`** — shell out to a program in any language.
 3. **`:jar`** — an external JAR implementing the protocols below.
 4. **`:builtin`** — a namespace compiled into the app (used for the bundled types).
@@ -17,7 +17,7 @@ register one.
 
 ```clojure
 {:storage    {:backend :mysql :url "jdbc:mariadb://localhost:3306/sns"}
- :plugins    [{:type :json    :id :uniques :data "data/uniques.edn"}
+ :plugins    [{:type :data    :id :uniques :source "data/uniques.edn"}
               {:type :cli     :id :weather :label "Weather"
                               :command ["python3" "examples/cli-plugin/weather.py"]}
               {:type :jar     :id :custom  :jar "plugins/custom.jar"
@@ -130,26 +130,30 @@ deterministically from it.
 
 ---
 
-## The JSON DSL (`:json`)
+## The data DSL (`:data`)
 
-A code-free loot type in one EDN (or `.json`) file:
+A code-free loot type in one EDN (or `.json`) file, loaded from `:source`:
 
 ```clojure
 {:label    "Unique"
  :inputs   []                              ; optional loot-spec inputs
- :tables   {:uniques [{:name "Pacifist's Vow" :base "armour"
-                       :mods [{:effect "+1 AB…" :tags ["accuracy"]}]}]}
- :draw     {:from :uniques :take 1}        ; :take>1 = without replacement; :weighted true
+ :items    [{:name "Pacifist's Vow" :base "armour"
+             :mods [{:effect "+1 AB…" :tags ["accuracy"]}]}]
+ :take     1                               ; how many to draw (default 1)
+ :weighted false                           ; draw with replacement by :weight (default false)
  :title    "{{name}}"                      ; Selmer, against the drawn entry
  :subtitle "Unique · {{base}}"
  :sections [{:heading "Mods" :each :mods   ; iterate a field on the entry…
              :item {:body "{{effect}}" :tags :tags}}]}
 ```
 
-Use `:each :draw` to iterate the drawn entries themselves (e.g. drawing 2 rings).
-Entries support `:enabled? false` to disable. Input values are available to all
-templates. (The JSON DSL renders mods at base state; upgrade-graph progression for
-JSON loot is not yet wired — use `:builtin`/`:jar` for stateful loot.)
+`:take`>1 draws without replacement (unless `:weighted`, which draws with
+replacement by each item's `:weight`). Use `:each :items` to iterate the drawn
+entries themselves (e.g. drawing 2 rings), or `:each :<field>` to iterate a field
+on the single drawn entry. Items support `:enabled? false` to disable. Input values
+are available to all templates. (The data DSL renders mods at base state;
+upgrade-graph progression for data loot is not yet wired — use `:builtin`/`:jar`
+for stateful loot.)
 
 ---
 
