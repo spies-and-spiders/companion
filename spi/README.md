@@ -26,7 +26,15 @@ register one.
  :loot-table [{:id :uniques :weight 30} {:id :relics :weight 10}]}
 ```
 
-`:loot-table` is the weighted "roll" used by `POST /api/roll`.
+`:loot-table` is the weighted "roll" used by `POST /api/roll`. Entries may omit
+`:weight` (defaults to 1, i.e. uniform).
+
+Don't write Clojure? Provide **`config.json`** instead of `config.edn` — the app
+prefers `config.edn` on the classpath and falls back to `config.json`, coercing
+string values (`"data"`, `"file"`, ids, entrypoints) to the right types. Generate a
+JSON Schema for editor validation/autocomplete with `make config-schema` (writes
+`config.schema.json`); reference it from your file via `"$schema"`. Note: aero tags
+(env-var interpolation for secrets) work in EDN only.
 
 ---
 

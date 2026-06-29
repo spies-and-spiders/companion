@@ -5,6 +5,7 @@
   (:require
     [malli.core :as m]
     [malli.error :as me]
+    [malli.transform :as mt]
     [malli.util :as mu]))
 
 (def ^:private op-entries
@@ -94,7 +95,9 @@
                  [:db {:optional true} string?]
                  [:git-remote {:optional true} string?]]
 
-   ::plugin     [:multi {:dispatch :type}
+   ;; Dispatch coerces `:type` to a keyword so a JSON config (where it is the
+   ;; string "data" etc.) routes to the right branch during decoding.
+   ::plugin     [:multi {:dispatch (fn [p] (some-> (:type p) keyword))}
                  [:data [:map [:type [:= :data]] [:id keyword?] [:source string?]]]
                  [:cli [:map [:type [:= :cli]] [:id keyword?] [:command [:sequential string?]]]]
                  [:jar [:map [:type [:= :jar]] [:id keyword?] [:jar string?] [:entrypoint symbol?]]]
@@ -115,6 +118,13 @@
   "True if `value` conforms to `schema` (a keyword from `schemas` or inline)."
   [schema value]
   (m/validate schema value {:registry registry}))
+
+(defn decode
+  "Decode `value` against `schema` with malli's JSON transformer, coercing
+   strings to keywords/symbols/etc. Used to read a JSON config into the same
+   shape an EDN config produces."
+  [schema value]
+  (m/decode schema value {:registry registry} (mt/json-transformer)))
 
 (defn explain
   "Explain why `value` does not conform to `schema`, or nil if it does."

@@ -43,6 +43,10 @@ uber: frontend ## Build the standalone uberjar (builds the frontend first)
 .PHONY: dist
 dist: uber ## Full production artifact (alias for `uber`)
 
+.PHONY: config-schema
+config-schema: ## Generate config.schema.json (JSON Schema for config.json)
+	clojure -M -m sns.server.schema-gen
+
 # --- test --------------------------------------------------------------------
 
 .PHONY: test
