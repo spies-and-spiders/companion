@@ -8,6 +8,7 @@
   },
   "scripts": {
     "watch": "shadow-cljs watch app",
-    "release": "shadow-cljs release app"
+    "release": "shadow-cljs release app",
+    "dist": "shadow-cljs release app && clojure -T:build uber"
   }
 }

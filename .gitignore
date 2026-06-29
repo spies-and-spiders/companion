@@ -13,3 +13,5 @@ pom.xml
 .lsp
 node_modules
 .shadow-cljs
+state/
+dev/

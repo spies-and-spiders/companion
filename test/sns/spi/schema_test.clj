@@ -37,7 +37,7 @@
 (deftest config-schema
   (testing "config with mixed plugin types validates"
     (is (schema/validate ::schema/config
-                         {:storage    {:backend :chrondb :url "http://localhost:3000"}
+                         {:storage    {:backend :mysql :url "jdbc:mariadb://localhost:3306/sns"}
                           :plugins    [{:type :json :id :uniques :data "data/uniques.edn"}
                                        {:type :cli :id :weather :command ["python3" "gen.py"]}
                                        {:type :builtin :id :relics :entrypoint 'sns.builtin.relics/generator}]

@@ -32,8 +32,9 @@
     "Return the upgrade options available as the next step from `path`."))
 
 (defprotocol Store
-  "Persistence abstraction. The default implementation is git-backed (chrondb);
-   `coll` is a collection/table keyword, `id` a document key."
+  "Persistence abstraction. Built-in backends: a MySQL-compatible SQL server, a
+   JSON file per collection, or in-memory. `coll` is a collection/table keyword,
+   `id` a document key."
   (fetch [this coll id]
     "Return the document at `id`, or nil.")
   (query [this coll q]

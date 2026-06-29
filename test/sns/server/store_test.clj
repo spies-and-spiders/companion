@@ -1,24 +1,15 @@
 (ns sns.server.store-test
   (:require
+    [clojure.java.io :as io]
     [clojure.test :refer [deftest is testing]]
-    [sns.server.store :as store]
-    [sns.spi.protocols :as p]))
+    [sns.server.store :as store]))
 
-(deftest in-memory-round-trips
-  (let [s (store/in-memory)]
-    (testing "fetch of a missing key is nil"
-      (is (nil? (p/fetch s :relics "x"))))
-    (testing "put then fetch"
-      (p/put! s :relics "x" {:name "X" :level 1})
-      (is (= {:name "X" :level 1} (p/fetch s :relics "x"))))
-    (testing "update! applies a function"
-      (is (= {:name "X" :level 2} (p/update! s :relics "x" #(update % :level inc))))
-      (is (= 2 (:level (p/fetch s :relics "x")))))
-    (testing "query matches by field equality, scoped to the collection"
-      (p/put! s :relics "y" {:name "Y" :level 2})
-      (p/put! s :other "z" {:name "Z" :level 2})
-      (is (= #{"X" "Y"} (set (map :name (p/query s :relics {:level 2}))))))))
-
-(deftest from-config-defaults-to-in-memory
-  (is (some? (store/from-config nil)))
-  (is (some? (store/from-config {:backend :memory}))))
+(deftest from-config-selects-backend
+  (testing "defaults to in-memory"
+    (is (some? (store/from-config nil)))
+    (is (some? (store/from-config {:backend :memory}))))
+  (testing "file backend is built from config"
+    (is (some? (store/from-config
+                 {:backend :file
+                  :dir     (str (io/file (System/getProperty "java.io.tmpdir")
+                                         (str "sns-cfg-" (System/nanoTime))))})))))

@@ -2,7 +2,7 @@
   (:require
     [clojure.test :refer [deftest is testing]]
     [sns.server.engine :as engine]
-    [sns.server.store :as store]
+    [sns.server.store.memory :as memory]
     [sns.spi.protocols :as p]))
 
 (def ^:private config
@@ -15,7 +15,7 @@
   (-> view-model :loot/actions first :action/event second :params :relic-id))
 
 (deftest generate-then-level-up
-  (let [s   (store/in-memory)
+  (let [s   (memory/create)
         eng (engine/create config {:store s})
         vm  (engine/generate eng :relics)
         id  (relic-id vm)]
@@ -43,7 +43,7 @@
         (is (re-find #"level 2" (:loot/subtitle again)))))))
 
 (deftest repeatable-upgrade-accumulates
-  (let [s   (store/in-memory)
+  (let [s   (memory/create)
         eng (engine/create config {:store s})
         vm  (engine/generate eng :relics)
         id  (relic-id vm)

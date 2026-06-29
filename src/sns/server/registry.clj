@@ -1,7 +1,10 @@
 (ns sns.server.registry
   "Resolves config plugin entries into `LootGenerator` instances. Each plugin
-   `:type` has a `build-generator` method; `:json`/`:cli`/`:jar` are added by
-   their respective milestones.")
+   `:type` has a `build-generator` method."
+  (:require
+    [sns.builtin.cli :as cli]
+    [sns.builtin.json :as json]
+    [sns.server.classpath :as classpath]))
 
 (defn- resolve-fn
   "Resolve a fully-qualified symbol to its var, requiring its namespace."
@@ -15,6 +18,18 @@
 
 (defmethod build-generator :builtin [{:keys [entrypoint] :as plugin}]
   ;; The entrypoint is a factory fn: (entrypoint plugin) -> LootGenerator.
+  ((resolve-fn entrypoint) plugin))
+
+(defmethod build-generator :json [{:keys [id data]}]
+  (json/generator id (json/load-spec data)))
+
+(defmethod build-generator :cli [{:keys [id command label]}]
+  (cli/generator id command label))
+
+(defmethod build-generator :jar [{:keys [jar entrypoint] :as plugin}]
+  ;; Add the external jar to the classpath, then resolve its entrypoint factory
+  ;; exactly like a builtin.
+  (classpath/add-jar! jar)
   ((resolve-fn entrypoint) plugin))
 
 (defmethod build-generator :default [{:keys [type] :as plugin}]
