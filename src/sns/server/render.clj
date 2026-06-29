@@ -45,7 +45,7 @@
   (let [n (long n)
         suffix (if (<= 11 (mod n 100) 13)
                  "th"
-                 (case (mod n 10) 1 "st" 2 "nd" 3 "rd" "th"))]
+                 (case (int (mod n 10)) 1 "st" 2 "nd" 3 "rd" "th"))]
     (str n suffix)))
 
 (defonce ^:private filters-registered

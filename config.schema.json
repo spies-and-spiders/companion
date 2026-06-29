@@ -13,6 +13,9 @@
             "$ref" : "#/definitions/sns.spi.schema~1plugin"
           }
         },
+        "reporting" : {
+          "$ref" : "#/definitions/sns.spi.schema~1reporting"
+        },
         "loot-table" : {
           "type" : "array",
           "items" : {
@@ -103,6 +106,20 @@
           }
         },
         "required" : [ "type", "id", "entrypoint" ]
+      } ]
+    },
+    "sns.spi.schema/reporting" : {
+      "oneOf" : [ {
+        "type" : "object",
+        "properties" : {
+          "backend" : {
+            "const" : "discord"
+          },
+          "webhook-url" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "backend", "webhook-url" ]
       } ]
     },
     "sns.spi.schema/loot-entry" : {

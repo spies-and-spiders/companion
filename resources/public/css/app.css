@@ -178,6 +178,23 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 }
 .generate:hover { background: var(--arcane); color: var(--ink); box-shadow: 0 0 24px var(--arcane-dim); }
 
+/* --- report (send to Discord etc.; optional, config-driven) ---------------- */
+
+.report { margin-top: 1.1rem; }
+.report__btn {
+  padding: 0.55rem 1.1rem;
+  background: transparent;
+  border: 1px solid var(--gilt-dim);
+  border-radius: var(--radius);
+  color: var(--gilt);
+  font-size: 0.74rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.report__btn:hover { background: var(--gilt); color: var(--ink); }
+.report__btn:disabled { opacity: 0.6; cursor: default; }
+
 /* --- the sigil (signature surface) ----------------------------------------- */
 
 .sigil { animation: materialise 0.45s ease both; }

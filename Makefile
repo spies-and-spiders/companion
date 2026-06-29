@@ -53,6 +53,13 @@ config-schema: ## Generate config.schema.json (JSON Schema for config.json)
 test: ## Run the Clojure test suite
 	clojure -M:test
 
+.PHONY: reflection
+reflection: ## Fail if any backend namespace compiles with reflection
+	clojure -M:reflect
+
+.PHONY: check
+check: test reflection ## Run tests + the reflection guard
+
 # --- artifacts ---------------------------------------------------------------
 
 .PHONY: run-jar

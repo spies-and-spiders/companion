@@ -4,7 +4,8 @@
     [sns.server.engine :as engine]
     [sns.server.http :as http]
     [sns.server.store.memory :as memory]
-    [sns.server.transit :as transit])
+    [sns.server.transit :as transit]
+    [sns.spi.protocols])
   (:import
     (java.io ByteArrayInputStream)))
 
@@ -39,6 +40,32 @@
         {:keys [id action params]} (-> gen :loot/actions first :action/event second)
         levelled (body (post app "/api/action" {:id id :action action :params params}))]
     (is (re-find #"level 2" (:loot/subtitle levelled)))))
+
+(defn- recording-reporter [sink]
+  (reify sns.spi.protocols/Reporter
+    (report-label [_] "Send to Discord")
+    (report! [_ vm] (reset! sink vm) {:ok true})))
+
+(deftest capabilities-endpoint
+  (testing "no reporter -> empty capabilities"
+    (let [app  (http/app (engine/create config {:store (memory/create)}))
+          resp (app {:request-method :get :uri "/api/capabilities"})]
+      (is (= 200 (:status resp)))
+      (is (= {} (body resp)))))
+  (testing "with a reporter -> report? surfaced"
+    (let [app  (http/app (engine/create config {:store    (memory/create)
+                                                :reporter (recording-reporter (atom nil))}))
+          resp (app {:request-method :get :uri "/api/capabilities"})]
+      (is (= {:report? true :report-label "Send to Discord"} (body resp))))))
+
+(deftest report-endpoint
+  (let [sink (atom nil)
+        app  (http/app (engine/create config {:store    (memory/create)
+                                              :reporter (recording-reporter sink)}))
+        resp (post app "/api/report" {:view-model {:loot/title "Dust"}})]
+    (is (= 200 (:status resp)))
+    (is (= {:ok true} (body resp)))
+    (is (= {:loot/title "Dust"} @sink))))
 
 (deftest errors-return-transit
   (let [app (http/app (engine/create config {:store (memory/create)}))

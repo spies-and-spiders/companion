@@ -6,21 +6,24 @@
     [sns.server.progression :as progression]
     [sns.server.registry :as registry]
     [sns.server.render :as render]
+    [sns.server.reporter :as reporter]
     [sns.server.store :as store]
     [sns.spi.protocols :as p]
     [sns.spi.schema :as schema]))
 
 (defn create
   "Build a loot engine from validated `config`. `deps` supplies overridable
-   collaborators: `:store`, `:render`, `:session`, `:rng`. `:render`, the derived
-   `:progression`, and `:store` default to the built-in (swappable) impls."
+   collaborators: `:store`, `:reporter`, `:render`, `:session`, `:rng`. `:render`,
+   the derived `:progression`, `:store`, and `:reporter` default to the built-in
+   (swappable) impls."
   ([config] (create config {}))
-  ([config {:keys [store render session rng]}]
+  ([config {:keys [store reporter render session rng]}]
    (let [table (:loot-table config)
          render (or render render/render)]
      {:config       config
       :registry     (registry/build config)
       :store        (or store (store/from-config (:storage config)))
+      :reporter     (or reporter (reporter/from-config (:reporting config)))
       :render       render
       :progression  (progression/progression render)
       :session      session
@@ -62,6 +65,21 @@
      (throw (ex-info "No loot-table configured" {})))
    (let [id (loot-sampler)]
      {:id id :view-model (generate engine id inputs)})))
+
+(defn capabilities
+  "UI-facing flags describing optional features enabled by config (drives, e.g.,
+   whether the report button is shown)."
+  [{:keys [reporter]}]
+  (cond-> {}
+          reporter (assoc :report? true
+                          :report-label (p/report-label reporter))))
+
+(defn report
+  "Send a (validated) `view-model` to the configured reporter."
+  [{:keys [reporter]} view-model]
+  (when-not reporter
+    (throw (ex-info "Reporting is not configured" {})))
+  (p/report! reporter (schema/assert! ::schema/view-model view-model)))
 
 (defn handle-action
   "Dispatch a stateful follow-up `action` (with `params`) to loot type `id`,

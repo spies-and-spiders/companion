@@ -105,9 +105,16 @@
 
    ::loot-entry [:map [:id keyword?] [:weight {:optional true} number?]]
 
+   ;; --- reporting (send a generated item to an external destination) ---
+   ;; A `:multi` like `::plugin` so new backends slot in; dispatch coerces the
+   ;; backend to a keyword for JSON configs.
+   ::reporting  [:multi {:dispatch (fn [r] (some-> (:backend r) keyword))}
+                 [:discord [:map [:backend [:= :discord]] [:webhook-url string?]]]]
+
    ::config     [:map
                  [:storage {:optional true} ::storage]
                  [:plugins [:sequential ::plugin]]
+                 [:reporting {:optional true} ::reporting]
                  [:loot-table {:optional true} [:sequential ::loot-entry]]]})
 
 (def registry

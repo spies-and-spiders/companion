@@ -29,13 +29,32 @@
                                      (fn [types] (dispatch [[:fx/assoc-in [:loot-types] types]]))
                                      (fn [err] (dispatch [[:fx/assoc-in [:error] (:error err)]])))))
 
+(nxr/register-effect! :fx/load-capabilities
+                      (fn [{:keys [dispatch]} _system]
+                        (api/request {:url "/api/capabilities"}
+                                     (fn [{:keys [report? report-label]}]
+                                       (dispatch [[:fx/assoc-in [:report?] (boolean report?)]
+                                                  [:fx/assoc-in [:report-label] report-label]]))
+                                     (fn [_err] nil))))
+
 (defn- result-effect [{:keys [dispatch]} req]
-  (dispatch [[:fx/assoc-in [:loading?] true] [:fx/assoc-in [:error] nil]])
+  (dispatch [[:fx/assoc-in [:loading?] true] [:fx/assoc-in [:error] nil]
+             [:fx/assoc-in [:report-status] nil]])
   (api/request req
                (fn [vm] (dispatch [[:fx/assoc-in [:result] vm]
                                    [:fx/assoc-in [:loading?] false]]))
                (fn [err] (dispatch [[:fx/assoc-in [:error] (:error err)]
                                     [:fx/assoc-in [:loading?] false]]))))
+
+(nxr/register-effect! :fx/report
+                      (fn [{:keys [dispatch]} system]
+                        (when-let [vm (:result @system)]
+                          (dispatch [[:fx/assoc-in [:report-status] :sending]
+                                     [:fx/assoc-in [:error] nil]])
+                          (api/request {:method :post :url "/api/report" :body {:view-model vm}}
+                                       (fn [_ok] (dispatch [[:fx/assoc-in [:report-status] :sent]]))
+                                       (fn [err] (dispatch [[:fx/assoc-in [:report-status] nil]
+                                                            [:fx/assoc-in [:error] (:error err)]]))))))
 
 (nxr/register-effect! :fx/generate
                       (fn [ctx _system id inputs]
@@ -43,7 +62,8 @@
 
 (nxr/register-effect! :fx/roll
                       (fn [{:keys [dispatch]} _system inputs]
-                        (dispatch [[:fx/assoc-in [:loading?] true] [:fx/assoc-in [:error] nil]])
+                        (dispatch [[:fx/assoc-in [:loading?] true] [:fx/assoc-in [:error] nil]
+                                   [:fx/assoc-in [:report-status] nil]])
                         (api/request {:method :post :url "/api/roll" :body {:inputs inputs}}
                                      ;; roll returns {:id ... :view-model ...} so we can
                                      ;; jump the picker to the discipline that was rolled.
@@ -78,6 +98,10 @@
 (nxr/register-action! :ui/roll
                       (fn [state]
                         [[:fx/roll (:inputs state)]]))
+
+(nxr/register-action! :ui/report
+                      (fn [_state]
+                        [[:fx/report]]))
 
 ;; Dispatched directly from a view-model's :action/event vector.
 (nxr/register-action! :loot/action

@@ -92,6 +92,21 @@ Schemas: `sns.spi.schema/view-model`, `/loot-spec`, `/config`, `/mod`, `/path`.
 The default implementation interprets the upgrade-graph DSL; implement this only
 if you need bespoke logic.
 
+### `Reporter` (optional — send loot to an external destination)
+```clojure
+(report-label [this])        ; => button label, e.g. "Send to Discord"
+(report! [this view-model])  ; => {:ok true}; throws on failure
+```
+Config-driven via `:reporting` (mirrors `:storage`), and **optional** — when none
+is configured the UI hides its per-item report button. One built-in backend:
+
+```clojure
+:reporting {:backend :discord :webhook-url #env DISCORD_WEBHOOK_URL}
+```
+
+`POST /api/report` `{:view-model …}` forwards the (validated) view-model to the
+reporter; `GET /api/capabilities` tells the UI whether to show the button.
+
 ### `Store` (optional — custom persistence)
 ```clojure
 (fetch [this coll id]) (query [this coll q]) (put! [this coll id doc]) (update! [this coll id f])

@@ -45,15 +45,26 @@
     (let [{:keys [id action params]} (transit/read-stream body)]
       (transit-response (engine/handle-action eng id action params)))))
 
+(defn- capabilities-handler [eng]
+  (fn [_req]
+    (transit-response (engine/capabilities eng))))
+
+(defn- report-handler [eng]
+  (fn [{:keys [body]}]
+    (let [{:keys [view-model]} (transit/read-stream body)]
+      (transit-response (engine/report eng view-model)))))
+
 (defn app
   "Build the ring handler for loot `eng`."
   [eng]
   (ring/ring-handler
     (ring/router
       [["/api/loot-types" {:get (loot-types-handler eng)}]
+       ["/api/capabilities" {:get (capabilities-handler eng)}]
        ["/api/generate" {:post (generate-handler eng)}]
        ["/api/roll" {:post (roll-handler eng)}]
-       ["/api/action" {:post (action-handler eng)}]]
+       ["/api/action" {:post (action-handler eng)}]
+       ["/api/report" {:post (report-handler eng)}]]
       {:data {:middleware [wrap-errors]}})
     (ring/routes
       (ring/create-resource-handler {:path "/" :root "public"})

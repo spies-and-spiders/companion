@@ -29,6 +29,15 @@
           [:button.generate {:on {:click [[:ui/generate]]}}
            (if (:loading? state) "Summoning…" (str "Generate " (:label spec)))]])
        (render/result (:result state))
+       (when (and (:result state) (:report? state))
+         [:div.report
+          [:button.report__btn
+           {:disabled (= :sending (:report-status state))
+            :on       {:click [[:ui/report]]}}
+           (case (:report-status state)
+             :sending "Sending…"
+             :sent    "Sent ✓"
+             (or (:report-label state) "Send"))]])
        (when (and (nil? (:result state)) (nil? spec))
          [:div.empty
           [:p.empty__line "Choose a discipline, or roll the hoard."]])]]]))
@@ -39,5 +48,5 @@
 (defn init! []
   (r/set-dispatch! (fn [event-data actions] (nxr/dispatch state/store event-data actions)))
   (add-watch state/store ::render (fn [_ _ _ state] (render! state)))
-  (nxr/dispatch state/store {} [[:fx/load-loot-types]])
+  (nxr/dispatch state/store {} [[:fx/load-loot-types] [:fx/load-capabilities]])
   (render! @state/store))

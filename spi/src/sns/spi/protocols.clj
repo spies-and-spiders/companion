@@ -31,6 +31,16 @@
   (level-options [this mod path]
     "Return the upgrade options available as the next step from `path`."))
 
+(defprotocol Reporter
+  "Optional. Sends a generated loot view-model to an external destination (e.g. a
+   Discord webhook). Config-driven via `:reporting`, mirroring `Store`; when no
+   reporter is configured the UI hides its report button."
+  (report-label [this]
+    "Human label for the report button, e.g. \"Send to Discord\".")
+  (report! [this view-model]
+    "Send `view-model` (`sns.spi.schema/view-model`) to the destination. Returns
+     a result map (e.g. {:ok true}); throws ex-info on failure."))
+
 (defprotocol Store
   "Persistence abstraction. Built-in backends: a MySQL-compatible SQL server, a
    JSON file per collection, or in-memory. `coll` is a collection/table keyword,
