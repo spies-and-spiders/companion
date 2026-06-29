@@ -1,13 +1,12 @@
 (ns sns.server.store.file
   "File-backed `Store`: each collection is persisted to `<dir>/<collection>.json`
-   (default dir `./state`) as an `{id doc}` map. Needs no external process —
-   handy for a single DM who wants durable state without running a SQL server."
+   (default dir `./state`) as a transit-encoded `{id doc}` map. Transit (not plain
+   JSON) so keyword values in docs survive the round-trip. Needs no external
+   process — handy for a single DM who wants durable state without a SQL server."
   (:require
     [clojure.java.io :as io]
-    [jsonista.core :as j]
+    [sns.server.store.codec :as codec]
     [sns.spi.protocols :as p]))
-
-(def ^:private mapper j/keyword-keys-object-mapper)
 
 (defn- id->key [id]
   (keyword (if (keyword? id) (name id) (str id))))
@@ -17,12 +16,12 @@
 
 (defn- read-coll [^java.io.File file]
   (if (.exists file)
-    (j/read-value (slurp file) mapper)
+    (codec/decode (slurp file))
     {}))
 
 (defn- write-coll! [file m]
   (io/make-parents file)
-  (spit file (j/write-value-as-string m)))
+  (spit file (codec/encode m)))
 
 (defn create
   "A `Store` that persists each collection to `<dir>/<collection>.json`. Reads and

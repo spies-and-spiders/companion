@@ -113,8 +113,10 @@ reporter; `GET /api/capabilities` tells the UI whether to show the button.
 ```
 Three built-in backends, chosen by config `:storage {:backend ...}`:
 `:mysql` (any MySQL-compatible server via JDBC `:url` — see
-[docs/storage.md](../docs/storage.md)), `:file` (one JSON file per loot-type
-under `:dir`, default `./state`), and `:memory` (default; for tests/dev).
+[docs/storage.md](../docs/storage.md)), `:file` (one transit-encoded file per
+loot-type under `:dir`, default `./state`), and `:memory` (default; for tests/dev).
+Docs are transit-serialised so Clojure values (e.g. keyword-valued upgrade mods)
+round-trip losslessly.
 
 ---
 

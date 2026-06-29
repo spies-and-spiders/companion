@@ -10,4 +10,5 @@
          :loading?     false
          :report?      false ; whether a reporter (e.g. Discord) is configured
          :report-label nil   ; button label supplied by the backend reporter
-         :report-status nil}))  ; nil | :sending | :sent
+         :report-status nil   ; nil | :sending | :sent
+         :editing?     false}))  ; manually editing the current result in place

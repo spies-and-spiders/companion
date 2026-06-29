@@ -2,6 +2,7 @@
   "Nexus registry: pure actions return effects; effects perform side-effects
    (state writes, HTTP). Requiring this namespace registers everything."
   (:require
+    [clojure.string :as str]
     [nexus.registry :as nxr]
     [sns.ui.api :as api]))
 
@@ -42,6 +43,7 @@
              [:fx/assoc-in [:report-status] nil]])
   (api/request req
                (fn [vm] (dispatch [[:fx/assoc-in [:result] vm]
+                                   [:fx/assoc-in [:editing?] false]
                                    [:fx/assoc-in [:loading?] false]]))
                (fn [err] (dispatch [[:fx/assoc-in [:error] (:error err)]
                                     [:fx/assoc-in [:loading?] false]]))))
@@ -71,6 +73,7 @@
                                        (dispatch [[:fx/assoc-in [:selected] id]
                                                   [:fx/assoc-in [:inputs] {}]
                                                   [:fx/assoc-in [:result] view-model]
+                                                  [:fx/assoc-in [:editing?] false]
                                                   [:fx/assoc-in [:loading?] false]]))
                                      (fn [err] (dispatch [[:fx/assoc-in [:error] (:error err)]
                                                           [:fx/assoc-in [:loading?] false]])))))
@@ -85,7 +88,8 @@
                       (fn [_state id]
                         [[:fx/assoc-in [:selected] id]
                          [:fx/assoc-in [:inputs] {}]
-                         [:fx/assoc-in [:result] nil]]))
+                         [:fx/assoc-in [:result] nil]
+                         [:fx/assoc-in [:editing?] false]]))
 
 (nxr/register-action! :ui/set-input
                       (fn [_state field value]
@@ -102,6 +106,26 @@
 (nxr/register-action! :ui/report
                       (fn [_state]
                         [[:fx/report]]))
+
+(nxr/register-action! :ui/toggle-edit
+                      (fn [state]
+                        ;; clear any stale "Sent ✓" so an edited item reads as unsent
+                        [[:fx/assoc-in [:editing?] (not (:editing? state))]
+                         [:fx/assoc-in [:report-status] nil]]))
+
+(nxr/register-action! :ui/edit-result
+                      (fn [_state path value]
+                        [[:fx/assoc-in (into [:result] path) value]
+                         [:fx/assoc-in [:report-status] nil]]))
+
+(nxr/register-action! :ui/edit-result-tags
+                      (fn [_state path value]
+                        [[:fx/assoc-in (into [:result] path)
+                          (->> (str/split (or value "") #",")
+                               (map str/trim)
+                               (remove str/blank?)
+                               vec)]
+                         [:fx/assoc-in [:report-status] nil]]))
 
 ;; Dispatched directly from a view-model's :action/event vector.
 (nxr/register-action! :loot/action

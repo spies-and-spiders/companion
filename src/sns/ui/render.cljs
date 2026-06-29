@@ -1,7 +1,9 @@
 (ns sns.ui.render
   "The three generic, data-driven renderers. They emit stable class names; the
    stylesheet does the rest. A new loot type renders with zero UI code as long
-   as its spec/view-model conform to the schema.")
+   as its spec/view-model conform to the schema."
+  (:require
+    [clojure.string :as str]))
 
 ;; --- input-form (from a loot-spec's :inputs) ---------------------------------
 
@@ -69,6 +71,53 @@
       (when (seq (:loot/actions vm))
         [:div.sigil__actions
          (map action (:loot/actions vm))])]]))
+
+;; --- result editor (manual tweaks before re-rendering / reporting) -----------
+;; Edits write straight back into the result view-model at `path`, so the
+;; read-only view and the reported payload always reflect the latest text.
+
+(defn- edit-field [label path v area?]
+  [:label.edit {:replicant/key (str path)}
+   [:span.edit__label label]
+   (if area?
+     [:textarea.edit__control
+      {:on {:input [[:ui/edit-result path [:event.target/value]]]}}
+      (str v)]
+     [:input.edit__control
+      {:type  "text"
+       :value (str v)
+       :on    {:input [[:ui/edit-result path [:event.target/value]]]}}])])
+
+(defn- edit-tags [path tags]
+  [:label.edit {:replicant/key (str path)}
+   [:span.edit__label "Tags (comma-separated)"]
+   [:input.edit__control
+    {:type  "text"
+     :value (str/join ", " tags)
+     :on    {:input [[:ui/edit-result-tags path [:event.target/value]]]}}]])
+
+(defn- edit-item [si ii {:item/keys [title body tags]}]
+  [:li.entry.entry--edit {:replicant/key ii}
+   (edit-field "Item title" [:loot/sections si :section/items ii :item/title] title false)
+   (edit-field "Body" [:loot/sections si :section/items ii :item/body] body true)
+   (edit-tags [:loot/sections si :section/items ii :item/tags] tags)])
+
+(defn- edit-block [si {:section/keys [heading items]}]
+  [:section.block {:replicant/key si}
+   (edit-field "Section heading" [:loot/sections si :section/heading] heading false)
+   [:ul.entries (map-indexed (fn [ii item] (edit-item si ii item)) items)]])
+
+(defn result-editor
+  "Render the result view-model as an editable form. Behavioural `:loot/actions`
+   are intentionally not editable (and preserved untouched in state)."
+  [vm]
+  (when vm
+    [:article.sigil.sigil--edit {:replicant/key "result-editor"}
+     [:div.sigil__frame
+      (edit-field "Subtitle" [:loot/subtitle] (:loot/subtitle vm) false)
+      (edit-field "Title" [:loot/title] (:loot/title vm) false)
+      [:div.sigil__body
+       (map-indexed edit-block (:loot/sections vm))]]]))
 
 ;; --- loot-type picker --------------------------------------------------------
 

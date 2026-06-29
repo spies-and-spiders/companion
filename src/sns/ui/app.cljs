@@ -28,16 +28,22 @@
           (render/input-form spec (:inputs state))
           [:button.generate {:on {:click [[:ui/generate]]}}
            (if (:loading? state) "Summoning…" (str "Generate " (:label spec)))]])
-       (render/result (:result state))
-       (when (and (:result state) (:report? state))
-         [:div.report
-          [:button.report__btn
-           {:disabled (= :sending (:report-status state))
-            :on       {:click [[:ui/report]]}}
-           (case (:report-status state)
-             :sending "Sending…"
-             :sent    "Sent ✓"
-             (or (:report-label state) "Send"))]])
+       (if (:editing? state)
+         (render/result-editor (:result state))
+         (render/result (:result state)))
+       (when (:result state)
+         [:div.result-actions
+          [:button.action-btn
+           {:on {:click [[:ui/toggle-edit]]}}
+           (if (:editing? state) "Done editing" "Edit item")]
+          (when (:report? state)
+            [:button.report__btn
+             {:disabled (= :sending (:report-status state))
+              :on       {:click [[:ui/report]]}}
+             (case (:report-status state)
+               :sending "Sending…"
+               :sent    "Sent ✓"
+               (or (:report-label state) "Send"))])])
        (when (and (nil? (:result state)) (nil? spec))
          [:div.empty
           [:p.empty__line "Choose a discipline, or roll the hoard."]])]]]))

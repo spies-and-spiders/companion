@@ -1,7 +1,9 @@
 (ns sns.builtin.relics-test
   (:require
+    [clojure.java.io :as io]
     [clojure.test :refer [deftest is testing]]
     [sns.server.engine :as engine]
+    [sns.server.store.file :as file]
     [sns.server.store.memory :as memory]
     [sns.spi.protocols :as p]))
 
@@ -41,6 +43,27 @@
         ;; no choice supplied -> re-shows current state without advancing
         (is (= 1 (count (:path (p/fetch s :relics id)))))
         (is (re-find #"level 2" (:loot/subtitle again)))))))
+
+(deftest level-up-through-file-store
+  ;; Regression: the file (and mysql) store must round-trip the relic's keyword
+  ;; values, or level-up can't match the chosen option and silently re-shows the
+  ;; unchanged item. Uses the file backend that the default config ships with.
+  (let [dir (str (io/file (System/getProperty "java.io.tmpdir")
+                          (str "sns-relics-" (System/nanoTime))))]
+    (try
+      (let [s   (file/create dir)
+            eng (engine/create config {:store s})
+            vm  (engine/generate eng :relics)
+            id  (relic-id vm)
+            choice (-> vm :loot/actions first :action/event second :params :choice)
+            vm' (engine/handle-action eng :relics :level-up {:relic-id id :choice choice})]
+        (testing "the choice options survive persistence (still a :choice node)"
+          (is (some? choice) "generated relic offers a named choice"))
+        (testing "levelling up actually advances after a store round-trip"
+          (is (re-find #"level 2" (:loot/subtitle vm')))
+          (is (= 1 (count (:path (p/fetch s :relics id)))))))
+      (finally
+        (run! io/delete-file (reverse (file-seq (io/file dir))))))))
 
 (deftest repeatable-upgrade-accumulates
   (let [s   (memory/create)

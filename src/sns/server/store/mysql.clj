@@ -5,23 +5,23 @@
    embedded.
 
    The `Store` SPI is schema-agnostic, so documents are persisted generically in
-   one `documents(collection, id, doc JSON)` table rather than per-loot-type
-   tables."
+   one `documents(collection, id, doc)` table rather than per-loot-type tables.
+   `doc` is transit-encoded (so keyword values round-trip) and stored as
+   `LONGTEXT` — the column isn't queried via SQL JSON functions, and plain text
+   avoids the server reformatting the transit payload."
   (:require
-    [jsonista.core :as j]
     [next.jdbc :as jdbc]
+    [sns.server.store.codec :as codec]
     [sns.spi.protocols :as p]))
 
-(def ^:private mapper j/keyword-keys-object-mapper)
-
-(defn- ->doc [^String s]
-  (when (seq s) (j/read-value s mapper)))
+(defn- ->doc [s]
+  (codec/decode s))
 
 (defn- ensure-schema! [ds]
   (jdbc/execute! ds ["CREATE TABLE IF NOT EXISTS documents (
                         collection VARCHAR(255) NOT NULL,
                         id         VARCHAR(255) NOT NULL,
-                        doc        JSON         NOT NULL,
+                        doc        LONGTEXT     NOT NULL,
                         PRIMARY KEY (collection, id))"]))
 
 (defn create
@@ -48,7 +48,7 @@
         (jdbc/execute!
           ds ["INSERT INTO documents (collection, id, doc) VALUES (?, ?, ?)
                ON DUPLICATE KEY UPDATE doc = VALUES(doc)"
-              (name coll) (str id) (j/write-value-as-string doc)])
+              (name coll) (str id) (codec/encode doc)])
         doc)
       (update! [_ coll id f]
         (jdbc/with-transaction [tx ds]
@@ -62,5 +62,5 @@
             (jdbc/execute!
               tx ["INSERT INTO documents (collection, id, doc) VALUES (?, ?, ?)
                    ON DUPLICATE KEY UPDATE doc = VALUES(doc)"
-                  (name coll) (str id) (j/write-value-as-string updated)])
+                  (name coll) (str id) (codec/encode updated)])
             updated))))))

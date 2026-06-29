@@ -7,7 +7,7 @@ the app changes when you switch.
 | `:backend` | What it is                                   | Needs a process? | Durable? |
 |------------|----------------------------------------------|------------------|----------|
 | `:memory`  | Atom-backed; the default when none is set    | no               | no       |
-| `:file`    | One JSON file per loot-type under `:dir`     | no               | yes      |
+| `:file`    | One transit-encoded file per loot-type, `:dir` | no             | yes      |
 | `:mysql`   | Any MySQL-compatible SQL server, over JDBC   | yes              | yes      |
 
 ```clojure

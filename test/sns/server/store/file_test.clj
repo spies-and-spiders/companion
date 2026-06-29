@@ -27,6 +27,13 @@
         (testing "query matches by field equality, scoped to the collection"
           (p/put! s :relics "y" {:name "Y" :level 2})
           (p/put! s :other "z" {:name "Z" :level 2})
-          (is (= #{"X" "Y"} (set (map :name (p/query s :relics {:level 2})))))))
+          (is (= #{"X" "Y"} (set (map :name (p/query s :relics {:level 2}))))))
+        (testing "keyword values survive the round-trip (regression: stateful loot)"
+          ;; mirrors a relic's upgrade-graph mod, whose keyword values plain JSON
+          ;; would stringify, breaking option matching on level-up.
+          (let [doc {:id "k" :mod {:upgrades {:select  :choice
+                                              :options [{:id :precise} {:id :elemental}]}}}]
+            (p/put! s :relics "k" doc)
+            (is (= doc (p/fetch (file/create dir) :relics "k"))))))
       (finally
         (run! io/delete-file (reverse (file-seq (io/file dir))))))))

@@ -178,10 +178,10 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 }
 .generate:hover { background: var(--arcane); color: var(--ink); box-shadow: 0 0 24px var(--arcane-dim); }
 
-/* --- report (send to Discord etc.; optional, config-driven) ---------------- */
+/* --- result actions (edit / report; optional, config-driven) --------------- */
 
-.report { margin-top: 1.1rem; }
-.report__btn {
+.result-actions { margin-top: 1.1rem; display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.action-btn, .report__btn {
   padding: 0.55rem 1.1rem;
   background: transparent;
   border: 1px solid var(--gilt-dim);
@@ -192,8 +192,32 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   text-transform: uppercase;
   transition: background 0.15s ease, color 0.15s ease;
 }
-.report__btn:hover { background: var(--gilt); color: var(--ink); }
+.action-btn:hover, .report__btn:hover { background: var(--gilt); color: var(--ink); }
 .report__btn:disabled { opacity: 0.6; cursor: default; }
+
+/* --- result editor (manual edit mode) -------------------------------------- */
+
+.sigil--edit .sigil__frame { display: flex; flex-direction: column; gap: 0.9rem; }
+.entry--edit { display: flex; flex-direction: column; gap: 0.5rem; }
+.edit { display: flex; flex-direction: column; gap: 0.25rem; }
+.edit__label {
+  font-size: 0.64rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.edit__control {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  background: var(--ink-2);
+  border: 1px solid var(--gilt-dim);
+  border-radius: var(--radius);
+  color: var(--vellum);
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+.edit__control:focus-visible { border-color: var(--arcane); outline: none; }
+textarea.edit__control { min-height: 4.5rem; resize: vertical; }
 
 /* --- the sigil (signature surface) ----------------------------------------- */
 
