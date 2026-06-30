@@ -26,17 +26,14 @@
           "exactly one relic stored")
       (is (re-find #"level 1" (:loot/subtitle vm)))
       (is (some? (-> vm :loot/sections first :section/items first :item/body))))
-
     (testing "a generated relic surfaces its upgrade choices as actions"
       (is (seq (:loot/actions vm))))
-
     (testing "levelling up with a choice persists a path step and re-derives"
       (let [choice (-> vm :loot/actions first :action/event second :params :choice)
             vm'    (engine/handle-action eng :relics :level-up {:relic-id id :choice choice})]
         (is (re-find #"level 2" (:loot/subtitle vm')))
         (is (= 1 (count (:path (p/fetch s :relics id))))
             "one step recorded in the persisted path")))
-
     (testing "the persisted effect is reproducible from state across a fresh engine"
       (let [eng2 (engine/create config {:store s})
             again (engine/handle-action eng2 :relics :level-up {:relic-id id})]
