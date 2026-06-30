@@ -4,50 +4,50 @@
     [clojure.java.io :as io]
     [clojure.string :as str]
     [jsonista.core :as j]
-    [sns.spi.schema :as schema]))
+    [sns.spi.schema :as schema])
+  (:import
+    (java.io File)))
 
 (defn- json-source?
   "True if `source` names a `.json` file."
   [source]
   (let [name (cond
                (string? source)                 source
-               (instance? java.io.File source)  (.getName ^java.io.File source)
+               (instance? File source)  (.getName ^File source)
                :else                             (str source))]
     (str/ends-with? name ".json")))
 
-(defn- resolve-source
-  "Turn a classpath resource name into a URL; pass File/URL through unchanged."
-  [source]
-  (if (string? source)
-    (or (io/resource source)
-        (throw (ex-info "Config resource not found" {:source source})))
-    source))
+(def ^:private default-paths
+  "Config filenames looked for in the working directory when none is given."
+  ["config.edn" "config.json"])
 
-(defn- default-source
-  "Prefer config.edn on the classpath, falling back to config.json."
+(defn default-source
+  "Find a config file in the working directory: `config.edn`, then `config.json`."
   []
-  (or (when (io/resource "config.edn") "config.edn")
-      (when (io/resource "config.json") "config.json")
-      (throw (ex-info "No config.edn or config.json found on the classpath" {}))))
+  (or (some (fn [p] (let [f (io/file p)] (when (.exists f) f))) default-paths)
+      (throw (ex-info (str "No config file found. Looked for "
+                           (str/join ", " default-paths)
+                           " in the working directory; pass --config <path> to choose one.")
+                      {:searched default-paths}))))
 
 (defn- read-source
-  "Read raw config from `source`. EDN goes through aero (so env-var tags etc.
-   work); JSON is parsed with keywordised keys and decoded against the schema,
-   coercing string values (`:type`, `:backend`, `:id`, `:entrypoint`, …) to the
-   keywords/symbols the rest of the app expects."
+  "Read raw config from `source` (a filesystem path string, File, or URL). EDN
+   goes through aero (so env-var tags etc. work); JSON is parsed with keywordised
+   keys and decoded against the schema, coercing string values (`:type`,
+   `:backend`, `:id`, `:entrypoint`, …) to the keywords/symbols the app expects."
   [source]
-  (let [readable (resolve-source source)]
+  (let [readable (if (string? source) (io/file source) source)]
     (if (json-source? source)
       (->> (j/read-value (slurp readable) j/keyword-keys-object-mapper)
            (schema/decode ::schema/config))
       (aero/read-config readable))))
 
 (defn load-config
-  "Read and validate the application config. With no argument, prefers
-   `config.edn` on the classpath and falls back to `config.json`. `source` may
-   also be an explicit classpath resource name or anything aero/JSON can read
-   (File/URL); a `.json` extension selects the JSON reader. Secrets belong in env
-   vars referenced via aero tags (EDN only), not in the file."
+  "Read and validate the application config. With no argument, looks for
+   `config.edn` (then `config.json`) in the working directory. `source` may be a
+   filesystem path string, File, or URL; a `.json` extension selects the JSON
+   reader. Secrets belong in env vars referenced via aero tags (EDN only), not in
+   the file."
   ([] (load-config (default-source)))
   ([source]
    (->> (read-source source)

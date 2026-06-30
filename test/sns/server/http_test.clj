@@ -1,10 +1,10 @@
 (ns sns.server.http-test
   (:require
+    [clojure.edn :as edn]
     [clojure.test :refer [deftest is testing]]
     [sns.server.engine :as engine]
     [sns.server.http :as http]
     [sns.server.store.memory :as memory]
-    [sns.server.transit :as transit]
     [sns.spi.protocols])
   (:import
     (java.io ByteArrayInputStream)))
@@ -17,10 +17,10 @@
 (defn- post [app uri data]
   (app {:request-method :post
         :uri            uri
-        :body           (ByteArrayInputStream. (.getBytes (transit/write-str data) "UTF-8"))}))
+        :body           (ByteArrayInputStream. (.getBytes (pr-str data) "UTF-8"))}))
 
 (defn- body [resp]
-  (transit/read-str (:body resp)))
+  (edn/read-string (:body resp)))
 
 (deftest loot-types-endpoint
   (let [app (http/app (engine/create config {:store (memory/create)}))
@@ -67,7 +67,7 @@
     (is (= {:ok true} (body resp)))
     (is (= {:loot/title "Dust"} @sink))))
 
-(deftest errors-return-transit
+(deftest errors-return-edn
   (let [app (http/app (engine/create config {:store (memory/create)}))
         resp (post app "/api/generate" {:id :nonexistent})]
     (is (= 400 (:status resp)))

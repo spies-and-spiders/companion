@@ -20,7 +20,7 @@
           (is (= {:name "X" :level 1} (p/fetch s :relics "x")))
           (is (= {:name "X" :level 1}
                  (p/fetch (file/create dir) :relics "x")))
-          (is (.exists (io/file dir "relics.json"))))
+          (is (.exists (io/file dir "relics.edn"))))
         (testing "update! applies a function, defaulting nil"
           (is (= {:name "X" :level 2} (p/update! s :relics "x" #(update % :level inc))))
           (is (= 2 (:level (p/fetch s :relics "x")))))

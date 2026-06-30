@@ -17,16 +17,16 @@
   (b/delete {:path "target"}))
 
 (defn uber
-  "Build the standalone uberjar with sns.server.main as the entrypoint."
+  "Build the standalone uberjar with sns.server.core as the entrypoint."
   [_]
   (clean nil)
   (b/copy-dir {:src-dirs   ["src" "resources" "spi/src"]
                :target-dir class-dir})
   (b/compile-clj {:basis      (basis)
-                  :ns-compile '[sns.server.main]
+                  :ns-compile '[sns.server.core]
                   :class-dir  class-dir})
   (b/uber {:class-dir class-dir
            :uber-file uber-file
            :basis     (basis)
-           :main      'sns.server.main})
+           :main      'sns.server.core})
   (println "Built" uber-file))

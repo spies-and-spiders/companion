@@ -1,17 +1,19 @@
 (ns sns.server.store.codec
-  "Lossless (de)serialisation of store documents. Uses transit+json so Clojure
-   values — notably the keywords in upgrade-graph mods (`:select :choice`, option
-   `:id`s, …) — round-trip intact. Plain JSON would stringify them, which silently
-   breaks stateful loot (the chosen option no longer matches on the way back)."
+  "Lossless, human-readable (de)serialisation of store documents using EDN.
+   Clojure values — notably the keywords in upgrade-graph mods (`:select
+   :choice`, option `:id`s, …) — round-trip intact, so stateful loot keeps
+   matching the chosen option on the way back. EDN (not JSON) because JSON
+   stringifies keyword *values* and can't restore them without a per-document
+   schema; EDN needs none and stays readable on disk / in the DB."
   (:require
-    [sns.server.transit :as transit]))
+    [clojure.edn :as edn]))
 
 (defn encode
-  "Serialise a document to a transit+json string."
+  "Serialise a document to an EDN string."
   [doc]
-  (transit/write-str doc))
+  (pr-str doc))
 
 (defn decode
-  "Deserialise a transit+json string back to its Clojure value, nil for blank."
+  "Deserialise an EDN string back to its Clojure value, nil for blank."
   [s]
-  (when (seq s) (transit/read-str s)))
+  (when (seq s) (edn/read-string s)))

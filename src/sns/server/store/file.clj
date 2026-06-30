@@ -1,8 +1,9 @@
 (ns sns.server.store.file
-  "File-backed `Store`: each collection is persisted to `<dir>/<collection>.json`
-   (default dir `./state`) as a transit-encoded `{id doc}` map. Transit (not plain
-   JSON) so keyword values in docs survive the round-trip. Needs no external
-   process — handy for a single DM who wants durable state without a SQL server."
+  "File-backed `Store`: each collection is persisted to `<dir>/<collection>.edn`
+   (default dir `./state`) as an EDN-encoded `{id doc}` map. EDN (not plain JSON)
+   so keyword values in docs survive the round-trip, while staying readable on
+   disk. Needs no external process — handy for a single DM who wants durable
+   state without a SQL server."
   (:require
     [clojure.java.io :as io]
     [sns.server.store.codec :as codec]
@@ -12,7 +13,7 @@
   (keyword (if (keyword? id) (name id) (str id))))
 
 (defn- coll-file [dir coll]
-  (io/file dir (str (name coll) ".json")))
+  (io/file dir (str (name coll) ".edn")))
 
 (defn- read-coll [^java.io.File file]
   (if (.exists file)
@@ -24,12 +25,13 @@
   (spit file (codec/encode m)))
 
 (defn create
-  "A `Store` that persists each collection to `<dir>/<collection>.json`. Reads and
+  "A `Store` that persists each collection to `<dir>/<collection>.edn`. Reads and
    writes are guarded by a per-store lock so `update!` is atomic; built for a
    single writer, not concurrent processes."
   ([] (create "./state"))
   ([dir]
    (let [lock (Object.)]
+     (.mkdirs (io/file dir))
      (reify p/Store
        (fetch [_ coll id]
          (locking lock

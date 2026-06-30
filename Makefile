@@ -20,7 +20,7 @@ deps: ## Install npm dependencies (shadow-cljs, playwright)
 
 .PHONY: run
 run: ## Run the backend server (API + SPA on http://localhost:8080)
-	clojure -M -m sns.server.main
+	clojure -M -m sns.server.core
 
 .PHONY: watch
 watch: ## Hot-reload the frontend (shadow-cljs dev server; run alongside `make run`)

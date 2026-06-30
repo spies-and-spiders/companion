@@ -7,8 +7,8 @@
 
 (defn from-config
   "Build a `Reporter` from the config `:reporting` map, or nil when absent."
-  [{:keys [backend webhook-url] :as cfg}]
+  [{:keys [backend] :as cfg}]
   (when cfg
     (case backend
-      :discord (discord/create webhook-url)
+      :discord (discord/create cfg)
       (throw (ex-info "Unknown reporting backend" {:backend backend})))))

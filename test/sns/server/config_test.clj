@@ -29,8 +29,10 @@
     (let [f (write-temp-json "{\"plugins\":[{\"type\":\"bogus\",\"id\":\"x\"}]}")]
       (is (thrown? Exception (config/load-config f))))))
 
-(deftest loads-edn-resource-config
-  (testing "the shipped config.edn still loads via the classpath"
+(deftest loads-edn-config-from-filesystem
+  (testing "the shipped config.edn loads from the working-directory path"
     (let [cfg (config/load-config "config.edn")]
       (is (seq (:plugins cfg)))
-      (is (= :data (-> cfg :plugins (nth 2) :type))))))
+      (is (= :data (-> cfg :plugins (nth 2) :type)))))
+  (testing "no-arg load discovers config.edn in the working directory"
+    (is (seq (:plugins (config/load-config))))))

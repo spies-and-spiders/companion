@@ -4,6 +4,9 @@
     "sns.spi.schema/config" : {
       "type" : "object",
       "properties" : {
+        "server" : {
+          "$ref" : "#/definitions/sns.spi.schema~1server"
+        },
         "storage" : {
           "$ref" : "#/definitions/sns.spi.schema~1storage"
         },
@@ -24,6 +27,17 @@
         }
       },
       "required" : [ "plugins" ]
+    },
+    "sns.spi.schema/server" : {
+      "type" : "object",
+      "properties" : {
+        "host" : {
+          "type" : "string"
+        },
+        "port" : {
+          "type" : "integer"
+        }
+      }
     },
     "sns.spi.schema/storage" : {
       "type" : "object",
@@ -116,6 +130,12 @@
             "const" : "discord"
           },
           "webhook-url" : {
+            "type" : "string"
+          },
+          "discord-username" : {
+            "type" : "string"
+          },
+          "avatar-url" : {
             "type" : "string"
           }
         },

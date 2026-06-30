@@ -6,9 +6,9 @@
 
    The `Store` SPI is schema-agnostic, so documents are persisted generically in
    one `documents(collection, id, doc)` table rather than per-loot-type tables.
-   `doc` is transit-encoded (so keyword values round-trip) and stored as
-   `LONGTEXT` — the column isn't queried via SQL JSON functions, and plain text
-   avoids the server reformatting the transit payload."
+   `doc` is EDN-encoded (so keyword values round-trip, and the column stays
+   readable) and stored as `LONGTEXT` — the column isn't queried via SQL JSON
+   functions, and plain text avoids the server reformatting the payload."
   (:require
     [next.jdbc :as jdbc]
     [sns.server.store.codec :as codec]
@@ -27,8 +27,8 @@
 (defn create
   "A `Store` backed by a MySQL-compatible server reachable at JDBC `url`
    (e.g. \"jdbc:mariadb://localhost:3306/sns\"). Documents are stored generically
-   in a `documents(collection, id, doc JSON)` table; `coll`/`id` are coerced to
-   strings and `doc` is JSON-encoded."
+   in a `documents(collection, id, doc LONGTEXT)` table; `coll`/`id` are coerced
+   to strings and `doc` is EDN-encoded."
   [url]
   (let [ds (jdbc/get-datasource {:jdbcUrl url})]
     (ensure-schema! ds)

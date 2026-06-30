@@ -1,17 +1,17 @@
 # Storage backends
 
 Stateful loot reads and writes through the `Store` SPI. The backend is chosen in
-`resources/config.edn` under `:storage` and is fully swappable — nothing else in
-the app changes when you switch.
+`config.edn` under `:storage` and is fully swappable — nothing else in the app
+changes when you switch.
 
 | `:backend` | What it is                                   | Needs a process? | Durable? |
 |------------|----------------------------------------------|------------------|----------|
 | `:memory`  | Atom-backed; the default when none is set    | no               | no       |
-| `:file`    | One transit-encoded file per loot-type, `:dir` | no             | yes      |
+| `:file`    | One EDN-encoded file per loot-type, `:dir`   | no               | yes      |
 | `:mysql`   | Any MySQL-compatible SQL server, over JDBC   | yes              | yes      |
 
 ```clojure
-;; resources/config.edn
+;; config.edn
 :storage {:backend :file  :dir "./state"}                      ; or
 :storage {:backend :mysql :url "jdbc:mariadb://localhost:3306/sns"}
 ```

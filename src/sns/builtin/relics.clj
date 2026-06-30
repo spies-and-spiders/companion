@@ -76,7 +76,6 @@
             relic    (assoc template :id (str (random-uuid)) :path [])]
         (p/put! store collection (:id relic) relic)
         (view-model progression relic)))
-
     p/LootAction
     (action-spec [_]
       {:level-up {:label "Level up" :params [:relic-id :choice]}})

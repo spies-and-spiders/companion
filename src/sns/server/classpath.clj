@@ -1,7 +1,9 @@
 (ns sns.server.classpath
   "Runtime classpath additions for external JAR plugins."
   (:require
-    [clojure.java.io :as io]))
+    [clojure.java.io :as io])
+  (:import
+    (clojure.lang DynamicClassLoader RT)))
 
 (defn add-jar!
   "Add `path` (a jar file) to the runtime classpath so its namespaces can be
@@ -18,7 +20,7 @@
     (when-not (.exists file)
       (throw (ex-info "Plugin jar not found" {:path path})))
     (let [url    (.. file toURI toURL)
-          loader (doto (clojure.lang.DynamicClassLoader. (clojure.lang.RT/baseLoader))
+          loader (doto (DynamicClassLoader. (RT/baseLoader))
                    (.addURL url))]
       (.setContextClassLoader (Thread/currentThread) loader)
       loader)))

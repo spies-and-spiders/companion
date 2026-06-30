@@ -89,6 +89,10 @@
    ::path       [:sequential ::path-step]
 
    ;; --- application config ---
+   ::server     [:map
+                 [:host {:optional true} string?]
+                 [:port {:optional true} int?]]
+
    ::storage    [:map
                  [:backend keyword?]
                  [:url {:optional true} string?]
@@ -109,9 +113,14 @@
    ;; A `:multi` like `::plugin` so new backends slot in; dispatch coerces the
    ;; backend to a keyword for JSON configs.
    ::reporting  [:multi {:dispatch (fn [r] (some-> (:backend r) keyword))}
-                 [:discord [:map [:backend [:= :discord]] [:webhook-url string?]]]]
+                 [:discord [:map
+                            [:backend [:= :discord]]
+                            [:webhook-url string?]
+                            [:discord-username {:optional true} string?]
+                            [:avatar-url {:optional true} string?]]]]
 
    ::config     [:map
+                 [:server {:optional true} ::server]
                  [:storage {:optional true} ::storage]
                  [:plugins [:sequential ::plugin]]
                  [:reporting {:optional true} ::reporting]

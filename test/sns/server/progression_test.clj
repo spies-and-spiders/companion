@@ -48,5 +48,27 @@
   (testing "a terminal node offers nothing"
     (is (nil? (progression/options-at base [{:id :wide} {:id :keen}])))))
 
+(def ^:private single-shot
+  {:state    {}
+   :template "x"
+   :upgrades {:select :choice :options [{:id :only :set {}}]}})
+
+(deftest one-shot-option-is-consumed-not-terminal
+  (testing "taking a one-shot option removes only itself, leaving the siblings"
+    (is (= [:precise :wide]
+           (mapv :id (:options (progression/options-at base [{:id :elemental}]))))))
+  (testing "the repeatable sibling stays reachable after the one-shot is taken"
+    (is (= [:precise :wide]
+           (mapv :id (:options (progression/options-at
+                                 base [{:id :elemental} {:id :precise}])))))
+    ;; regression: this path used to throw, since the one-shot made the node
+    ;; terminal and the following :precise was then rejected as "unknown"
+    (is (= {:ab 2 :dmg 0}
+           (:state (progression/derive-mod render/render base
+                                           [{:id :elemental :rolled {:dmg 0}}
+                                            {:id :precise}])))))
+  (testing "the node only goes terminal once every option there is consumed"
+    (is (nil? (progression/options-at single-shot [{:id :only}])))))
+
 (deftest unknown-option-is-rejected
   (is (thrown? Exception (effect [{:id :nope}]))))

@@ -22,11 +22,13 @@
        first))
 
 (defn- next-upgrades
-  "The graph node reached after taking `option`: its child `:upgrades`, or the
-   same node again if the option is `:repeatable`, otherwise nil (terminal)."
+  "The graph node reached after taking `option`: its child `:upgrades` if it has
+   them, otherwise the same node again. A one-shot (non-repeatable, child-less)
+   option is applied in place and later filtered out of the node's available
+   options by `options-at`; it never closes off the node on its own, so the
+   node's other upgrades (e.g. a repeatable sibling) stay reachable."
   [current option]
-  (or (:upgrades option)
-      (when (:repeatable option) current)))
+  (or (:upgrades option) current))
 
 (defn- apply-option
   "Apply one option's mutation ops (plus any persisted `:rolled` values) to the
@@ -75,16 +77,37 @@
                :template template
                :effect (render template state)))))
 
+(defn- available-options
+  "Drop non-repeatable options already taken at the current node, so a one-shot
+   upgrade is consumed without closing off the node's other upgrades."
+  [upgrades taken]
+  (update upgrades :options
+          (fn [options]
+            (filterv (fn [{:keys [id repeatable]}]
+                       (or repeatable (not (contains? taken id))))
+                     options))))
+
 (defn options-at
   "Walk `path` and return the upgrade options available as the next step, or nil
-   if the mod has reached a terminal node."
+   if the mod has reached a terminal node (descended into a child node with no
+   options, or consumed every remaining option at the current node). One-shot
+   options taken at the current node are filtered out; a repeatable sibling keeps
+   the node open."
   [base path]
   (loop [upgrades (:upgrades base)
+         taken    #{}
          [step & more] path]
     (if (and step upgrades)
       (let [option (find-option upgrades (:id step))]
-        (recur (next-upgrades upgrades option) more))
-      upgrades)))
+        (if (:upgrades option)
+          (recur (:upgrades option) #{} more)
+          (recur upgrades
+                 (cond-> taken (not (:repeatable option)) (conj (:id step)))
+                 more)))
+      (when upgrades
+        (let [available (available-options upgrades taken)]
+          (when (seq (:options available))
+            available))))))
 
 (defn progression
   "Construct the default Progression, injecting the swappable `render` fn."

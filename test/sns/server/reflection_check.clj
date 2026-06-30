@@ -10,13 +10,13 @@
 (def ^:private backend-nses
   ;; dependency order; each compiles on first require under the binding below
   '[sns.spi.protocols sns.spi.schema
-    sns.server.transit sns.server.classpath sns.server.render sns.server.progression
+    sns.server.classpath sns.server.render sns.server.progression
     sns.server.store.memory sns.server.store.file sns.server.store.mysql sns.server.store
     sns.server.registry
     sns.builtin.cli sns.builtin.data sns.builtin.dust sns.builtin.relics
     sns.server.reporter.discord sns.server.reporter
     sns.server.engine sns.server.http sns.server.config
-    sns.server.schema-gen sns.server.main])
+    sns.server.schema-gen sns.server.core])
 
 (defn -main [& _]
   (let [sw (java.io.StringWriter.)]
