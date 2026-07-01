@@ -17,10 +17,13 @@
 (defn- post [app uri data]
   (app {:request-method :post
         :uri            uri
+        :headers        {"content-type" "application/edn"
+                         "accept"       "application/edn"}
         :body           (ByteArrayInputStream. (.getBytes (pr-str data) "UTF-8"))}))
 
 (defn- body [resp]
-  (edn/read-string (:body resp)))
+  (let [b (:body resp)]
+    (edn/read-string (if (string? b) b (slurp b)))))
 
 (deftest loot-types-endpoint
   (let [app (http/app (engine/create config {:store (memory/create)}))

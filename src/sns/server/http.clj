@@ -1,8 +1,9 @@
 (ns sns.server.http
   (:require
-    [clojure.edn :as edn]
+    [muuntaja.core :as muuntaja]
     [reitit.http :as http]
     [reitit.http.interceptors.exception :as exception]
+    [reitit.http.interceptors.muuntaja :as format]
     [reitit.interceptor.sieppari :as sieppari]
     [reitit.ring :as ring]
     [ring.util.response :as response]
@@ -22,31 +23,23 @@
      :content-length (when (pos? len) len)
      :last-modified  (when (pos? lm) (Date. lm))}))
 
-(def ^:private content-type "application/edn")
+(def ^:private m
+  (muuntaja/create
+    (-> muuntaja/default-options
+        (assoc :default-format "application/edn")
+        (update :formats select-keys ["application/edn"]))))
 
-(defn- edn-response
-  ([data] (edn-response 200 data))
-  ([status data]
-   {:status  status
-    :headers {"Content-Type" content-type}
-    :body    (pr-str data)}))
-
-(defn- read-body
-  "Parse an EDN request body (a Ring InputStream), nil for an empty body."
-  [body]
-  (when body
-    (let [s (slurp body)]
-      (when (seq s) (edn/read-string s)))))
+(defn- ok [body] {:status 200 :body body})
 
 (def ^:private exception-interceptor
   (exception/exception-interceptor
     (merge
       exception/default-handlers
       {ExceptionInfo
-       (fn [e _req] (edn-response 400 {:error (ex-message e) :data (ex-data e)}))
+       (fn [e _req] {:status 400 :body {:error (ex-message e) :data (ex-data e)}})
 
        ::exception/default
-       (fn [e _req] (edn-response 500 {:error (ex-message e)}))
+       (fn [e _req] {:status 500 :body {:error (ex-message e)}})
 
        ::exception/wrap
        (fn [handler e req]
@@ -57,31 +50,27 @@
 
 (defn- loot-types-handler [eng]
   (fn [_req]
-    (edn-response (engine/loot-specs eng))))
+    (ok (engine/loot-specs eng))))
 
 (defn- generate-handler [eng]
-  (fn [{:keys [body]}]
-    (let [{:keys [id inputs]} (read-body body)]
-      (edn-response (engine/generate eng id (or inputs {}))))))
+  (fn [{{:keys [id inputs]} :body-params}]
+    (ok (engine/generate eng id (or inputs {})))))
 
 (defn- roll-handler [eng]
-  (fn [{:keys [body]}]
-    (let [{:keys [inputs]} (read-body body)]
-      (edn-response (engine/roll eng (or inputs {}))))))
+  (fn [{{:keys [inputs]} :body-params}]
+    (ok (engine/roll eng (or inputs {})))))
 
 (defn- action-handler [eng]
-  (fn [{:keys [body]}]
-    (let [{:keys [id action params]} (read-body body)]
-      (edn-response (engine/handle-action eng id action params)))))
+  (fn [{{:keys [id action params]} :body-params}]
+    (ok (engine/handle-action eng id action params))))
 
 (defn- capabilities-handler [eng]
   (fn [_req]
-    (edn-response (engine/capabilities eng))))
+    (ok (engine/capabilities eng))))
 
 (defn- report-handler [eng]
-  (fn [{:keys [body]}]
-    (let [{:keys [view-model]} (read-body body)]
-      (edn-response (engine/report eng view-model)))))
+  (fn [{{:keys [view-model]} :body-params}]
+    (ok (engine/report eng view-model))))
 
 (defn app [eng]
   (http/ring-handler
@@ -92,7 +81,11 @@
        ["/api/roll" {:post (roll-handler eng)}]
        ["/api/action" {:post (action-handler eng)}]
        ["/api/report" {:post (report-handler eng)}]]
-      {:data {:interceptors [exception-interceptor]}})
+      {:data {:muuntaja     m
+              :interceptors [(format/format-negotiate-interceptor m)
+                             (format/format-response-interceptor m)
+                             exception-interceptor
+                             (format/format-request-interceptor m)]}})
     (ring/routes
       (ring/create-resource-handler {:path "/" :root "public"})
       ;; SPA fallback: unmatched GETs serve the app shell.
