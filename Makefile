@@ -47,6 +47,14 @@ dist: uber ## Full production artifact (alias for `uber`)
 config-schema: ## Generate config.schema.json (JSON Schema for config.json)
 	clojure -M -m sns.server.schema-gen
 
+.PHONY: graalvm
+graalvm: frontend ## Build GraalVM Native Image
+	clojure -T:build uber :aliases '[:graalvm]'
+	native-image -jar $(UBERJAR) \
+	    -classpath target/classes \
+	    -o target/companion-0.1.0-standalone \
+	    --features=clj_easy.graal_build_time.InitClojureClasses
+
 # --- test --------------------------------------------------------------------
 
 .PHONY: test

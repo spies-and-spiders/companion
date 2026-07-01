@@ -7,7 +7,20 @@
     [clojure.edn :as edn]
     [reitit.ring :as ring]
     [ring.util.response :as response]
-    [sns.server.engine :as engine]))
+    [sns.server.engine :as engine])
+  (:import
+    (clojure.lang ExceptionInfo)
+    (java.net URL)
+    (java.util Date)))
+
+(defmethod response/resource-data :resource
+  [^URL url]
+  (let [conn (.openConnection url)
+        len  (.getContentLength conn)
+        lm   (.getLastModified conn)]
+    {:content        (.getInputStream conn)
+     :content-length (when (pos? len) len)
+     :last-modified  (when (pos? lm) (Date. lm))}))
 
 (def ^:private content-type "application/edn")
 
@@ -32,7 +45,7 @@
   (fn [req]
     (try
       (handler req)
-      (catch clojure.lang.ExceptionInfo e
+      (catch ExceptionInfo e
         (edn-response 400 {:error (ex-message e) :data (ex-data e)}))
       (catch Exception e
         (edn-response 500 {:error (ex-message e)})))))

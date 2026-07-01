@@ -1,160 +1,193 @@
 {
-  "$ref" : "#/definitions/sns.spi.schema~1config",
-  "definitions" : {
-    "sns.spi.schema/config" : {
-      "type" : "object",
-      "properties" : {
-        "server" : {
-          "$ref" : "#/definitions/sns.spi.schema~1server"
+  "$ref": "#/definitions/sns.spi.schema.config",
+  "definitions": {
+    "sns.spi.schema.config": {
+      "type": "object",
+      "properties": {
+        "server": {
+          "$ref": "#/definitions/sns.spi.schema.server"
         },
-        "storage" : {
-          "$ref" : "#/definitions/sns.spi.schema~1storage"
+        "storage": {
+          "$ref": "#/definitions/sns.spi.schema.storage"
         },
-        "plugins" : {
-          "type" : "array",
-          "items" : {
-            "$ref" : "#/definitions/sns.spi.schema~1plugin"
+        "plugins": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/sns.spi.schema.plugin"
           }
         },
-        "reporting" : {
-          "$ref" : "#/definitions/sns.spi.schema~1reporting"
+        "reporting": {
+          "$ref": "#/definitions/sns.spi.schema.reporting"
         },
-        "loot-table" : {
-          "type" : "array",
-          "items" : {
-            "$ref" : "#/definitions/sns.spi.schema~1loot-entry"
+        "loot-table": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/sns.spi.schema.loot-entry"
           }
         }
       },
-      "required" : [ "plugins" ]
+      "required": [
+        "plugins"
+      ]
     },
-    "sns.spi.schema/server" : {
-      "type" : "object",
-      "properties" : {
-        "host" : {
-          "type" : "string"
+    "sns.spi.schema.server": {
+      "type": "object",
+      "properties": {
+        "host": {
+          "type": "string"
         },
-        "port" : {
-          "type" : "integer"
+        "port": {
+          "type": "integer"
         }
       }
     },
-    "sns.spi.schema/storage" : {
-      "type" : "object",
-      "properties" : {
-        "backend" : {
-          "type" : "string"
+    "sns.spi.schema.storage": {
+      "type": "object",
+      "properties": {
+        "backend": {
+          "type": "string"
         },
-        "url" : {
-          "type" : "string"
+        "url": {
+          "type": "string"
         },
-        "db" : {
-          "type" : "string"
+        "db": {
+          "type": "string"
         },
-        "git-remote" : {
-          "type" : "string"
+        "git-remote": {
+          "type": "string"
         }
       },
-      "required" : [ "backend" ]
+      "required": [
+        "backend"
+      ]
     },
-    "sns.spi.schema/plugin" : {
-      "oneOf" : [ {
-        "type" : "object",
-        "properties" : {
-          "type" : {
-            "const" : "data"
-          },
-          "id" : {
-            "type" : "string"
-          },
-          "source" : {
-            "type" : "string"
-          }
-        },
-        "required" : [ "type", "id", "source" ]
-      }, {
-        "type" : "object",
-        "properties" : {
-          "type" : {
-            "const" : "cli"
-          },
-          "id" : {
-            "type" : "string"
-          },
-          "command" : {
-            "type" : "array",
-            "items" : {
-              "type" : "string"
+    "sns.spi.schema.plugin": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "data"
+            },
+            "id": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
             }
-          }
+          },
+          "required": [
+            "type",
+            "id",
+            "source"
+          ]
         },
-        "required" : [ "type", "id", "command" ]
-      }, {
-        "type" : "object",
-        "properties" : {
-          "type" : {
-            "const" : "jar"
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "cli"
+            },
+            "id": {
+              "type": "string"
+            },
+            "command": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           },
-          "id" : {
-            "type" : "string"
-          },
-          "jar" : {
-            "type" : "string"
-          },
-          "entrypoint" : {
-            "type" : "string"
-          }
+          "required": [
+            "type",
+            "id",
+            "command"
+          ]
         },
-        "required" : [ "type", "id", "jar", "entrypoint" ]
-      }, {
-        "type" : "object",
-        "properties" : {
-          "type" : {
-            "const" : "builtin"
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "jar"
+            },
+            "id": {
+              "type": "string"
+            },
+            "jar": {
+              "type": "string"
+            },
+            "entrypoint": {
+              "type": "string"
+            }
           },
-          "id" : {
-            "type" : "string"
-          },
-          "entrypoint" : {
-            "type" : "string"
-          }
+          "required": [
+            "type",
+            "id",
+            "jar",
+            "entrypoint"
+          ]
         },
-        "required" : [ "type", "id", "entrypoint" ]
-      } ]
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "builtin"
+            },
+            "id": {
+              "type": "string"
+            },
+            "entrypoint": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "entrypoint"
+          ]
+        }
+      ]
     },
-    "sns.spi.schema/reporting" : {
-      "oneOf" : [ {
-        "type" : "object",
-        "properties" : {
-          "backend" : {
-            "const" : "discord"
+    "sns.spi.schema.reporting": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "backend": {
+              "const": "discord"
+            },
+            "webhook-url": {
+              "type": "string"
+            },
+            "discord-username": {
+              "type": "string"
+            },
+            "avatar-url": {
+              "type": "string"
+            }
           },
-          "webhook-url" : {
-            "type" : "string"
-          },
-          "discord-username" : {
-            "type" : "string"
-          },
-          "avatar-url" : {
-            "type" : "string"
-          }
-        },
-        "required" : [ "backend", "webhook-url" ]
-      } ]
+          "required": [
+            "backend",
+            "webhook-url"
+          ]
+        }
+      ]
     },
-    "sns.spi.schema/loot-entry" : {
-      "type" : "object",
-      "properties" : {
-        "id" : {
-          "type" : "string"
+    "sns.spi.schema.loot-entry": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
         },
-        "weight" : {
-          "type" : "number"
+        "weight": {
+          "type": "number"
         }
       },
-      "required" : [ "id" ]
+      "required": [
+        "id"
+      ]
     }
   },
-  "$schema" : "http://json-schema.org/draft-07/schema#",
-  "title" : "sns-companion config"
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "sns-companion config"
 }

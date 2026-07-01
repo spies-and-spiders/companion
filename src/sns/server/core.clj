@@ -9,15 +9,25 @@
     [sns.server.engine :as engine]
     [sns.server.http :as http])
   (:import
+    (java.io IOException)
+    (java.net InetAddress ServerSocket)
     (java.util.concurrent.locks LockSupport)))
 
+(defn- check-port-free! [host port]
+  (try
+    (.close (ServerSocket. port 0 (InetAddress/getByName host)))
+    (catch IOException _
+      (throw (ex-info (str host ":" port " is already in use.")
+                      {:host host :port port})))))
+
 (defn start! [config]
-  (let [{:keys [host port] :or {host "127.0.0.1" port 8080}} (:server config)
-        server (hirundo/start! {:http-handler (http/app (engine/create config))
-                                :port         port
-                                :host         host})]
-    (println (str "sns-companion listening on http://" host ":" port))
-    server))
+  (let [{:keys [host port] :or {host "127.0.0.1" port 8080}} (:server config)]
+    (check-port-free! host port)
+    (let [server (hirundo/start! {:http-handler (http/app (engine/create config))
+                                  :port         port
+                                  :host         host})]
+      (println (str "sns-companion listening on http://" host ":" port))
+      server)))
 
 (defn- config-arg
   "The value of a `--config <path>` (or `--config=<path>`) CLI option, or nil."
