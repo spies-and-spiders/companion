@@ -9,8 +9,14 @@
          org.mariadb.jdbc/mariadb-java-client {:mvn/version "3.5.9"}
          metosin/jsonista                     {:mvn/version "1.0.0"}
          metosin/reitit-ring                  {:mvn/version "0.10.1"}
+         metosin/reitit-http                  {:mvn/version "0.10.1"}
+         metosin/reitit-interceptors          {:mvn/version "0.10.1"}
+         metosin/reitit-sieppari              {:mvn/version "0.10.1"}
          ring/ring-core                       {:mvn/version "1.15.5"}
-         com.s-exp/hirundo                    {:mvn/version "1.0.0-alpha214"}}
+         com.s-exp/hirundo                    {:mvn/version "1.0.0-alpha214"}
+         com.taoensso/telemere                {:mvn/version "1.2.1"}
+         com.taoensso/telemere-slf4j          {:mvn/version "1.2.1"}
+         org.slf4j/slf4j-api                  {:mvn/version "2.0.16"}}
 
  :aliases {:dev {:extra-paths ["dev"]
                  :extra-deps  {org.clojure/tools.namespace {:mvn/version "1.5.1"}}}

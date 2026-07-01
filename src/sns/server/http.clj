@@ -1,13 +1,13 @@
 (ns sns.server.http
-  "Ring/reitit HTTP layer: a small EDN-over-HTTP API plus static serving of the
-   compiled SPA. EDN (not transit) keeps the wire format readable and lets both
-   ends share `pr-str`/`read-string` without a transit dependency; the engine is
-   the single source of generation."
   (:require
     [clojure.edn :as edn]
+    [reitit.http :as http]
+    [reitit.http.interceptors.exception :as exception]
+    [reitit.interceptor.sieppari :as sieppari]
     [reitit.ring :as ring]
     [ring.util.response :as response]
-    [sns.server.engine :as engine])
+    [sns.server.engine :as engine]
+    [taoensso.telemere :as t])
   (:import
     (clojure.lang ExceptionInfo)
     (java.net URL)
@@ -38,17 +38,22 @@
     (let [s (slurp body)]
       (when (seq s) (edn/read-string s)))))
 
-(defn- wrap-errors
-  "Translate uncaught exceptions into an EDN error response so the client can
-   surface a message rather than an opaque 500 body."
-  [handler]
-  (fn [req]
-    (try
-      (handler req)
-      (catch ExceptionInfo e
-        (edn-response 400 {:error (ex-message e) :data (ex-data e)}))
-      (catch Exception e
-        (edn-response 500 {:error (ex-message e)})))))
+(def ^:private exception-interceptor
+  (exception/exception-interceptor
+    (merge
+      exception/default-handlers
+      {ExceptionInfo
+       (fn [e _req] (edn-response 400 {:error (ex-message e) :data (ex-data e)}))
+
+       ::exception/default
+       (fn [e _req] (edn-response 500 {:error (ex-message e)}))
+
+       ::exception/wrap
+       (fn [handler e req]
+         (if (instance? ExceptionInfo e)
+           (t/log! {:level :warn :id ::bad-request :data (ex-data e)} (ex-message e))
+           (t/log! {:level :error :id ::server-error :error e} "Unhandled request error"))
+         (handler e req))})))
 
 (defn- loot-types-handler [eng]
   (fn [_req]
@@ -78,22 +83,21 @@
     (let [{:keys [view-model]} (read-body body)]
       (edn-response (engine/report eng view-model)))))
 
-(defn app
-  "Build the ring handler for loot `eng`."
-  [eng]
-  (ring/ring-handler
-    (ring/router
+(defn app [eng]
+  (http/ring-handler
+    (http/router
       [["/api/loot-types" {:get (loot-types-handler eng)}]
        ["/api/capabilities" {:get (capabilities-handler eng)}]
        ["/api/generate" {:post (generate-handler eng)}]
        ["/api/roll" {:post (roll-handler eng)}]
        ["/api/action" {:post (action-handler eng)}]
        ["/api/report" {:post (report-handler eng)}]]
-      {:data {:middleware [wrap-errors]}})
+      {:data {:interceptors [exception-interceptor]}})
     (ring/routes
       (ring/create-resource-handler {:path "/" :root "public"})
       ;; SPA fallback: unmatched GETs serve the app shell.
       (fn [_req]
         (or (some-> (response/resource-response "index.html" {:root "public"})
                     (response/content-type "text/html"))
-            (response/not-found "Not found"))))))
+            (response/not-found "Not found"))))
+    {:executor sieppari/executor}))

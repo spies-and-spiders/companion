@@ -7,7 +7,8 @@
     [s-exp.hirundo :as hirundo]
     [sns.server.config :as config]
     [sns.server.engine :as engine]
-    [sns.server.http :as http])
+    [sns.server.http :as http]
+    [taoensso.telemere :as t])
   (:import
     (java.io IOException)
     (java.net InetAddress ServerSocket)
@@ -26,7 +27,8 @@
     (let [server (hirundo/start! {:http-handler (http/app (engine/create config))
                                   :port         port
                                   :host         host})]
-      (println (str "sns-companion listening on http://" host ":" port))
+      (t/log! {:level :info :id ::listening :data {:host host :port port}}
+              (str "sns-companion listening on http://" host ":" port))
       server)))
 
 (defn- config-arg
