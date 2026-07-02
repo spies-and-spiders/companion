@@ -20,6 +20,11 @@
 (def ^:private native-entrypoint 'sns.aot-preload)
 (def ^:private uber-file (format "target/%s-%s-standalone.jar" (name lib) version))
 
+;; The SPI library jar shipped for plugin authors: Clojure sources (protocols +
+;; schema) plus the compiled Java interfaces they implement.
+(def ^:private spi-class-dir "target/spi-classes")
+(def ^:private spi-jar-file (format "target/sns-spi-%s.jar" version))
+
 (defn- basis [aliases]
   (b/create-basis {:project "deps.edn" :aliases aliases}))
 
@@ -46,6 +51,22 @@
 
 (defn clean [_]
   (b/delete {:path "target"}))
+
+(defn spi-jar
+  "Build the standalone SPI library jar plugin authors depend on: the `spi/src`
+   Clojure sources (`sns.spi.protocols`/`sns.spi.schema`) plus the compiled Java
+   interfaces and records. Shipped as a release artifact."
+  [_]
+  (b/delete {:path spi-class-dir})
+  (b/copy-dir {:src-dirs   ["spi/src"]
+               :target-dir spi-class-dir})
+  (b/javac {:src-dirs   ["spi/src"]
+            :class-dir  spi-class-dir
+            :basis      (b/create-basis {:project "spi/deps.edn"})
+            :javac-opts ["--release" "21"]})
+  (b/jar {:class-dir spi-class-dir
+          :jar-file  spi-jar-file})
+  (println "Built" spi-jar-file))
 
 (defn uber [{:keys [aliases]}]
   (clean nil)

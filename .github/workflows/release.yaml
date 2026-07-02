@@ -46,6 +46,9 @@ jobs:
       - name: Build uberjar
         run: make uber
 
+      - name: Build SPI jar
+        run: make spi-jar
+
       - name: Generate config schema
         run: make config-schema
 
@@ -54,6 +57,13 @@ jobs:
         with:
           name: uberjar
           path: target/companion-${{ github.ref_name }}-standalone.jar
+          if-no-files-found: error
+
+      - name: Upload SPI jar
+        uses: actions/upload-artifact@v7
+        with:
+          name: spi-jar
+          path: target/sns-spi-${{ github.ref_name }}.jar
           if-no-files-found: error
 
       - name: Upload config schema

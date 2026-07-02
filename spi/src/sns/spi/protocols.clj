@@ -1,6 +1,10 @@
 (ns sns.spi.protocols
   "The extension points third-party plugins implement. Kept dependency-light so
-   external JAR plugins can depend on this module without pulling in the app.")
+   external JAR plugins can depend on this module without pulling in the app."
+  (:import
+    (java.util.function Function)
+    (sns.spi Models$Action Models$ActionSpecValue Models$Field Models$Item
+    Models$LootSpec Models$Section Models$ViewModel)))
 
 (defprotocol LootGenerator
   "A loot type. Implementations are resolved from config by the registry."
@@ -53,3 +57,99 @@
     "Insert or replace the document at `id`. Returns `doc`.")
   (update! [this coll id f]
     "Atomically apply `f` to the document at `id`. Returns the new document."))
+
+(defn- loot-id
+  "The loot-type id a generator declares, used to route a view-model's actions
+   back to it. `nil` when `x` is not also a `LootGenerator`."
+  [x]
+  (when (instance? sns.spi.LootGenerator x)
+    (keyword (.id (.lootSpec ^sns.spi.LootGenerator x)))))
+
+;; --- Models -> Clojure data ---
+
+(defn- field->clj [^Models$Field f]
+  (cond-> {:id    (keyword (.id f))
+           :label (.label f)
+           :type  (keyword (.type f))}
+          (some? (.defaultValue f)) (assoc :default (.defaultValue f))
+          (seq (.options f))        (assoc :options (vec (.options f)))))
+
+(defn- loot-spec->clj [^Models$LootSpec ls]
+  (cond-> {:id    (keyword (.id ls))
+           :label (.label ls)}
+          (.stateful ls)     (assoc :stateful? true)
+          (seq (.inputs ls)) (assoc :inputs (mapv field->clj (.inputs ls)))))
+
+(defn- item->clj [^Models$Item i]
+  (cond-> {:item/body (.body i)}
+          (.title i)      (assoc :item/title (.title i))
+          (seq (.tags i)) (assoc :item/tags (vec (.tags i)))))
+
+(defn- section->clj [^Models$Section s]
+  (cond-> {:section/items (mapv item->clj (.items s))}
+          (.heading s) (assoc :section/heading (.heading s))))
+
+(defn- action->clj [loot-id ^Models$Action a]
+  {:action/label (.label a)
+   :action/event [:loot/action {:id     loot-id
+                                :action (keyword (.action a))
+                                :params (into {} (.params a))}]})
+
+(defn- view-model->clj [loot-id ^Models$ViewModel vm]
+  (cond-> {:loot/title (.title vm)}
+          (.subtitle vm)      (assoc :loot/subtitle (.subtitle vm))
+          (seq (.sections vm)) (assoc :loot/sections (mapv section->clj (.sections vm)))
+          (seq (.actions vm))  (assoc :loot/actions (mapv #(action->clj loot-id %) (.actions vm)))))
+
+;; --- Clojure data -> Models (for `report`, which receives a view-model) ---
+
+(defn- clj->item [{:item/keys [title body tags]}]
+  (Models$Item. title body tags))
+
+(defn- clj->section [{:section/keys [heading items]}]
+  (Models$Section. heading (mapv clj->item items)))
+
+(defn- clj->action [{:action/keys [label event]}]
+  (let [{:keys [action params]} (second event)]
+    (Models$Action. label (some-> action name) params)))
+
+(defn- clj->view-model [{:loot/keys [title subtitle sections actions]}]
+  (Models$ViewModel. title subtitle
+                     (when sections (mapv clj->section sections))
+                     (when actions (mapv clj->action actions))))
+
+(extend-type sns.spi.LootGenerator
+  LootGenerator
+  (loot-spec [this] (loot-spec->clj (.lootSpec this)))
+  (generate [this ctx] (view-model->clj (loot-id this) (.generate this ctx))))
+
+(extend-type sns.spi.LootAction
+  LootAction
+  (action-spec [this] (into {}
+                            (map (juxt (comp keyword key)
+                                       (comp
+                                         (fn [^Models$ActionSpecValue v]
+                                           {:label  (.label v)
+                                            :params (mapv keyword (.params v))})
+                                         val)))
+                            (.actionSpec this)))
+  (handle-action [this ctx action params]
+    (view-model->clj (loot-id this) (.handleAction this ctx (name action) params))))
+
+(extend-type sns.spi.Progression
+  Progression
+  (current-state [this mod path] (.currentState this mod path))
+  (level-options [this mod path] (.levelOptions this mod path)))
+
+(extend-type sns.spi.Reporter
+  Reporter
+  (report-label [this] (.reportLabel this))
+  (report! [this view-model]
+    (.report this (clj->view-model view-model))))
+
+(extend-type sns.spi.Store
+  Store
+  (fetch [this coll id] (.fetch this coll id))
+  (query [this coll q] (.query this coll q))
+  (put! [this coll id doc] (.put this coll id doc))
+  (update! [this coll id f] (.update this coll id f)))
