@@ -86,6 +86,9 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  max-height: 100vh;
+  position: sticky;
+  top: 0;
 }
 
 .rail__eyebrow {
@@ -96,7 +99,13 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   color: var(--muted);
 }
 
-.rail__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.15rem; }
+.rail__list {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 0.15rem;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
 
 .discipline {
   width: 100%;
@@ -116,7 +125,6 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .discipline--active .discipline__glyph { color: var(--arcane); opacity: 1; }
 
 .roll {
-  margin-top: 0.5rem;
   padding: 0.85rem 1rem;
   background: linear-gradient(180deg, rgba(200, 162, 76, 0.16), rgba(200, 162, 76, 0.06));
   border: 1px solid var(--gilt);
@@ -301,8 +309,11 @@ textarea.edit__control { min-height: 4.5rem; resize: vertical; }
 
 @media (max-width: 720px) {
   .stage { grid-template-columns: 1fr; }
-  .rail { border-right: none; border-bottom: var(--rule); }
-  .roll { margin-top: 1rem; }
+  .rail {
+    border-right: none; border-bottom: var(--rule);
+    max-height: none; position: static;
+  }
+  .rail__list { max-height: 40vh; }
   .workbench { padding: 1.6rem 1.2rem; }
 }
 

@@ -123,6 +123,8 @@
 
 (defn picker [{:keys [loot-types selected]}]
   [:nav.rail
+   [:button.roll {:on {:click [[:ui/roll]]}}
+    "Roll Loot"]
    [:p.rail__eyebrow "Disciplines"]
    [:ul.rail__list
     (for [{:keys [id label]} loot-types]
@@ -130,6 +132,4 @@
        [:button.discipline {:class (when (= id selected) "discipline--active")
                             :on    {:click [[:ui/select-type id]]}}
         [:span.discipline__glyph "◆"]
-        [:span.discipline__name label]]])]
-   [:button.roll {:on {:click [[:ui/roll]]}}
-    "Roll the hoard"]])
+        [:span.discipline__name label]]])]])

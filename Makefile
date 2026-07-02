@@ -3,7 +3,9 @@
 
 .DEFAULT_GOAL := help
 
-UBERJAR := target/companion-0.1.0-standalone.jar
+VERSION := $(shell cat VERSION)
+NATIVE_IMAGE := target/companion-$(VERSION)-standalone
+UBERJAR := $(NATIVE_IMAGE).jar
 
 .PHONY: help
 help: ## Show this help
@@ -52,7 +54,7 @@ graalvm: frontend ## Build GraalVM Native Image
 	clojure -T:build uber :aliases '[:graalvm]'
 	native-image -jar $(UBERJAR) \
 	    -classpath target/classes \
-	    -o target/companion-0.1.0-standalone \
+	    -o $(NATIVE_IMAGE) \
 	    --features=clj_easy.graal_build_time.InitClojureClasses
 
 # --- test --------------------------------------------------------------------

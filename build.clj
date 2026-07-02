@@ -11,7 +11,7 @@
     [clojure.tools.namespace.find :as find]))
 
 (def ^:private lib 'sns/companion)
-(def ^:private version "0.1.0")
+(def ^:private version (str/trim (slurp "VERSION")))
 (def ^:private class-dir "target/classes")
 (def ^:private entrypoint 'sns.server.core)
 ;; Native-image entrypoint that preloads every sns.* namespace at build time so
