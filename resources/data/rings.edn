@@ -1,15 +1,15 @@
 ;; Example :data loot type — multiple entries drawn without replacement and each
 ;; rendered as an item (the `:each :items` form).
 {:label    "Rings"
- :items    [{:name "Band of the Sentinel"
+ :items    [{:name   "Band of the Sentinel"
              :effect "You may use your reaction to impose disadvantage on an attack against an ally within 5 feet."}
-            {:name "Loop of Embers"
+            {:name   "Loop of Embers"
              :effect "Once per short rest, deal an extra 1d6 fire damage on a hit."}
-            {:name "Circlet of the Tide"
+            {:name   "Circlet of the Tide"
              :effect "You can breathe underwater and have a swim speed equal to your walking speed."}
-            {:name "Ring of Quiet Steps"
+            {:name   "Ring of Quiet Steps"
              :effect "You have advantage on Dexterity (Stealth) checks made to move silently."}
-            {:name "Signet of Recall"
+            {:name   "Signet of Recall"
              :effect "Once per long rest, teleport to a location you marked earlier today."}]
  :take     2
  :title    "Two rings"

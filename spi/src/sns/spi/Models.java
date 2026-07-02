@@ -38,9 +38,7 @@ public final class Models {
     public record Section(String heading, List<Item> items) { }
 
     /** A single line of loot detail. {@code title}/{@code tags} may be null. */
-    public record Item(String title, String body, List<String> tags) {
-        public Item(String body) { this(null, body, null); }
-    }
+    public record Item(String title, String body, List<String> tags) { }
 
     /**
      * A stateful follow-up button. When surfaced, {@code action} (a keyword name)
