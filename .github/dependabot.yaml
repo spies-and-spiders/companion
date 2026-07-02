@@ -1,0 +1,18 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    groups:
+      dependencies:
+        patterns:
+          - "*"
+    directory: "/"
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    groups:
+      dependencies:
+        patterns:
+          - "*"
+    directory: "/"
+    schedule:
+      interval: weekly
