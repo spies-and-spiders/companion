@@ -1,0 +1,18 @@
+package sns.spi;
+
+/**
+ * Optional. Sends a generated loot view-model to an external destination (e.g. a
+ * Discord webhook). Config-driven via {@code :reporting}. Mirrors the {@code
+ * sns.spi.protocols/Reporter} protocol.
+ */
+public interface Reporter {
+
+    /** Human label for the report button, e.g. "Send to Discord". */
+    String reportLabel();
+
+    /**
+     * Send {@code viewModel} to the destination
+     * @return true when the model was reported successfully, otherwise false.
+     */
+    boolean report(Models.ViewModel viewModel);
+}

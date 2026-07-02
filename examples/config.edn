@@ -1,0 +1,92 @@
+;; ============================================================================
+;; sns-companion — example configuration
+;; ============================================================================
+;; This is the primary way a DM defines loot types and rules.
+;; Copy it to `config.edn` in the directory you run the app from, or
+;; point at it explicitly:
+;;
+;;     java -jar sns-companion-standalone.jar --config examples/config.edn
+;;
+;; With no `--config`, the app looks for `config.edn` (then `config.json`) in the
+;; working directory.
+;;
+;; The file is read with aero, so if you provide a config file using EDN, you can
+;; use any of these reader tags - https://github.com/juxt/aero#tag-literals.
+;; ============================================================================
+
+{;; --- HTTP server -----------------------------------------------------------
+ ;; Optional. Defaults to 127.0.0.1:8080 when omitted. The default binds to
+ ;; loopback only; set :host "0.0.0.0" to let players on the same network reach
+ ;; the UI.
+ :server {:host "127.0.0.1"
+          :port 8080}
+
+ ;; --- storage ---------------------------------------------------------------
+ ;; Where stateful loot (e.g. relics that level up) is persisted. Optional;
+ ;; defaults to in-memory (nothing is saved between runs).
+ ;;
+ ;;   :memory  — atom-backed, not durable. The default when :storage is absent.
+ ;;   :file    — one EDN file per loot-type under :dir (default "./state").
+ ;;   :mysql   — any MySQL-compatible server (MySQL/MariaDB/Dolt) at :url.
+ ;;
+ ;; Pick one backend; the unused keys are ignored.
+ :storage {:backend :file
+           :dir     "./state"
+              ;; :backend :mysql
+           :url     "jdbc:mariadb://localhost:3306/sns"}
+
+ ;; --- plugins ---------------------------------------------------------------
+ ;; The loot types available in the UI. Four kinds:
+ ;;
+ ;;   :builtin — a generator shipped in this app, named by its Clojure var.
+ ;;   :data    — a code-free loot type defined entirely in an EDN/JSON spec
+ ;;              file (:source is resolved on the classpath / inside the jar).
+ ;;   :cli     — shell out to any external program (any language). See
+ ;;              examples/cli-plugin/weather.py.
+ ;;   :jar     — a generator from an external library jar on disk. Only
+ ;;              available when running the app via java -jar
+ ;;
+ ;; Every plugin needs a unique :id; that id is what the :loot-table references.
+ :plugins [{:type :builtin :id :divine-dust :entrypoint sns.builtin.dust/generator}
+           {:type :builtin :id :relics :entrypoint sns.builtin.relics/generator}
+           {:type :data :id :uniques :source "data/uniques.edn"}
+           {:type :data :id :rings :source "data/rings.edn"}
+              ;; A loot generator in any language. :command is the program plus
+              ;; args; the engine pipes the request context as JSON on stdin and
+              ;; reads a friendly view-model as JSON on stdout. :label is what the
+              ;; UI shows (defaults to the id).
+           {:type    :cli
+            :id      :weather
+            :label   "Weather"
+            :command ["python3" "examples/cli-plugin/weather.py"]}
+              ;; A generator from an external jar. Put the jar on disk and name
+              ;; its entrypoint var; the jar is added to the runtime classpath at
+              ;; startup. (If your host forbids classpath mutation, put the jar on
+              ;; the JVM -cp instead.)
+           #_{:type       :jar
+              :id         :homebrew
+              :jar        "plugins/homebrew-loot.jar"
+              :entrypoint my.homebrew.loot/generator}]
+
+ ;; --- reporting -------------------------------------------------------------
+ ;; Optional. Enables the per-item "Send to Discord" button, posting the rolled
+ ;; loot to a webhook as a rich embed.
+ ;;
+ ;; :webhook-url is a secret — read it from the environment via #env rather than
+ ;; committing it. :discord-username and :avatar-url are optional overrides for
+ ;; how the bot message appears.
+ ;;
+ ;; Note that #env tags are not supported from .json config files, so these values
+ ;; would need to be inlined
+ :reporting {:backend          :discord
+             :webhook-url      #env DISCORD_WEBHOOK_URL
+             :discord-username "Loot Goblin"
+             :avatar-url       #env DISCORD_AVATAR_URL}
+
+ ;; --- loot table ------------------------------------------------------------
+ ;; The weighted draw used by the "random loot" button. Each :id must match a
+ ;; plugin above; :weight is the relative chance (defaults to 1 when omitted).
+ :loot-table [{:id :divine-dust :weight 40}
+              {:id :uniques :weight 25}
+              {:id :rings :weight 20}
+              {:id :relics :weight 15}]}

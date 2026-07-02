@@ -1,0 +1,14 @@
+{:paths ["src" "target/classes"]
+ :deps  {org.clojure/clojure {:mvn/version "1.12.5"}
+         metosin/malli       {:mvn/version "0.20.1"}}
+
+ ;; The Java interfaces under spi/java must be compiled before `sns.spi.protocols`
+ ;; loads (it extends them with the protocols). tools.deps runs this automatically
+ ;; via `clojure -X:deps prep`; the compiled classes land on the `target/classes`
+ ;; path above.
+ :deps/prep-lib {:ensure "target/classes"
+                 :alias  :build
+                 :fn     compile-java}
+
+ :aliases {:build {:deps       {io.github.clojure/tools.build {:mvn/version "0.10.14"}}
+                   :ns-default build}}}
