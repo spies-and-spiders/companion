@@ -121,10 +121,19 @@
 
 ;; --- loot-type picker --------------------------------------------------------
 
-(defn picker [{:keys [loot-types selected]}]
+(defn picker [{:keys [loot-types selected roll-n]}]
   [:nav.rail
-   [:button.roll {:on {:click [[:ui/roll]]}}
-    "Roll Loot"]
+   [:div.roll-group
+    [:input.roll__input
+     {:type        "number"
+      :min         "1"
+      :max         "100"
+      :placeholder "d100"
+      :value       (str roll-n)
+      :on          {:input [[:ui/set-roll-input [:event.target/value]]]}}]
+    [:button.roll {:on {:click [[:ui/roll]]}}
+     (if (str/blank? (str roll-n)) "Roll Loot" (str "Roll " roll-n))]]
+   [:p.rail__hint "Enter 1–100 to roll on the table, or leave blank for random."]
    [:p.rail__eyebrow "Disciplines"]
    [:ul.rail__list
     (for [{:keys [id label]} loot-types]

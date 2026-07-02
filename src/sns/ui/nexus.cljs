@@ -63,10 +63,12 @@
                         (result-effect ctx {:method :post :url "/api/generate" :body {:id id :inputs inputs}})))
 
 (nxr/register-effect! :fx/roll
-                      (fn [{:keys [dispatch]} _system inputs]
+                      (fn [{:keys [dispatch]} _system inputs n]
                         (dispatch [[:fx/assoc-in [:loading?] true] [:fx/assoc-in [:error] nil]
                                    [:fx/assoc-in [:report-status] nil]])
-                        (api/request {:method :post :url "/api/roll" :body {:inputs inputs}}
+                        (api/request {:method :post
+                                      :url    "/api/roll"
+                                      :body   (cond-> {:inputs inputs} (some? n) (assoc :n n))}
                                      ;; roll returns {:id ... :view-model ...} so we can
                                      ;; jump the picker to the discipline that was rolled.
                                      (fn [{:keys [id view-model]}]
@@ -99,9 +101,18 @@
                       (fn [state]
                         [[:fx/generate (:selected state) (:inputs state)]]))
 
+(nxr/register-action! :ui/set-roll-input
+                      (fn [_state value]
+                        [[:fx/assoc-in [:roll-n] value]]))
+
 (nxr/register-action! :ui/roll
-                      (fn [state]
-                        [[:fx/roll (:inputs state)]]))
+                      (fn [{:keys [inputs roll-n]}]
+                        ;; A blank field rolls randomly; a number rolls that d100
+                        ;; result against the table's allocation (validated server-side).
+                        (let [n (when-not (str/blank? roll-n)
+                                  (let [parsed (js/parseInt roll-n 10)]
+                                    (when-not (js/isNaN parsed) parsed)))]
+                          [[:fx/roll inputs n]])))
 
 (nxr/register-action! :ui/report
                       (fn [_state]

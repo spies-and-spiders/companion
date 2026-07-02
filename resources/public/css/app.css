@@ -124,7 +124,27 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .discipline--active { background: var(--ink-2); border-color: var(--gilt-dim); }
 .discipline--active .discipline__glyph { color: var(--arcane); opacity: 1; }
 
+.roll-group {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.roll__input {
+  width: 4.5rem;
+  flex: none;
+  padding: 0.85rem 0.6rem;
+  background: var(--ink-2);
+  border: 1px solid var(--gilt-dim);
+  border-radius: var(--radius);
+  color: var(--vellum);
+  font-size: 0.9rem;
+  text-align: center;
+}
+.roll__input::placeholder { color: var(--muted); letter-spacing: 0.1em; }
+.roll__input:focus { outline: none; border-color: var(--gilt); }
+
 .roll {
+  flex: 1;
   padding: 0.85rem 1rem;
   background: linear-gradient(180deg, rgba(200, 162, 76, 0.16), rgba(200, 162, 76, 0.06));
   border: 1px solid var(--gilt);
@@ -136,6 +156,13 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   transition: background 0.15s ease, color 0.15s ease;
 }
 .roll:hover { background: var(--gilt); color: var(--ink); }
+
+.rail__hint {
+  margin: 0.5rem 0.3rem 0.2rem;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
 
 /* --- workbench ------------------------------------------------------------- */
 
