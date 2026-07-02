@@ -33,6 +33,33 @@
                  :loot-table [{:id :divine-dust}]})]
       (is (= :divine-dust (:id (engine/roll eng)))))))
 
+(deftest roll-by-number-resolves-via-allocation
+  (let [eng (engine/create
+              {:plugins    [{:type :builtin :id :divine-dust :entrypoint 'sns.builtin.dust/generator}
+                            {:type :builtin :id :other :entrypoint 'sns.builtin.dust/generator}]
+               :loot-table [{:id :divine-dust :weight 40} {:id :other :weight 60}]})]
+    (testing "a number lands in the weighted slice it belongs to (1-40 vs 41-100)"
+      (is (= :divine-dust (:id (engine/roll eng {} 1))))
+      (is (= :divine-dust (:id (engine/roll eng {} 40))))
+      (is (= :other (:id (engine/roll eng {} 41))))
+      (is (= :other (:id (engine/roll eng {} 100)))))
+    (testing "out-of-range and non-integer rolls are rejected"
+      (is (thrown? Exception (engine/roll eng {} 0)))
+      (is (thrown? Exception (engine/roll eng {} 101)))
+      (is (thrown? Exception (engine/roll eng {} 4.5))))))
+
+(deftest roll-by-number-normalises-arbitrary-weight-totals
+  (testing "weights that don't sum to 100 are stretched onto the 1-100 scale"
+    (let [eng (engine/create
+                {:plugins    [{:type :builtin :id :a :entrypoint 'sns.builtin.dust/generator}
+                              {:type :builtin :id :b :entrypoint 'sns.builtin.dust/generator}
+                              {:type :builtin :id :c :entrypoint 'sns.builtin.dust/generator}]
+                 :loot-table [{:id :a} {:id :b} {:id :c}]})]
+      (is (= :a (:id (engine/roll eng {} 1))))
+      (is (= :a (:id (engine/roll eng {} 34))))
+      (is (= :b (:id (engine/roll eng {} 35))))
+      (is (= :c (:id (engine/roll eng {} 100)))))))
+
 (deftest rejects-duplicate-ids
   (is (thrown? Exception
                (engine/create

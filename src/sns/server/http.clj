@@ -57,8 +57,8 @@
     (ok (engine/generate eng id (or inputs {})))))
 
 (defn- roll-handler [eng]
-  (fn [{{:keys [inputs]} :body-params}]
-    (ok (engine/roll eng (or inputs {})))))
+  (fn [{{:keys [inputs n]} :body-params}]
+    (ok (engine/roll eng (or inputs {}) n))))
 
 (defn- action-handler [eng]
   (fn [{{:keys [id action params]} :body-params}]

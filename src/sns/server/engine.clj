@@ -11,6 +11,22 @@
     [sns.spi.protocols :as p]
     [sns.spi.schema :as schema]))
 
+(defn- allocation
+  "Turn a weighted loot table into cumulative 1-100 upper bounds, so an entered
+   d100 roll resolves to a loot type. Weights are normalised to the total and
+   scaled to 100, so the entered number is always on a 1-100 scale regardless of
+   the raw weight total (and each type occupies a proportional slice). The final
+   entry always reaches 100."
+  [table]
+  (let [total (reduce + (map #(or (:weight %) 1) table))]
+    (:entries
+      (reduce (fn [{:keys [acc entries]} {:keys [id weight]}]
+                (let [acc (+ acc (or weight 1))]
+                  {:acc     acc
+                   :entries (conj entries {:id id :max (long (Math/ceil (* 100.0 (/ acc total))))})}))
+              {:acc 0 :entries []}
+              table))))
+
 (defn create
   "Build a loot engine from validated `config`. `deps` supplies overridable
    collaborators: `:store`, `:reporter`, `:render`, `:session`, `:rng`. `:render`,
@@ -20,19 +36,21 @@
   ([config {:keys [store reporter render session rng]}]
    (let [table (:loot-table config)
          render (or render render/render)]
-     {:config       config
-      :registry     (registry/build config)
-      :store        (or store (store/from-config (:storage config)))
-      :reporter     (or reporter (reporter/from-config (:reporting config)))
-      :render       render
-      :progression  (progression/progression render)
-      :session      session
-      :rng          (or rng @r/default-rng)
+     {:config          config
+      :registry        (registry/build config)
+      :store           (or store (store/from-config (:storage config)))
+      :reporter        (or reporter (reporter/from-config (:reporting config)))
+      :render          render
+      :progression     (progression/progression render)
+      :session         session
+      :rng             (or rng @r/default-rng)
       ;; Missing weights default to 1, so a table without weights is sampled
       ;; uniformly (and partial weights mix evenly-weighted entries in).
-      :loot-sampler (when (seq table)
-                      (r/alias-method-sampler (mapv :id table)
-                                              (mapv #(or (:weight %) 1) table)))})))
+      :loot-sampler    (when (seq table)
+                         (r/alias-method-sampler (mapv :id table)
+                                                 (mapv #(or (:weight %) 1) table)))
+      ;; The same weights, laid out as a d100 lookup for number-driven rolls.
+      :loot-allocation (when (seq table) (allocation table))})))
 
 (defn- ctx
   "Assemble the per-request context handed to a generator."
@@ -55,15 +73,25 @@
           (p/generate generator)
           (schema/assert! ::schema/view-model)))))
 
+(defn- roll->id
+  "Resolve the entered d100 roll `n` (1-100) to a loot type via the allocation."
+  [loot-allocation n]
+  (when-not (and (integer? n) (<= 1 n 100))
+    (throw (ex-info "Roll must be an integer between 1 and 100" {:n n})))
+  (some (fn [{:keys [id max]}] (when (<= n max) id)) loot-allocation))
+
 (defn roll
-  "Roll the top-level loot table and generate the chosen loot type. Returns the
-   chosen `:id` alongside its `:view-model` so callers (e.g. the UI) can reflect
-   which discipline was rolled."
-  ([engine] (roll engine {}))
-  ([{:keys [loot-sampler] :as engine} inputs]
+  "Roll the top-level loot table and generate the chosen loot type. With no `n`,
+   the table is sampled randomly by weight; given `n` (a 1-100 d100 result), the
+   type is resolved from its allocation on the table. Returns the chosen `:id`
+   alongside its `:view-model` so callers (e.g. the UI) can reflect which
+   discipline was rolled."
+  ([engine] (roll engine {} nil))
+  ([engine inputs] (roll engine inputs nil))
+  ([{:keys [loot-sampler loot-allocation] :as engine} inputs n]
    (when-not loot-sampler
      (throw (ex-info "No loot-table configured" {})))
-   (let [id (loot-sampler)]
+   (let [id (if (some? n) (roll->id loot-allocation n) (loot-sampler))]
      {:id id :view-model (generate engine id inputs)})))
 
 (defn capabilities

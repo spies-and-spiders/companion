@@ -20,4 +20,4 @@ resources/public/js/
 # generated
 config.schema.json
 # Local runtime config — not committed; a worked example lives in examples/
-./config.edn
+/config.edn

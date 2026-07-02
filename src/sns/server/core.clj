@@ -10,6 +10,7 @@
     [sns.server.http :as http]
     [taoensso.telemere :as t])
   (:import
+    (io.helidon.webserver WebServer)
     (java.io IOException)
     (java.net InetAddress ServerSocket)
     (java.util.concurrent.locks LockSupport)))
@@ -21,15 +22,18 @@
       (throw (ex-info (str host ":" port " is already in use.")
                       {:host host :port port})))))
 
-(defn start! [config]
-  (let [{:keys [host port] :or {host "127.0.0.1" port 8080}} (:server config)]
-    (check-port-free! host port)
-    (let [server (hirundo/start! {:http-handler (http/app (engine/create config))
-                                  :port         port
-                                  :host         host})]
-      (t/log! {:level :info :id ::listening :data {:host host :port port}}
-              (str "sns-companion listening on http://" host ":" port))
-      server)))
+(defn start! [{{:keys [host port]
+                :or   {host "127.0.0.1"}} :server
+               :as                        config}]
+  (when port
+    (check-port-free! host port))
+  (let [server (-> {:http-handler (http/app (engine/create config))
+                    :host         host}
+                   (cond-> port (assoc :port port))
+                   hirundo/start!)
+        actual-port (WebServer/.port server)]
+    (t/log! {:level :info}
+            (str "S&S Companion listening on http://" host ":" actual-port))))
 
 (defn- config-arg
   "The value of a `--config <path>` (or `--config=<path>`) CLI option, or nil."

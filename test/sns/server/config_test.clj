@@ -1,7 +1,11 @@
 (ns sns.server.config-test
   (:require
+    [aero.core :as aero]
+    [clojure.java.io :as io]
     [clojure.test :refer [deftest is testing]]
-    [sns.server.config :as config]))
+    [malli.error :as me]
+    [sns.server.config :as config]
+    [sns.spi.schema :as schema]))
 
 (defn- write-temp-json [content]
   (let [f (java.io.File/createTempFile "sns-config" ".json")]
@@ -36,3 +40,13 @@
       (is (= :data (-> cfg :plugins (nth 2) :type)))))
   (testing "no-arg load discovers config.edn in the working directory"
     (is (seq (:plugins (config/load-config))))))
+
+(deftest example-config-matches-schema
+  (testing "examples/config.edn conforms to the ::config schema"
+    ;; :reporting secrets resolve from #env at runtime; substitute placeholders
+    ;; so the check is hermetic (doesn't depend on those vars being set).
+    (let [cfg (-> (aero/read-config (io/file "examples/config.edn"))
+                  (update :reporting merge {:webhook-url "https://example.test/webhook"
+                                            :avatar-url  "https://example.test/avatar.png"}))
+          err (schema/explain ::schema/config cfg)]
+      (is (nil? err) (some-> err me/humanize pr-str)))))
