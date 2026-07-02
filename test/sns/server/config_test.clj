@@ -33,13 +33,19 @@
     (let [f (write-temp-json "{\"plugins\":[{\"type\":\"bogus\",\"id\":\"x\"}]}")]
       (is (thrown? Exception (config/load-config f))))))
 
+(def ^:private fixture-config "test/resources/config.edn")
+
 (deftest loads-edn-config-from-filesystem
-  (testing "the shipped config.edn loads from the working-directory path"
-    (let [cfg (config/load-config "config.edn")]
+  (testing "an EDN config loads from an explicit filesystem path"
+    (let [cfg (config/load-config fixture-config)]
       (is (seq (:plugins cfg)))
       (is (= :data (-> cfg :plugins (nth 2) :type)))))
-  (testing "no-arg load discovers config.edn in the working directory"
-    (is (seq (:plugins (config/load-config))))))
+  (testing "no-arg load discovers a config file in the working directory"
+    ;; Exercise the default-source discovery without depending on a
+    ;; (git-ignored) config.edn at the repo root: point the search at the
+    ;; fixture via its absolute path so the test is hermetic in CI.
+    (with-redefs [config/default-paths [(.getAbsolutePath (io/file fixture-config))]]
+      (is (seq (:plugins (config/load-config)))))))
 
 (deftest example-config-matches-schema
   (testing "examples/config.edn conforms to the ::config schema"

@@ -67,8 +67,10 @@
                             {:type :builtin :id :dup :entrypoint 'sns.builtin.dust/generator}]}))))
 
 (deftest loads-and-validates-resource-config
-  (testing "the shipped config.edn loads, validates, and drives the engine"
-    ;; Override the store so the test never reaches the configured MySQL server.
-    (let [eng (engine/create (config/load-config) {:store (memory/create)})]
+  (testing "a real filesystem config loads, validates, and drives the engine"
+    ;; Load a committed, hermetic fixture rather than the git-ignored repo-root
+    ;; config.edn (absent in CI). Override the store to keep the test in-memory.
+    (let [eng (engine/create (config/load-config "test/resources/config.edn")
+                             {:store (memory/create)})]
       (is (= "Divine Dust" (:loot/title (engine/generate eng :divine-dust))))
       (is (re-find #"Relic" (:loot/subtitle (engine/generate eng :relics)))))))
