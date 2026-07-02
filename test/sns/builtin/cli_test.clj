@@ -37,3 +37,27 @@
           vm  (p/generate gen {:inputs {} :session nil})]
       (is (schema/validate ::schema/view-model vm))
       (is (seq (:loot/title vm))))))
+
+(deftest friendly-actions-route-back-to-plugin
+  (testing "a stdout action becomes a :loot/action event targeting this plugin"
+    (let [cmd ["python3" "-c"
+               (str "import sys,json; json.load(sys.stdin); "
+                    "print(json.dumps({'title':'Blade','actions':["
+                    "{'label':'Sharpen','action':'sharpen','params':{'by':1}}]}))")]
+          gen (cli/generator :forge cmd "Forge")
+          vm  (p/generate gen {:inputs {} :session nil})
+          [action] (:loot/actions vm)]
+      (is (schema/validate ::schema/view-model vm))
+      (is (= "Sharpen" (:action/label action)))
+      (is (= [:loot/action {:id :forge :action :sharpen :params {:by 1}}]
+             (:action/event action))))))
+
+(deftest handle-action-reinvokes-command-with-action-context
+  (testing "handle-action pipes {action,params,session} on stdin and reads a new view-model"
+    (let [cmd ["python3" "-c"
+               (str "import sys,json; d=json.load(sys.stdin); "
+                    "print(json.dumps({'title': d['action'] + ':' + str(d['params']['n'])}))")]
+          gen (cli/generator :counter cmd "Counter")
+          vm  (p/handle-action gen {:session nil} :bump {:n 5})]
+      (is (schema/validate ::schema/view-model vm))
+      (is (= "bump:5" (:loot/title vm))))))

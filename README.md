@@ -1,20 +1,15 @@
-# sns-companion-spi
+## Customising the S&S Companion
 
-The extension surface for sns-companion loot plugins: the protocols you implement
-and the malli schemas describing the data crossing the boundary. This module is
-deliberately dependency-light (malli only) so external plugins can depend on it
-without pulling in the application.
+There are four types of loot plugins, all used to define custom loot:
 
-There are **four ways** to add a loot type, in increasing order of power:
+| Type           | Description                                                                                                                                                                                        |
+|----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **`:builtin`** | A pre-defined loot plugin provided by us.                                                                                                                                                          |
+| **`:data`**    | A .json or .edn file that defines the loot that is to be randomly sampled. This cannot support stateful loot.                                                                                      |
+| **`:cli`**     | Shell out to a program in any language, communicating via JSON. CLI plugins that wish to use state must implement their own persistence strategy and state management.                             |
+| **`:jar`**     | An external JAR implementing the protocols or interfaces provided. This provides the best integration into the Companion, but requires the use of a JVM language (e.g. Java/Kotlin/Clojure/Scala). |
 
-1. **`:data`** — a data-only loot type (no code). The workhorse.
-2. **`:cli`** — shell out to a program in any language.
-3. **`:jar`** — an external JAR implementing the protocols below.
-4. **`:builtin`** — a namespace compiled into the app (used for the bundled types).
-
-All four are registered the same way in `config.edn`; no Clojure is required to
-register one.
-
+All four are configured the same way in `config.edn`:
 ```clojure
 {:storage    {:backend :mysql :url "jdbc:mariadb://localhost:3306/sns"}
  :plugins    [{:type :data    :id :uniques :source "data/uniques.edn"}
@@ -26,21 +21,15 @@ register one.
  :loot-table [{:id :uniques :weight 30} {:id :relics :weight 10}]}
 ```
 
-`:loot-table` is the weighted "roll" used by `POST /api/roll`. Entries may omit
-`:weight` (defaults to 1, i.e. uniform).
+`:loot-table` is the weighted d100 "roll". Entries may omit `:weight` (defaults to 1, i.e. uniform).
 
-Don't write Clojure? Provide **`config.json`** instead of `config.edn` — the app
-prefers `config.edn` on the classpath and falls back to `config.json`, coercing
-string values (`"data"`, `"file"`, ids, entrypoints) to the right types. Generate a
-JSON Schema for editor validation/autocomplete with `make config-schema` (writes
-`config.schema.json`); reference it from your file via `"$schema"`. Note: aero tags
-(env-var interpolation for secrets) work in EDN only.
+You may provide **`config.json`** instead of `config.edn`; simply replace all keywords (e.g. `:weight`) and symbols (e.g. `my.plugin/generator`) with regular JSON strings. 
 
 ---
 
 ## The view-model (what every loot type returns)
 
-The UI renders this shape generically — a new loot type needs **no** UI code.
+The UI renders this shape generically — a new loot type needs **no** UI code, but it must return this shape of data.
 
 ```clojure
 {:loot/title    "Pacifist's Vow"                 ; required
@@ -54,13 +43,45 @@ The UI renders this shape generically — a new loot type needs **no** UI code.
                                                :params {:relic-id "…"}}]}]}
 ```
 
+or
+
+```json
+{
+  "title": "Pacifist's Vow",
+  "subtitle": "Unique · armour",
+  "sections": [
+    {
+      "heading": "Mods",
+      "items": [
+        {
+          "body": "+1 AB…",
+          "tags": [
+            "accuracy"
+          ]
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "label": "Level up",
+      "action": "level-up",
+      "params": {
+        "relic-id": "…"
+      }
+    }
+  ]
+}
+```
+
+
 `:action/event` is dispatched verbatim by the frontend; for stateful follow-ups it
 should be `[:loot/action {:id <loot-type> :action <kw> :params <map>}]`, which the
 backend routes to your `LootAction/handle-action`.
 
-Schemas: `sns.spi.schema/view-model`, `/loot-spec`, `/config`, `/mod`, `/path`.
-
 ---
+### TODO: Update the below slop
+
 
 ## Protocols (`sns.spi.protocols`)
 
@@ -113,7 +134,7 @@ reporter; `GET /api/capabilities` tells the UI whether to show the button.
 ```
 Three built-in backends, chosen by config `:storage {:backend ...}`:
 `:mysql` (any MySQL-compatible server via JDBC `:url` — see
-[docs/storage.md](../docs/storage.md)), `:file` (one transit-encoded file per
+[docs/storage.md](docs/storage.md)), `:file` (one transit-encoded file per
 loot-type under `:dir`, default `./state`), and `:memory` (default; for tests/dev).
 Docs are transit-serialised so Clojure values (e.g. keyword-valued upgrade mods)
 round-trip losslessly.
@@ -194,6 +215,24 @@ and reads a **friendly, un-namespaced** view-model from **stdout**:
  "sections": [{"heading": "Sky", "items": [{"body": "…", "tags": ["obscured"]}]}]}
 ```
 A non-zero exit is treated as an error. See `examples/cli-plugin/weather.py`.
+
+### Actions (stateful follow-ups)
+
+A `:cli` plugin can also drive follow-up actions (e.g. "level up") in its own
+language. Emit `actions` in the view-model:
+```json
+{"title": "Aegis", "actions": [{"label": "Sharpen", "action": "sharpen",
+                                 "params": {"by": 1}}]}
+```
+The engine turns each into a button; clicking it re-invokes your **same command**
+with an action context on **stdin** (note `action`/`params` instead of `inputs`):
+```json
+{"action": "sharpen", "params": {"by": 1}, "session": {...}}
+```
+Your program returns a fresh view-model on stdout (which may itself carry the next
+round of `actions`). Branch on whether `action` is present in the stdin JSON to
+tell a generate from an action. Persist any state yourself (via a file, the
+`session`, or an external store) — the engine does not persist CLI plugin state.
 
 ---
 
