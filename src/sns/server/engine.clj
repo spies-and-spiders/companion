@@ -47,12 +47,13 @@
   ([config {:keys [store reporter render session rng]}]
    (let [table (:loot-table config)
          registry (registry/build config)
-         render (or render render/render)]
+         render (or render render/render)
+         store (or store (store/from-config (:storage config)))]
      (when (seq table)
        (validate-table! registry table))
      {:config          config
       :registry        registry
-      :store           (or store (store/from-config (:storage config)))
+      :store           store
       :reporter        (or reporter (reporter/from-config (:reporting config)))
       :render          render
       :progression     (progression/progression render)
@@ -110,9 +111,10 @@
 
 (defn capabilities
   "UI-facing flags describing optional features enabled by config (drives, e.g.,
-   whether the report button is shown)."
-  [{:keys [reporter]}]
-  (cond-> {}
+   whether the report button is shown, and whether the group tracker persists
+   server-side or must live in the browser)."
+  [{:keys [reporter config]}]
+  (cond-> {:social-storage? (not= :none (get-in config [:storage :backend]))}
           reporter (assoc :report? true
                           :report-label (p/report-label reporter))))
 

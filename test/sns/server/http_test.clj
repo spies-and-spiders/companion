@@ -50,16 +50,22 @@
     (report! [_ vm] (reset! sink vm) {:ok true})))
 
 (deftest capabilities-endpoint
-  (testing "no reporter -> empty capabilities"
+  (testing "no reporter -> only the social-storage flag"
     (let [app  (http/app (engine/create config {:store (memory/create)}))
           resp (app {:request-method :get :uri "/api/capabilities"})]
       (is (= 200 (:status resp)))
-      (is (= {} (body resp)))))
+      (is (= {:social-storage? true} (body resp)))))
   (testing "with a reporter -> report? surfaced"
     (let [app  (http/app (engine/create config {:store    (memory/create)
                                                 :reporter (recording-reporter (atom nil))}))
           resp (app {:request-method :get :uri "/api/capabilities"})]
-      (is (= {:report? true :report-label "Send to Discord"} (body resp))))))
+      (is (= {:social-storage? true
+              :report?         true
+              :report-label    "Send to Discord"} (body resp)))))
+  (testing ":none storage -> the tracker must live in the browser"
+    (let [app  (http/app (engine/create (assoc config :storage {:backend :none})))
+          resp (app {:request-method :get :uri "/api/capabilities"})]
+      (is (= {:social-storage? false} (body resp))))))
 
 (deftest report-endpoint
   (let [sink (atom nil)

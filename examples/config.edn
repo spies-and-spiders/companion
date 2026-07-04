@@ -29,6 +29,7 @@
  ;;   :file    — one EDN file per loot-type under :dir (default "./state").
  ;;   :mysql   — any MySQL-compatible server (MySQL/MariaDB/Dolt) at :url.
  ;;   :none    — persist nothing at all (for purely stateless loot types).
+ ;;              The Group tracker still works, held in the browser tab.
  ;;
  ;; Pick one backend; the unused keys are ignored.
  :storage {:backend :file

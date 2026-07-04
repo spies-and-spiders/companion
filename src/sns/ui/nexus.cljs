@@ -2,8 +2,10 @@
   "Nexus registry: pure actions return effects; effects perform side-effects
    (state writes, HTTP). Requiring this namespace registers everything."
   (:require
+    [clojure.edn :as edn]
     [clojure.string :as str]
     [nexus.registry :as nxr]
+    [sns.social :as social]
     [sns.ui.api :as api]))
 
 (nxr/register-system->state! deref)
@@ -33,9 +35,11 @@
 (nxr/register-effect! :fx/load-capabilities
                       (fn [{:keys [dispatch]} _system]
                         (api/request {:url "/api/capabilities"}
-                                     (fn [{:keys [report? report-label]}]
+                                     (fn [{:keys [report? report-label social-storage?]}]
                                        (dispatch [[:fx/assoc-in [:report?] (boolean report?)]
-                                                  [:fx/assoc-in [:report-label] report-label]]))
+                                                  [:fx/assoc-in [:report-label] report-label]
+                                                  ;; storage :none -> the tracker lives in the browser
+                                                  [:fx/assoc-in [:social-local?] (false? social-storage?)]]))
                                      (fn [_err] nil))))
 
 (defn- result-effect [{:keys [dispatch]} req]
@@ -93,6 +97,25 @@
                                                                [:fx/assoc-in [:error] nil]]))
                                      (fn [err] (dispatch [[:fx/assoc-in [:error] (:error err)]])))))
 
+;; Browser-local tracker (server storage is :none): the snapshot lives in app
+;; state, mirrored to sessionStorage so it survives a mid-session reload but
+;; dies with the tab.
+(def ^:private social-storage-key "sns-social")
+
+(nxr/register-effect! :fx/social-local!
+                      (fn [{:keys [dispatch]} system f]
+                        (let [next (f (or (:social @system) (social/snapshot {})))]
+                          (.setItem js/sessionStorage social-storage-key (pr-str next))
+                          (dispatch [[:fx/assoc-in [:social] next]
+                                     [:fx/assoc-in [:error] nil]]))))
+
+(nxr/register-effect! :fx/social-local-load
+                      (fn [{:keys [dispatch]} _system]
+                        (let [snapshot (or (some->> (.getItem js/sessionStorage social-storage-key)
+                                                    (edn/read-string))
+                                           (social/snapshot {}))]
+                          (dispatch [[:fx/assoc-in [:social] snapshot]]))))
+
 ;; --- actions (pure: state -> effects) ----------------------------------------
 
 (nxr/register-action! :ui/select-type
@@ -127,10 +150,18 @@
 
 ;; --- the always-on Group Deception & Persuasion tracker ----------------------
 
+(defn- local-op
+  "Lift a characters-map transform into a snapshot -> snapshot fn."
+  [f]
+  (fn [snapshot]
+    (social/snapshot (f (social/rows->characters (:characters snapshot))))))
+
 (nxr/register-action! :ui/open-social
-                      (fn [_state]
+                      (fn [{:keys [social-local?]}]
                         [[:fx/assoc-in [:page] :social]
-                         [:fx/social-request {:url "/api/social"}]]))
+                         (if social-local?
+                           [:fx/social-local-load]
+                           [:fx/social-request {:url "/api/social"}])]))
 
 (nxr/register-action! :ui/set-social-input
                       (fn [_state field value]
@@ -144,29 +175,45 @@
                                                        :persuasion persuasion}]]))
 
 (nxr/register-action! :ui/social-add
-                      (fn [{:keys [social-form]}]
-                        [[:fx/social-request {:method :post
-                                              :url    "/api/social/character"
-                                              :body   social-form}]
-                         [:fx/assoc-in [:social-form] {}]]))
+                      (fn [{:keys [social-local? social-form]}]
+                        (if social-local?
+                          (if-let [entry (social/normalise-character social-form)]
+                            [[:fx/social-local! (local-op #(conj % entry))]
+                             [:fx/assoc-in [:social-form] {}]]
+                            [[:fx/assoc-in [:error] "Character name is required"]])
+                          [[:fx/social-request {:method :post
+                                                :url    "/api/social/character"
+                                                :body   social-form}]
+                           [:fx/assoc-in [:social-form] {}]])))
 
 (nxr/register-action! :ui/social-toggle
-                      (fn [_state char-name]
-                        [[:fx/social-request {:method :post
-                                              :url    "/api/social/toggle"
-                                              :body   {:name char-name}}]]))
+                      (fn [{:keys [social-local?]} char-name]
+                        (if social-local?
+                          [[:fx/social-local! (local-op #(social/toggle % char-name))]]
+                          [[:fx/social-request {:method :post
+                                                :url    "/api/social/toggle"
+                                                :body   {:name char-name}}]])))
 
 (nxr/register-action! :ui/social-remove
-                      (fn [_state char-name]
-                        [[:fx/social-request {:method :post
-                                              :url    "/api/social/remove"
-                                              :body   {:name char-name}}]]))
+                      (fn [{:keys [social-local?]} char-name]
+                        (if social-local?
+                          [[:fx/social-local! (local-op #(social/remove-character % char-name))]]
+                          [[:fx/social-request {:method :post
+                                                :url    "/api/social/remove"
+                                                :body   {:name char-name}}]])))
 
 (nxr/register-action! :ui/social-roll
-                      (fn [_state skill]
-                        [[:fx/social-request {:method :post
-                                              :url    "/api/social/roll"
-                                              :body   {:skill skill}}]]))
+                      (fn [{:keys [social-local?]} skill]
+                        (if social-local?
+                          [[:fx/social-local!
+                            (fn [snapshot]
+                              (let [characters (social/rows->characters (:characters snapshot))
+                                    die        (inc (rand-int 20))]
+                                (assoc (social/snapshot characters)
+                                       :roll (social/roll-result characters skill die))))]]
+                          [[:fx/social-request {:method :post
+                                                :url    "/api/social/roll"
+                                                :body   {:skill skill}}]])))
 
 (nxr/register-action! :ui/report
                       (fn [_state]

@@ -26,10 +26,11 @@
 
 (deftest capabilities-reflect-reporter
   (testing "no reporter -> no report capability"
-    (is (= {} (engine/capabilities (engine/create base-config)))))
+    (is (= {:social-storage? true} (engine/capabilities (engine/create base-config)))))
   (testing "with a reporter -> report? and label surfaced"
     (let [eng (engine/create base-config {:reporter (recording-reporter (atom nil))})]
-      (is (= {:report? true :report-label "Send"} (engine/capabilities eng))))))
+      (is (= {:social-storage? true :report? true :report-label "Send"}
+             (engine/capabilities eng))))))
 
 (deftest report-sends-validated-view-model
   (let [sink (atom nil)

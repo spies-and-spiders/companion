@@ -1,65 +1,31 @@
 (ns sns.server.social
+  "Store-backed wrapper around the shared tracker logic in `sns.social`.
+   Persists under the `__`-prefixed :__social collection so it can never clash
+   with user-defined loot types. (When storage is :none the browser runs the
+   tracker locally instead — see the capabilities endpoint.)"
   (:require
-    [clojure.string :as str]
     [randy.rng :as rng]
+    [sns.social :as social]
     [sns.spi.protocols :as p]))
 
 (def ^:private collection :__social)
 (def ^:private doc-id "characters")
 
-(defn group-bonus [bonuses]
-  (if (empty? bonuses)
-    0
-    (let [top-two (take 2 (sort > bonuses))
-          total   (+ (reduce + bonuses) (reduce + top-two))]
-      (long (Math/floor (/ total (+ (count bonuses) (count top-two))))))))
-
-(defn- parse-bonus
-  "Bonuses arrive as strings from the UI form; accept numbers too. Blank or
-   unparseable values count as +0."
-  [v]
-  (or (cond
-        (number? v) (long v)
-        (string? v) (parse-long (str/trim v)))
-      0))
-
-(defn- present-bonuses [characters skill]
-  (->> (vals characters)
-       (filter :present?)
-       (mapv skill)))
-
 (defn snapshot [store]
-  (let [characters (p/fetch store collection doc-id)]
-    {:characters (->> characters
-                      (sort-by key)
-                      (mapv (fn [[char-name c]]
-                              (-> (select-keys c [:deception :persuasion :present?])
-                                  (assoc :name char-name)))))
-     :deception  (group-bonus (present-bonuses characters :deception))
-     :persuasion (group-bonus (present-bonuses characters :persuasion))}))
+  (social/snapshot (p/fetch store collection doc-id)))
 
-(defn upsert! [store {char-name :name :keys [deception persuasion]}]
-  (let [char-name (some-> char-name str/trim not-empty)]
-    (when-not char-name
-      (throw (ex-info "Character name is required" {})))
-    (p/update! store collection doc-id
-               #(assoc % char-name {:deception  (parse-bonus deception)
-                                    :persuasion (parse-bonus persuasion)
-                                    :present?   true}))
+(defn upsert! [store character]
+  (let [entry (or (social/normalise-character character)
+                  (throw (ex-info "Character name is required" {})))]
+    (p/update! store collection doc-id #(conj (or % {}) entry))
     (snapshot store)))
 
-(defn toggle!
-  "Tick/untick a character's presence at the session. Returns the new snapshot."
-  [store char-name]
-  (p/update! store collection doc-id
-             (fn [characters]
-               (cond-> characters
-                       (contains? characters char-name)
-                       (update-in [char-name :present?] not))))
+(defn toggle! [store char-name]
+  (p/update! store collection doc-id #(social/toggle % char-name))
   (snapshot store))
 
 (defn remove! [store char-name]
-  (p/update! store collection doc-id #(dissoc % char-name))
+  (p/update! store collection doc-id #(social/remove-character % char-name))
   (snapshot store))
 
 (defn roll
@@ -69,8 +35,6 @@
   (let [skill (keyword skill)]
     (when-not (contains? #{:deception :persuasion} skill)
       (throw (ex-info "Unknown skill" {:skill skill})))
-    (let [characters (p/fetch store collection doc-id)
-          bonus      (group-bonus (present-bonuses characters skill))
-          die        (rng/next-int rng 1 21)]
-      (assoc (snapshot store)
-             :roll {:skill skill :die die :bonus bonus :total (+ die bonus)}))))
+    (let [characters (p/fetch store collection doc-id)]
+      (assoc (social/snapshot characters)
+             :roll (social/roll-result characters skill (rng/next-int rng 1 21))))))

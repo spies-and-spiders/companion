@@ -14,5 +14,6 @@
          :report-status nil   ; nil | :sending | :sent
          :editing?      false ; manually editing the current result in place
          :page          :loot ; :loot | :social (the always-on group tracker)
-         :social        nil   ; tracker snapshot from the backend
+         :social        nil   ; tracker snapshot (from the backend, or local)
+         :social-local? false ; no server storage: tracker lives in the browser
          :social-form   {}})) ; the add/update-character form fields

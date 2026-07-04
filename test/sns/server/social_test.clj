@@ -4,18 +4,19 @@
     [randy.core :as r]
     [sns.server.social :as social]
     [sns.server.store.memory :as memory]
+    [sns.social :as pure]
     [sns.spi.protocols :as p]))
 
 (deftest group-bonus-weighted-average
   (testing "the documented example: top two bonuses counted twice"
-    (is (= 3 (social/group-bonus [7 3 0 -2]))))
+    (is (= 3 (pure/group-bonus [7 3 0 -2]))))
   (testing "a lone character's bonus is their own"
-    (is (= 5 (social/group-bonus [5]))))
+    (is (= 5 (pure/group-bonus [5]))))
   (testing "an empty party has no bonus"
-    (is (= 0 (social/group-bonus []))))
+    (is (= 0 (pure/group-bonus []))))
   (testing "rounds down, including below zero"
-    (is (= 1 (social/group-bonus [2 1 1])))     ; 7/5
-    (is (= -1 (social/group-bonus [-1 0 -2]))))) ; -4/5
+    (is (= 1 (pure/group-bonus [2 1 1])))     ; 7/5
+    (is (= -1 (pure/group-bonus [-1 0 -2]))))) ; -4/5
 
 (deftest tracker-flow
   (let [store (memory/create)]
