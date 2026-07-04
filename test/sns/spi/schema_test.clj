@@ -9,8 +9,8 @@
                          {:loot/title    "Pacifist's Vow"
                           :loot/subtitle "Unique · armour"
                           :loot/sections [{:section/heading "Mods"
-                                           :section/items   [{:item/body "+1 AB"
-                                                              :item/tags ["accuracy"]}]}]
+                                           :section/items   [{:item/body     "+1 AB"
+                                                              :item/metadata ["accuracy"]}]}]
                           :loot/actions  [{:action/label "Level up"
                                            :action/event [:loot/action {:id :relics}]}]})))
   (testing "title must be a string"
@@ -34,6 +34,14 @@
     (is (schema/validate ::schema/path
                          [{:id :precise} {:id :elemental :rolled {:dmg 4}}]))))
 
+(deftest loot-spec-schema
+  (testing "a loot-spec may flag itself as a utility"
+    (is (schema/validate ::schema/loot-spec
+                         {:id :social :label "Group Social" :stateful? true :utility? true})))
+  (testing "a loot-spec may override the generate-button label"
+    (is (schema/validate ::schema/loot-spec
+                         {:id :social :label "Group Social" :generate-label "Add / update character"}))))
+
 (deftest config-schema
   (testing "config with mixed plugin types validates"
     (is (schema/validate ::schema/config
@@ -42,6 +50,14 @@
                                        {:type :cli :id :weather :command ["python3" "gen.py"]}
                                        {:type :builtin :id :relics :entrypoint 'sns.builtin.relics/generator}]
                           :loot-table [{:id :uniques :weight 30}]})))
+  (testing "a :builtin plugin needs no :entrypoint"
+    (is (schema/validate ::schema/config
+                         {:plugins [{:type :builtin :id :relics}]})))
+  (testing "a :jar plugin may name a :class instead of an :entrypoint"
+    (is (schema/validate ::schema/config
+                         {:plugins [{:type :jar :id :x :jar "p.jar" :class "my.Loot"}]}))
+    (is (not (schema/validate ::schema/config
+                              {:plugins [{:type :jar :id :x :jar "p.jar"}]}))))
   (testing "an unknown plugin type is rejected"
     (is (not (schema/validate ::schema/config
                               {:plugins [{:type :wat :id :x}]})))))

@@ -11,13 +11,13 @@
                (str "cat >/dev/null; "
                     "printf '%s' '{\"title\":\"Fogfall\",\"subtitle\":\"weather\","
                     "\"sections\":[{\"heading\":\"Sky\",\"items\":["
-                    "{\"body\":\"Thick fog rolls in.\",\"tags\":[\"obscured\"]}]}]}'")]
+                    "{\"body\":\"Thick fog rolls in.\",\"metadata\":[\"obscured\"]}]}]}'")]
           gen (cli/generator :weather cmd "Weather")
           vm  (p/generate gen {:inputs {} :session nil})]
       (is (schema/validate ::schema/view-model vm))
       (is (= "Fogfall" (:loot/title vm)))
       (is (= "Sky" (-> vm :loot/sections first :section/heading)))
-      (is (= ["obscured"] (-> vm :loot/sections first :section/items first :item/tags))))))
+      (is (= ["obscured"] (-> vm :loot/sections first :section/items first :item/metadata))))))
 
 (deftest receives-context-on-stdin
   (testing "the request context is delivered as JSON on stdin"
@@ -26,6 +26,10 @@
           gen (cli/generator :echo cmd "Echo")
           vm  (p/generate gen {:inputs {:who "Thoros"} :session nil})]
       (is (= "Thoros" (:loot/title vm))))))
+
+(deftest utility-flag-surfaces-in-loot-spec
+  (is (true? (:utility? (p/loot-spec (cli/generator :init ["true"] "Initiative" true)))))
+  (is (nil? (:utility? (p/loot-spec (cli/generator :weather ["true"] "Weather"))))))
 
 (deftest nonzero-exit-throws
   (let [gen (cli/generator :boom ["bash" "-c" "exit 3"] "Boom")]

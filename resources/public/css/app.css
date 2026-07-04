@@ -102,10 +102,17 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .rail__list {
   list-style: none; margin: 0; padding: 0;
   display: flex; flex-direction: column; gap: 0.15rem;
-  flex: 1;
+  /* content-sized (never grows), so Utilities sits directly below the
+     disciplines; may shrink and scroll when the rail runs out of height */
+  flex: 0 1 auto;
   min-height: 0;
   overflow-y: auto;
 }
+
+/* the utilities group hugs its content; the disciplines list absorbs shrink */
+.rail__list--utilities { flex: 0 0 auto; }
+
+.rail__eyebrow--utilities { margin-top: 0.6rem; }
 
 .discipline {
   width: 100%;
@@ -320,6 +327,81 @@ textarea.edit__control { min-height: 4.5rem; resize: vertical; }
 .action:hover { border-color: var(--gilt); background: rgba(200, 162, 76, 0.08); }
 
 /* --- states ---------------------------------------------------------------- */
+
+/* --- social (the always-on group deception/persuasion tracker) -------------- */
+
+.social__roster {
+  list-style: none;
+  margin: 1.4rem 0 0; padding: 0;
+  display: flex; flex-direction: column; gap: 0.4rem;
+}
+
+.social__row {
+  display: flex; align-items: center; gap: 0.8rem;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--gilt-dim);
+  border-radius: var(--radius);
+  background: var(--ink-2);
+}
+
+.social__row--absent { opacity: 0.55; }
+
+.social__tick {
+  display: flex; align-items: center;
+  cursor: pointer;
+}
+
+.social__tick input { accent-color: var(--arcane); }
+
+.social__details {
+  flex: 1;
+  display: flex; align-items: center; gap: 0.7rem;
+  padding: 0;
+  background: transparent; border: none;
+  text-align: left;
+  font-size: inherit;
+}
+
+.social__details:hover .social__name { color: var(--arcane); }
+
+.social__name { font-family: var(--display); font-size: 1.05rem; }
+
+.social__bonuses { color: var(--muted); font-size: 0.85rem; }
+
+.social__remove {
+  padding: 0.3rem 0.7rem;
+  background: transparent;
+  border: 1px solid var(--gilt-dim);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.social__remove:hover { border-color: var(--ember); color: var(--ember); }
+
+.social__empty { margin: 1.4rem 0 0; color: var(--muted); }
+
+.social__summary {
+  margin-top: 1.4rem;
+  display: flex; gap: 1.4rem; flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.social__bonus { color: var(--gilt); }
+
+.social__rolls { margin-top: 0.9rem; display: flex; gap: 0.6rem; flex-wrap: wrap; }
+
+.social__result {
+  margin: 1rem 0 0;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--gilt-dim);
+  border-radius: var(--radius);
+  background: var(--arcane-dim);
+  color: var(--vellum);
+}
 
 .empty { padding: 3rem 0; }
 .empty__line { margin: 0; color: var(--muted); font-size: 0.95rem; }

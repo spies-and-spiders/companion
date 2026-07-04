@@ -2,25 +2,25 @@
 {:label    "Unique"
  :items    [{:name "Pacifist's Vow"
              :base "armour"
-             :mods [{:effect "Non-damaging spells have a 50% chance to consume a spell slot one level lower than usual."
-                     :tags   ["resources"]}
-                    {:effect "+1 AB with effects that cannot deal damage."
-                     :tags   ["accuracy"]}
-                    {:effect "Your weapons gain the 'non-lethal' trait."
-                     :tags   ["utility"]}]}
+             :mods [{:effect   "Non-damaging spells have a 50% chance to consume a spell slot one level lower than usual."
+                     :metadata ["resources"]}
+                    {:effect   "+1 AB with effects that cannot deal damage."
+                     :metadata ["accuracy"]}
+                    {:effect   "Your weapons gain the 'non-lethal' trait."
+                     :metadata ["utility"]}]}
             {:name "Researcher's Power"
              :base "armour"
-             :mods [{:effect "+4 Intelligence."
-                     :tags   ["utility"]}
+             :mods [{:effect   "+4 Intelligence."
+                     :metadata ["utility"]}
                     {:effect "You cannot use Intelligence to cast spells; use another mental ability score instead."}]}
             {:name "Gambler's Gambit"
              :base "trinket"
-             :mods [{:effect "Once per turn, reroll a d20; you must keep the new result."
-                     :tags   ["utility"]}
-                    {:effect "When you roll a natural 1, gain a luck point (max 3)."
-                     :tags   ["resources"]}]}]
+             :mods [{:effect   "Once per turn, reroll a d20; you must keep the new result."
+                     :metadata ["utility"]}
+                    {:effect   "When you roll a natural 1, gain a luck point (max 3)."
+                     :metadata ["resources"]}]}]
  :title    "{{name}}"
  :subtitle "Unique · {{base}}"
  :sections [{:heading "Mods"
              :each    :mods
-             :item    {:body "{{effect}}" :tags :tags}}]}
+             :item    {:body "{{effect}}" :metadata :metadata}}]}

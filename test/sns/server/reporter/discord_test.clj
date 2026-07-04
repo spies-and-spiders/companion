@@ -8,13 +8,13 @@
   {:loot/title    "Pacifist's Vow"
    :loot/subtitle "Unique · armour"
    :loot/sections [{:section/heading "Mods"
-                    :section/items   [{:item/title "Glint"
-                                       :item/body  "+1 AB"
-                                       :item/tags  ["accuracy"]}
+                    :section/items   [{:item/title    "Glint"
+                                       :item/body     "+1 AB"
+                                       :item/metadata ["accuracy"]}
                                       {:item/body "Non-lethal weapons"}]}]})
 
 (deftest view-model->embed-renders-markdown
-  (testing "title, subtitle, headings, items and tags map into one embed"
+  (testing "title, subtitle, headings, items and metadata map into one embed"
     (let [{:keys [title description color]} (discord/view-model->embed vm)]
       (is (= "Pacifist's Vow" title))
       (is (number? color))

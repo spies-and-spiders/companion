@@ -60,6 +60,25 @@
       (is (= :b (:id (engine/roll eng {} 35))))
       (is (= :c (:id (engine/roll eng {} 100)))))))
 
+(def ^:private utility-plugin
+  ;; The command never runs during engine creation — only its loot-spec is read.
+  {:type :cli :id :tools :command ["true"] :utility? true})
+
+(deftest validates-loot-table-at-startup
+  (testing "a utility in the loot-table is rejected"
+    (is (thrown? Exception
+                 (engine/create
+                   {:plugins    [utility-plugin]
+                    :loot-table [{:id :tools}]}))))
+  (testing "a utility registers fine when kept off the table"
+    (let [eng (engine/create {:plugins [utility-plugin]})]
+      (is (true? (:utility? (first (engine/loot-specs eng)))))))
+  (testing "an unknown loot-table id is rejected"
+    (is (thrown? Exception
+                 (engine/create
+                   {:plugins    [{:type :builtin :id :divine-dust}]
+                    :loot-table [{:id :nonexistent}]})))))
+
 (deftest rejects-duplicate-ids
   (is (thrown? Exception
                (engine/create

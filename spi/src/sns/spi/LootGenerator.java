@@ -1,5 +1,7 @@
 package sns.spi;
 
+import java.util.Map;
+
 /**
  * A loot type. Java/Kotlin/Scala plugins may implement this interface instead of
  * reifying the {@code sns.spi.protocols/LootGenerator} Clojure protocol; the SPI
@@ -18,5 +20,5 @@ public interface LootGenerator {
      * Produce loot. {@code ctx} is the engine context map {@code {:rng :store
      * :render :progression :config :session :inputs}}.
      */
-    Models.ViewModel generate(Object ctx);
+    Models.ViewModel generate(Map<String, Object> ctx);
 }

@@ -16,10 +16,10 @@
 
 (def ^:private mapper j/keyword-keys-object-mapper)
 
-(defn- ->item [{:keys [title body tags]}]
+(defn- ->item [{:keys [title body metadata]}]
   (cond-> {:item/body body}
           title (assoc :item/title title)
-          (seq tags) (assoc :item/tags (vec tags))))
+          (seq metadata) (assoc :item/metadata (vec metadata))))
 
 (defn- ->section [{:keys [heading items]}]
   (cond-> {:section/items (mapv ->item items)}
@@ -55,17 +55,20 @@
   "Build a `LootGenerator`/`LootAction` that runs `command` (a vector of program
    + args). Generation writes `{:inputs :session}` to stdin; an action writes
    `{:action :params :session}` — the presence of `action` tells the script which
-   it is."
-  [id command label]
-  (reify
-    p/LootGenerator
-    (loot-spec [_]
-      {:id id :label (or label (name id))})
-    (generate [_ {:keys [inputs session]}]
-      (run id command {:inputs inputs :session session}))
-    p/LootAction
+   it is. `utility?` marks a session tool rather than loot (grouped separately in
+   the UI, barred from the :loot-table)."
+  ([id command label] (generator id command label false))
+  ([id command label utility?]
+   (reify
+     p/LootGenerator
+     (loot-spec [_]
+       (cond-> {:id id :label (or label (name id))}
+               utility? (assoc :utility? true)))
+     (generate [_ {:keys [inputs session]}]
+       (run id command {:inputs inputs :session session}))
+     p/LootAction
     ;; Actions are declared dynamically in each stdout view-model, so there's no
     ;; static spec to surface.
-    (action-spec [_] {})
-    (handle-action [_ {:keys [session]} action params]
-      (run id command {:action action :params params :session session}))))
+     (action-spec [_] {})
+     (handle-action [_ {:keys [session]} action params]
+       (run id command {:action action :params params :session session})))))

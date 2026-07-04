@@ -28,6 +28,7 @@
  ;;   :memory  — atom-backed, not durable. The default when :storage is absent.
  ;;   :file    — one EDN file per loot-type under :dir (default "./state").
  ;;   :mysql   — any MySQL-compatible server (MySQL/MariaDB/Dolt) at :url.
+ ;;   :none    — persist nothing at all (for purely stateless loot types).
  ;;
  ;; Pick one backend; the unused keys are ignored.
  :storage {:backend :file
@@ -38,7 +39,9 @@
  ;; --- plugins ---------------------------------------------------------------
  ;; The loot types available in the UI. Four kinds:
  ;;
- ;;   :builtin — a generator shipped in this app, named by its Clojure var.
+ ;;   :builtin — a generator shipped in this app: the :id alone selects it
+ ;;              (:divine-dust, :relics). An optional :entrypoint Clojure var
+ ;;              overrides the lookup.
  ;;   :data    — a code-free loot type defined entirely in an EDN/JSON spec
  ;;              file (:source is resolved on the classpath / inside the jar).
  ;;   :cli     — shell out to any external program (any language). See
@@ -47,26 +50,37 @@
  ;;              available when running the app via java -jar
  ;;
  ;; Every plugin needs a unique :id; that id is what the :loot-table references.
- :plugins [{:type :builtin :id :divine-dust :entrypoint sns.builtin.dust/generator}
-           {:type :builtin :id :relics :entrypoint sns.builtin.relics/generator}
+ ;; (The Group Deception & Persuasion tracker is part of the app itself — it is
+ ;; always available under Utilities and needs no plugin entry.)
+ :plugins [{:type :builtin :id :divine-dust}
+           {:type :builtin :id :relics}
            {:type :data :id :uniques :source "data/uniques.edn"}
            {:type :data :id :rings :source "data/rings.edn"}
               ;; A loot generator in any language. :command is the program plus
               ;; args; the engine pipes the request context as JSON on stdin and
               ;; reads a friendly view-model as JSON on stdout. :label is what the
-              ;; UI shows (defaults to the id).
+              ;; UI shows (defaults to the id). Add :utility? true to group it
+              ;; under Utilities instead of Disciplines (and bar it from the
+              ;; :loot-table).
            {:type    :cli
             :id      :weather
             :label   "Weather"
             :command ["python3" "examples/cli-plugin/weather.py"]}
               ;; A generator from an external jar. Put the jar on disk and name
-              ;; its entrypoint var; the jar is added to the runtime classpath at
-              ;; startup. (If your host forbids classpath mutation, put the jar on
-              ;; the JVM -cp instead.)
+              ;; its generator: either an :entrypoint Clojure var, or — for
+              ;; plugins written in Java/Kotlin/Scala with no Clojure — a :class
+              ;; with a 0-arity constructor implementing the SPI interfaces.
+              ;; The jar is added to the runtime classpath at startup. (If your
+              ;; host forbids classpath mutation, put the jar on the JVM -cp
+              ;; instead.)
            #_{:type       :jar
               :id         :homebrew
               :jar        "plugins/homebrew-loot.jar"
-              :entrypoint my.homebrew.loot/generator}]
+              :entrypoint my.homebrew.loot/generator}
+           #_{:type  :jar
+              :id    :homebrew-java
+              :jar   "plugins/homebrew-java.jar"
+              :class "my.homebrew.JavaLoot"}]
 
  ;; --- reporting -------------------------------------------------------------
  ;; Optional. Enables the per-item "Send to Discord" button, posting the rolled
@@ -86,6 +100,7 @@
  ;; --- loot table ------------------------------------------------------------
  ;; The weighted draw used by the "random loot" button. Each :id must match a
  ;; plugin above; :weight is the relative chance (defaults to 1 when omitted).
+ ;; Utility plugins are not loot and cannot appear here.
  :loot-table [{:id :divine-dust :weight 40}
               {:id :uniques :weight 25}
               {:id :rings :weight 20}

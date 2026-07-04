@@ -1,5 +1,5 @@
 {:storage    {:backend :memory}
- :plugins    [{:type :builtin :id :divine-dust :entrypoint sns.builtin.dust/generator}
+ :plugins    [{:type :builtin :id :divine-dust}
               {:type :builtin :id :relics :entrypoint sns.builtin.relics/generator}
               {:type :data :id :uniques :source "data/uniques.edn"}
               {:type :data :id :rings :source "data/rings.edn"}]

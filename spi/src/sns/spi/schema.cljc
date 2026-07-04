@@ -39,6 +39,13 @@
                  [:id keyword?]
                  [:label string?]
                  [:stateful? {:optional true} boolean?]
+                 ;; Utilities are session tools (e.g. the group social roller)
+                 ;; rather than loot: grouped separately in the UI and barred
+                 ;; from the :loot-table.
+                 [:utility? {:optional true} boolean?]
+                 ;; Overrides the UI's "Generate <label>" button text — useful
+                 ;; when generating means something else (e.g. "Add character").
+                 [:generate-label {:optional true} string?]
                  [:inputs {:optional true} [:sequential ::field]]]
 
    ;; --- view-model (the only contract the UI renderer understands) ---
@@ -49,7 +56,7 @@
    ::item       [:map
                  [:item/title {:optional true} [:maybe string?]]
                  [:item/body string?]
-                 [:item/tags {:optional true} [:sequential string?]]
+                 [:item/metadata {:optional true} [:sequential string?]]
                  [:item/change {:optional true} any?]]
 
    ::section    [:map
@@ -102,9 +109,24 @@
    ;; string "data" etc.) routes to the right branch during decoding.
    ::plugin     [:multi {:dispatch (fn [p] (some-> (:type p) keyword))}
                  [:data [:map [:type [:= :data]] [:id keyword?] [:source string?]]]
-                 [:cli [:map [:type [:= :cli]] [:id keyword?] [:command [:sequential string?]]]]
-                 [:jar [:map [:type [:= :jar]] [:id keyword?] [:jar string?] [:entrypoint symbol?]]]
-                 [:builtin [:map [:type [:= :builtin]] [:id keyword?] [:entrypoint symbol?]]]]
+                 [:cli [:map
+                        [:type [:= :cli]]
+                        [:id keyword?]
+                        [:command [:sequential string?]]
+                        [:utility? {:optional true} boolean?]]]
+                 ;; A :jar plugin names its generator either as a Clojure
+                 ;; :entrypoint factory var or as a :class with a 0-arity
+                 ;; constructor (for pure-JVM-language plugins).
+                 [:jar [:and
+                        [:map
+                         [:type [:= :jar]]
+                         [:id keyword?]
+                         [:jar string?]
+                         [:entrypoint {:optional true} symbol?]
+                         [:class {:optional true} string?]]
+                        [:fn {:error/message "a :jar plugin needs an :entrypoint or a :class"}
+                         (fn [p] (boolean (or (:entrypoint p) (:class p))))]]]
+                 [:builtin [:map [:type [:= :builtin]] [:id keyword?] [:entrypoint {:optional true} symbol?]]]]
 
    ::loot-entry [:map [:id keyword?] [:weight {:optional true} number?]]
 

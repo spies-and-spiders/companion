@@ -8,6 +8,7 @@
     [reitit.ring :as ring]
     [ring.util.response :as response]
     [sns.server.engine :as engine]
+    [sns.server.social :as social]
     [taoensso.telemere :as t])
   (:import
     (clojure.lang ExceptionInfo)
@@ -72,6 +73,28 @@
   (fn [{{:keys [view-model]} :body-params}]
     (ok (engine/report eng view-model))))
 
+;; --- the always-on Group Deception & Persuasion tracker (not a plugin) -------
+
+(defn- social-snapshot-handler [{:keys [store]}]
+  (fn [_req]
+    (ok (social/snapshot store))))
+
+(defn- social-upsert-handler [{:keys [store]}]
+  (fn [{character :body-params}]
+    (ok (social/upsert! store character))))
+
+(defn- social-toggle-handler [{:keys [store]}]
+  (fn [{{char-name :name} :body-params}]
+    (ok (social/toggle! store char-name))))
+
+(defn- social-remove-handler [{:keys [store]}]
+  (fn [{{char-name :name} :body-params}]
+    (ok (social/remove! store char-name))))
+
+(defn- social-roll-handler [{:keys [store rng]}]
+  (fn [{{:keys [skill]} :body-params}]
+    (ok (social/roll store rng skill))))
+
 (defn app [eng]
   (http/ring-handler
     (http/router
@@ -80,7 +103,12 @@
        ["/api/generate" {:post (generate-handler eng)}]
        ["/api/roll" {:post (roll-handler eng)}]
        ["/api/action" {:post (action-handler eng)}]
-       ["/api/report" {:post (report-handler eng)}]]
+       ["/api/report" {:post (report-handler eng)}]
+       ["/api/social" {:get (social-snapshot-handler eng)}]
+       ["/api/social/character" {:post (social-upsert-handler eng)}]
+       ["/api/social/toggle" {:post (social-toggle-handler eng)}]
+       ["/api/social/remove" {:post (social-remove-handler eng)}]
+       ["/api/social/roll" {:post (social-roll-handler eng)}]]
       {:data {:muuntaja     m
               :interceptors [(format/format-negotiate-interceptor m)
                              (format/format-response-interceptor m)

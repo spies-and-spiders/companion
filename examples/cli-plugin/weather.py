@@ -4,7 +4,7 @@
 The engine passes the request context as JSON on stdin:
     {"inputs": {...}, "session": {...}}
 and expects a friendly (un-namespaced) view-model as JSON on stdout:
-    {"title", "subtitle", "sections": [{"heading", "items": [{"title","body","tags"}]}]}
+    {"title", "subtitle", "sections": [{"heading", "items": [{"title","body","metadata"}]}]}
 
 Register it in config.edn with:
     {:type :cli :id :weather :label "Weather"
@@ -24,12 +24,12 @@ CONDITIONS = [
 
 def main():
     _ctx = json.load(sys.stdin) if not sys.stdin.isatty() else {}
-    title, body, tags = random.choice(CONDITIONS)
+    title, body, metadata = random.choice(CONDITIONS)
     json.dump({
         "title": title,
         "subtitle": "Weather",
         "sections": [{"heading": "Conditions",
-                      "items": [{"body": body, "tags": tags}]}],
+                      "items": [{"body": body, "metadata": metadata}]}],
     }, sys.stdout)
 
 

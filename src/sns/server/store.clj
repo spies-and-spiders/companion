@@ -5,7 +5,8 @@
   (:require
     [sns.server.store.file :as file]
     [sns.server.store.memory :as memory]
-    [sns.server.store.mysql :as mysql]))
+    [sns.server.store.mysql :as mysql]
+    [sns.server.store.none :as none]))
 
 (defn from-config
   "Build a `Store` from the config `:storage` map. Defaults to in-memory when no
@@ -14,5 +15,6 @@
   (case backend
     :mysql (mysql/create (or url "jdbc:mariadb://localhost:3306/sns"))
     :file (file/create (or dir "./state"))
+    :none (none/create)
     (:memory nil) (memory/create)
     (throw (ex-info "Unknown storage backend" {:backend backend}))))

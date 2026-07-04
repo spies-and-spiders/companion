@@ -2,9 +2,10 @@
   "The extension points third-party plugins implement. Kept dependency-light so
    external JAR plugins can depend on this module without pulling in the app."
   (:import
+    (java.util HashMap)
     (java.util.function Function)
     (sns.spi Models$Action Models$ActionSpecValue Models$Field Models$Item
-    Models$LootSpec Models$Section Models$ViewModel)))
+             Models$LootSpec Models$Section Models$ViewModel)))
 
 (defprotocol LootGenerator
   "A loot type. Implementations are resolved from config by the registry."
@@ -78,12 +79,13 @@
   (cond-> {:id    (keyword (.id ls))
            :label (.label ls)}
           (.stateful ls)     (assoc :stateful? true)
+          (.utility ls)      (assoc :utility? true)
           (seq (.inputs ls)) (assoc :inputs (mapv field->clj (.inputs ls)))))
 
 (defn- item->clj [^Models$Item i]
   (cond-> {:item/body (.body i)}
-          (.title i)      (assoc :item/title (.title i))
-          (seq (.tags i)) (assoc :item/tags (vec (.tags i)))))
+          (.title i)          (assoc :item/title (.title i))
+          (seq (.metadata i)) (assoc :item/metadata (vec (.metadata i)))))
 
 (defn- section->clj [^Models$Section s]
   (cond-> {:section/items (mapv item->clj (.items s))}
@@ -103,8 +105,8 @@
 
 ;; --- Clojure data -> Models (for `report`, which receives a view-model) ---
 
-(defn- clj->item [{:item/keys [title body tags]}]
-  (Models$Item. title body tags))
+(defn- clj->item [{:item/keys [title body metadata]}]
+  (Models$Item. title body metadata))
 
 (defn- clj->section [{:section/keys [heading items]}]
   (Models$Section. heading (mapv clj->item items)))
@@ -118,10 +120,20 @@
                      (when sections (mapv clj->section sections))
                      (when actions (mapv clj->action actions))))
 
+(defn- clj->java-map [m]
+  (reduce-kv
+    (fn [^HashMap hm k v]
+      (doto hm
+        (.put (name k) v)))
+    (HashMap.)
+    m))
+
 (extend-type sns.spi.LootGenerator
   LootGenerator
   (loot-spec [this] (loot-spec->clj (.lootSpec this)))
-  (generate [this ctx] (view-model->clj (loot-id this) (.generate this ctx))))
+  (generate [this ctx] (->> (clj->java-map ctx)
+                            (.generate this)
+                            (view-model->clj (loot-id this)))))
 
 (extend-type sns.spi.LootAction
   LootAction
@@ -134,7 +146,7 @@
                                          val)))
                             (.actionSpec this)))
   (handle-action [this ctx action params]
-    (view-model->clj (loot-id this) (.handleAction this ctx (name action) params))))
+    (view-model->clj (loot-id this) (.handleAction this (clj->java-map ctx) (name action) (clj->java-map params)))))
 
 (extend-type sns.spi.Progression
   Progression

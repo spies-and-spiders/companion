@@ -84,11 +84,21 @@
                       (fn [ctx _system id action params]
                         (result-effect ctx {:method :post :url "/api/action" :body {:id id :action action :params params}})))
 
+;; The Group Deception & Persuasion tracker: every request returns the full
+;; tracker snapshot, so one effect covers load/add/toggle/remove/roll.
+(nxr/register-effect! :fx/social-request
+                      (fn [{:keys [dispatch]} _system req]
+                        (api/request req
+                                     (fn [snapshot] (dispatch [[:fx/assoc-in [:social] snapshot]
+                                                               [:fx/assoc-in [:error] nil]]))
+                                     (fn [err] (dispatch [[:fx/assoc-in [:error] (:error err)]])))))
+
 ;; --- actions (pure: state -> effects) ----------------------------------------
 
 (nxr/register-action! :ui/select-type
                       (fn [_state id]
-                        [[:fx/assoc-in [:selected] id]
+                        [[:fx/assoc-in [:page] :loot]
+                         [:fx/assoc-in [:selected] id]
                          [:fx/assoc-in [:inputs] {}]
                          [:fx/assoc-in [:result] nil]
                          [:fx/assoc-in [:editing?] false]]))
@@ -112,7 +122,51 @@
                         (let [n (when-not (str/blank? roll-n)
                                   (let [parsed (js/parseInt roll-n 10)]
                                     (when-not (js/isNaN parsed) parsed)))]
-                          [[:fx/roll inputs n]])))
+                          [[:fx/assoc-in [:page] :loot]
+                           [:fx/roll inputs n]])))
+
+;; --- the always-on Group Deception & Persuasion tracker ----------------------
+
+(nxr/register-action! :ui/open-social
+                      (fn [_state]
+                        [[:fx/assoc-in [:page] :social]
+                         [:fx/social-request {:url "/api/social"}]]))
+
+(nxr/register-action! :ui/set-social-input
+                      (fn [_state field value]
+                        [[:fx/assoc-in [:social-form field] value]]))
+
+;; Clicking a roster row loads that character into the form for editing.
+(nxr/register-action! :ui/social-edit
+                      (fn [_state char-name deception persuasion]
+                        [[:fx/assoc-in [:social-form] {:name       char-name
+                                                       :deception  deception
+                                                       :persuasion persuasion}]]))
+
+(nxr/register-action! :ui/social-add
+                      (fn [{:keys [social-form]}]
+                        [[:fx/social-request {:method :post
+                                              :url    "/api/social/character"
+                                              :body   social-form}]
+                         [:fx/assoc-in [:social-form] {}]]))
+
+(nxr/register-action! :ui/social-toggle
+                      (fn [_state char-name]
+                        [[:fx/social-request {:method :post
+                                              :url    "/api/social/toggle"
+                                              :body   {:name char-name}}]]))
+
+(nxr/register-action! :ui/social-remove
+                      (fn [_state char-name]
+                        [[:fx/social-request {:method :post
+                                              :url    "/api/social/remove"
+                                              :body   {:name char-name}}]]))
+
+(nxr/register-action! :ui/social-roll
+                      (fn [_state skill]
+                        [[:fx/social-request {:method :post
+                                              :url    "/api/social/roll"
+                                              :body   {:skill skill}}]]))
 
 (nxr/register-action! :ui/report
                       (fn [_state]
@@ -129,7 +183,7 @@
                         [[:fx/assoc-in (into [:result] path) value]
                          [:fx/assoc-in [:report-status] nil]]))
 
-(nxr/register-action! :ui/edit-result-tags
+(nxr/register-action! :ui/edit-result-metadata
                       (fn [_state path value]
                         [[:fx/assoc-in (into [:result] path)
                           (->> (str/split (or value "") #",")

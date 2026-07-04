@@ -27,6 +27,17 @@
               {:acc 0 :entries []}
               table))))
 
+(defn- validate-table!
+  "Every loot-table entry must reference a registered, rollable loot type;
+   utilities are session tools, not loot, so they can't be rolled."
+  [registry table]
+  (doseq [{:keys [id]} table]
+    (let [generator (or (get registry id)
+                        (throw (ex-info "Loot-table references an unknown loot type"
+                                        {:id id :known (vec (keys registry))})))]
+      (when (:utility? (p/loot-spec generator))
+        (throw (ex-info "Utilities cannot appear in the loot-table" {:id id}))))))
+
 (defn create
   "Build a loot engine from validated `config`. `deps` supplies overridable
    collaborators: `:store`, `:reporter`, `:render`, `:session`, `:rng`. `:render`,
@@ -35,9 +46,12 @@
   ([config] (create config {}))
   ([config {:keys [store reporter render session rng]}]
    (let [table (:loot-table config)
+         registry (registry/build config)
          render (or render render/render)]
+     (when (seq table)
+       (validate-table! registry table))
      {:config          config
-      :registry        (registry/build config)
+      :registry        registry
       :store           (or store (store/from-config (:storage config)))
       :reporter        (or reporter (reporter/from-config (:reporting config)))
       :render          render

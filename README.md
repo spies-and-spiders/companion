@@ -4,7 +4,7 @@ There are four types of loot plugins, all used to define custom loot:
 
 | Type           | Description                                                                                                                                                                                        |
 |----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **`:builtin`** | A pre-defined loot plugin provided by us.                                                                                                                                                          |
+| **`:builtin`** | A pre-defined plugin provided by us, selected by its `:id` alone (`:divine-dust`, `:relics`).                                                                                                      |
 | **`:data`**    | A .json or .edn file that defines the loot that is to be randomly sampled. This cannot support stateful loot.                                                                                      |
 | **`:cli`**     | Shell out to a program in any language, communicating via JSON. CLI plugins that wish to use state must implement their own persistence strategy and state management.                             |
 | **`:jar`**     | An external JAR implementing the protocols or interfaces provided. This provides the best integration into the Companion, but requires the use of a JVM language (e.g. Java/Kotlin/Clojure/Scala). |
@@ -17,11 +17,23 @@ All four are configured the same way in `config.edn`:
                               :command ["python3" "examples/cli-plugin/weather.py"]}
               {:type :jar     :id :custom  :jar "plugins/custom.jar"
                               :entrypoint my.plugin/generator}
-              {:type :builtin :id :relics  :entrypoint sns.builtin.relics/generator}]
+              {:type :builtin :id :relics}]
  :loot-table [{:id :uniques :weight 30} {:id :relics :weight 10}]}
 ```
 
 `:loot-table` is the weighted d100 "roll". Entries may omit `:weight` (defaults to 1, i.e. uniform).
+
+A plugin may declare itself a **utility** — a session tool rather than loot. Utilities
+are grouped separately in the UI and rejected from the `:loot-table` at startup.
+Builtin/`:jar` plugins set `:utility? true` in their loot-spec (Java: the `LootSpec`
+record's `utility` component); `:data` specs set it in the spec file; `:cli` plugins
+set it on the config entry.
+
+Separate from plugins, the **Group Deception & Persuasion tracker** is part of the app
+itself: always available under Utilities, with its own page (add characters and their
+two bonuses, tick/untick who's present, roll 1d20 + the group bonus). Its state
+persists via the configured storage under the `__social` collection — the `__` prefix
+marks internal collections, which can never clash with plugin loot-type ids.
 
 You may provide **`config.json`** instead of `config.edn`; simply replace all keywords (e.g. `:weight`) and symbols (e.g. `my.plugin/generator`) with regular JSON strings. 
 
@@ -37,7 +49,7 @@ The UI renders this shape generically — a new loot type needs **no** UI code, 
  :loot/sections [{:section/heading "Mods"        ; heading optional
                   :section/items [{:item/title nil      ; optional
                                    :item/body  "+1 AB…" ; required
-                                   :item/tags  ["accuracy"]}]}]  ; optional
+                                   :item/metadata  ["accuracy"]}]}]  ; optional
  :loot/actions  [{:action/label "Level up"
                   :action/event [:loot/action {:id :relics :action :level-up
                                                :params {:relic-id "…"}}]}]}
@@ -55,7 +67,7 @@ or
       "items": [
         {
           "body": "+1 AB…",
-          "tags": [
+          "metadata": [
             "accuracy"
           ]
         }
@@ -184,13 +196,13 @@ A code-free loot type in one EDN (or `.json`) file, loaded from `:source`:
 {:label    "Unique"
  :inputs   []                              ; optional loot-spec inputs
  :items    [{:name "Pacifist's Vow" :base "armour"
-             :mods [{:effect "+1 AB…" :tags ["accuracy"]}]}]
+             :mods [{:effect "+1 AB…" :metadata ["accuracy"]}]}]
  :take     1                               ; how many to draw (default 1)
  :weighted false                           ; draw with replacement by :weight (default false)
  :title    "{{name}}"                      ; Selmer, against the drawn entry
  :subtitle "Unique · {{base}}"
  :sections [{:heading "Mods" :each :mods   ; iterate a field on the entry…
-             :item {:body "{{effect}}" :tags :tags}}]}
+             :item {:body "{{effect}}" :metadata :metadata}}]}
 ```
 
 `:take`>1 draws without replacement (unless `:weighted`, which draws with
@@ -212,7 +224,7 @@ The engine runs your `:command`, writes the context as JSON to **stdin**:
 and reads a **friendly, un-namespaced** view-model from **stdout**:
 ```json
 {"title": "Fogfall", "subtitle": "Weather",
- "sections": [{"heading": "Sky", "items": [{"body": "…", "tags": ["obscured"]}]}]}
+ "sections": [{"heading": "Sky", "items": [{"body": "…", "metadata": ["obscured"]}]}]}
 ```
 A non-zero exit is treated as an error. See `examples/cli-plugin/weather.py`.
 
@@ -251,4 +263,12 @@ Depend on this module, implement `LootGenerator`, and expose a factory:
 ```
 
 Build a jar, point `:jar`/`:entrypoint` at it, and it loads at startup.
+
+A plugin with no Clojure in it (e.g. pure Java/Kotlin) can skip the factory var:
+implement the `sns.spi.LootGenerator` interface on a class with a 0-arity
+constructor and point `:jar`/`:class` at it instead:
+
+```clojure
+{:type :jar :id :custom :jar "plugins/custom.jar" :class "my.plugin.CustomLoot"}
+```
 

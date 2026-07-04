@@ -25,11 +25,11 @@
   (->> (r/sample-without-replacement 2 words)
        (str/join \space)))
 
-(defn- item-lines [{:item/keys [title body tags]}]
+(defn- item-lines [{:item/keys [title body metadata]}]
   (cond-> []
-          title       (conj (str "**" title "**"))
-          body        (conj body)
-          (seq tags)  (conj (str/join " " (mapv #(str "`" % "`") tags)))))
+          title          (conj (str "**" title "**"))
+          body           (conj body)
+          (seq metadata) (conj (str/join " " (mapv #(str "`" % "`") metadata)))))
 
 (defn- section-lines [{:section/keys [heading items]}]
   (cond-> []

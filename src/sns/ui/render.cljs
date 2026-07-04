@@ -41,12 +41,12 @@
 
 ;; --- view-model renderer (the signature surface) -----------------------------
 
-(defn- entry [{:item/keys [title body tags]}]
+(defn- entry [{:item/keys [title body metadata]}]
   [:li.entry
    (when title [:h4.entry__title title])
    [:p.entry__body body]
-   (when (seq tags)
-     [:ul.tags (for [t tags] [:li.tag t])])])
+   (when (seq metadata)
+     [:ul.tags (for [t metadata] [:li.tag t])])])
 
 (defn- block [{:section/keys [heading items]}]
   [:section.block
@@ -88,19 +88,19 @@
        :value (str v)
        :on    {:input [[:ui/edit-result path [:event.target/value]]]}}])])
 
-(defn- edit-tags [path tags]
+(defn- edit-metadata [path metadata]
   [:label.edit {:replicant/key (str path)}
-   [:span.edit__label "Tags (comma-separated)"]
+   [:span.edit__label "Metadata (comma-separated)"]
    [:input.edit__control
     {:type  "text"
-     :value (str/join ", " tags)
-     :on    {:input [[:ui/edit-result-tags path [:event.target/value]]]}}]])
+     :value (str/join ", " metadata)
+     :on    {:input [[:ui/edit-result-metadata path [:event.target/value]]]}}]])
 
-(defn- edit-item [si ii {:item/keys [title body tags]}]
+(defn- edit-item [si ii {:item/keys [title body metadata]}]
   [:li.entry.entry--edit {:replicant/key ii}
    (edit-field "Item title" [:loot/sections si :section/items ii :item/title] title false)
    (edit-field "Body" [:loot/sections si :section/items ii :item/body] body true)
-   (edit-tags [:loot/sections si :section/items ii :item/tags] tags)])
+   (edit-metadata [:loot/sections si :section/items ii :item/metadata] metadata)])
 
 (defn- edit-block [si {:section/keys [heading items]}]
   [:section.block {:replicant/key si}
@@ -119,26 +119,107 @@
       [:div.sigil__body
        (map-indexed edit-block (:loot/sections vm))]]]))
 
+;; --- the Group Deception & Persuasion tracker (always-on, bespoke) -----------
+
+(defn- bonus-str [n]
+  (if (neg? n) (str n) (str "+" n)))
+
+(defn- social-field [social-form field label type]
+  [:label.field {:replicant/key field}
+   [:span.field__label label]
+   [:input.field__control
+    {:type  type
+     :value (str (get social-form field))
+     :on    {:input [[:ui/set-social-input field [:event.target/value]]]}}]])
+
+(defn- social-row [{char-name :name :keys [deception persuasion present?]}]
+  [:li.social__row {:replicant/key char-name
+                    :class         (when-not present? "social__row--absent")}
+   [:label.social__tick
+    [:input {:type    "checkbox"
+             :checked (boolean present?)
+             :on      {:change [[:ui/social-toggle char-name]]}}]]
+   ;; clicking the details loads them into the form for editing
+   [:button.social__details
+    {:title "Edit this character"
+     :on    {:click [[:ui/social-edit char-name deception persuasion]]}}
+    [:span.social__name char-name]
+    [:span.social__bonuses
+     (str "Deception " (bonus-str deception) " · Persuasion " (bonus-str persuasion))]]
+   [:button.social__remove {:on {:click [[:ui/social-remove char-name]]}} "Remove"]])
+
+(defn social-page
+  "The always-present group tracker: an add/update form, a row per character
+   (tick beside their details), the two group bonuses, and the roll buttons."
+  [{:keys [social social-form]}]
+  (let [{:keys [characters deception persuasion roll]} social
+        present-n (count (filter :present? characters))]
+    [:section.social
+     [:p.summon__eyebrow "Group Deception & Persuasion"]
+     [:div.fields
+      (social-field social-form :name "Character name" "text")
+      (social-field social-form :deception "Deception bonus" "number")
+      (social-field social-form :persuasion "Persuasion bonus" "number")]
+     [:button.generate {:on {:click [[:ui/social-add]]}} "Add / update character"]
+     (if (seq characters)
+       [:ul.social__roster (map social-row characters)]
+       [:p.social__empty "No characters yet — add each party member above. Untick anyone who misses a session."])
+     [:div.social__summary
+      [:span.social__bonus (str "Group Deception " (bonus-str deception))]
+      [:span.social__bonus (str "Group Persuasion " (bonus-str persuasion))]
+      (when (seq characters)
+        [:span.social__present (str present-n "/" (count characters) " present")])]
+     [:div.social__rolls
+      [:button.action {:on {:click [[:ui/social-roll :deception]]}}
+       (str "Roll Deception (1d20" (bonus-str deception) ")")]
+      [:button.action {:on {:click [[:ui/social-roll :persuasion]]}}
+       (str "Roll Persuasion (1d20" (bonus-str persuasion) ")")]]
+     (when roll
+       [:p.social__result {:replicant/key (str roll)}
+        (str (if (= :deception (:skill roll)) "Deception" "Persuasion")
+             " check: " (:total roll)
+             " — rolled " (:die roll) " " (bonus-str (:bonus roll))
+             (case (:die roll) 1 " · natural 1!" 20 " · natural 20!" ""))])]))
+
 ;; --- loot-type picker --------------------------------------------------------
 
-(defn picker [{:keys [loot-types selected roll-n]}]
-  [:nav.rail
-   [:div.roll-group
-    [:input.roll__input
-     {:type        "number"
-      :min         "1"
-      :max         "100"
-      :placeholder "d100"
-      :value       (str roll-n)
-      :on          {:input [[:ui/set-roll-input [:event.target/value]]]}}]
-    [:button.roll {:on {:click [[:ui/roll]]}}
-     (if (str/blank? (str roll-n)) "Roll Loot" (str "Roll " roll-n))]]
-   [:p.rail__hint "Enter 1–100 to roll on the table, or leave blank for random."]
-   [:p.rail__eyebrow "Disciplines"]
-   [:ul.rail__list
-    (for [{:keys [id label]} loot-types]
-      [:li {:replicant/key id}
-       [:button.discipline {:class (when (= id selected) "discipline--active")
-                            :on    {:click [[:ui/select-type id]]}}
-        [:span.discipline__glyph "◆"]
-        [:span.discipline__name label]]])]])
+(defn- type-button [active? event glyph label]
+  [:button.discipline {:class (when active? "discipline--active")
+                       :on    {:click [event]}}
+   [:span.discipline__glyph glyph]
+   [:span.discipline__name label]])
+
+(defn- type-list [types selected glyph class]
+  [:ul.rail__list
+   {:class class}
+   (for [{:keys [id label]} types]
+     [:li {:replicant/key id}
+      (type-button (= id selected) [:ui/select-type id] glyph label)])])
+
+(defn picker [{:keys [loot-types selected roll-n page]}]
+  (let [utilities     (filterv :utility? loot-types)
+        disciplines   (filterv (complement :utility?) loot-types)
+        loot-selected (when (= :loot page) selected)]
+    [:nav.rail
+     [:div.roll-group
+      [:input.roll__input
+       {:type        "number"
+        :min         "1"
+        :max         "100"
+        :placeholder "d100"
+        :value       (str roll-n)
+        :on          {:input [[:ui/set-roll-input [:event.target/value]]]}}]
+      [:button.roll {:on {:click [[:ui/roll]]}}
+       (if (str/blank? (str roll-n)) "Roll Loot" (str "Roll " roll-n))]]
+     [:p.rail__hint "Enter 1–100 to roll on the table, or leave blank for random."]
+     [:p.rail__eyebrow "Disciplines"]
+     (type-list disciplines loot-selected "◆" nil)
+     [:p.rail__eyebrow.rail__eyebrow--utilities "Utilities"]
+     ;; sized to content so the (scrollable) disciplines list keeps the room
+     [:ul.rail__list.rail__list--utilities
+      ;; the group tracker is part of the app, not a plugin — always present
+      [:li {:replicant/key "__social"}
+       (type-button (= :social page) [:ui/open-social] "✦" "Group Social")]
+      (for [{:keys [id label]} utilities]
+        [:li {:replicant/key id}
+         (type-button (= id loot-selected) [:ui/select-type id] "✦" label)])]]))

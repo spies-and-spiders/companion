@@ -19,5 +19,5 @@ public interface LootAction {
      * Apply {@code action} (the keyword's name) with {@code params}. Returns an
      * updated view-model. {@code ctx} is the opaque engine context map.
      */
-    Models.ViewModel handleAction(Object ctx, String action, Map<?, ?> params);
+    Models.ViewModel handleAction(Map<String, Object> ctx, String action, Map<String, Object> params);
 }

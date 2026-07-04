@@ -40,10 +40,10 @@
       (> n 1)  (vec (r/sample-without-replacement (min n (count pool)) pool))
       :else    [(r/sample pool)])))
 
-(defn- build-item [render {:keys [title body tags]} entry]
+(defn- build-item [render {:keys [title body metadata]} entry]
   (cond-> {:item/body (render body entry)}
           title (assoc :item/title (render title entry))
-          (and tags (seq (get entry tags))) (assoc :item/tags (vec (get entry tags)))))
+          (and metadata (seq (get entry metadata))) (assoc :item/metadata (vec (get entry metadata)))))
 
 (defn- build-section [render {:keys [heading each item]} entries single]
   ;; `:each :items` iterates the drawn entries; any other keyword iterates that
@@ -72,6 +72,7 @@
   (reify p/LootGenerator
     (loot-spec [_]
       (cond-> {:id id :label (:label spec)}
+              (:utility? spec) (assoc :utility? true)
               (:inputs spec) (assoc :inputs (:inputs spec))))
     (generate [_ ctx]
       (interpret spec ctx))))

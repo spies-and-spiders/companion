@@ -16,10 +16,15 @@ public final class Models {
 
     /**
      * Static description of a loot type. {@code id} becomes a keyword; {@code
-     * inputs} may be null/empty. Conforms to {@code sns.spi.schema/loot-spec}.
+     * inputs} may be null/empty. A {@code utility} is a session tool rather than
+     * loot: grouped separately in the UI and barred from the loot-table.
+     * Conforms to {@code sns.spi.schema/loot-spec}.
      */
-    public record LootSpec(String id, String label, boolean stateful, List<Field> inputs) {
-        public LootSpec(String id, String label) { this(id, label, false, null); }
+    public record LootSpec(String id, String label, boolean stateful, List<Field> inputs, boolean utility) {
+        public LootSpec(String id, String label) { this(id, label, false, null, false); }
+        public LootSpec(String id, String label, boolean stateful, List<Field> inputs) {
+            this(id, label, stateful, inputs, false);
+        }
     }
 
     /** One declared input field. {@code type} is one of enum/int/text/bool. */
@@ -37,8 +42,8 @@ public final class Models {
     /** A titled group of items in a view-model. {@code heading} may be null. */
     public record Section(String heading, List<Item> items) { }
 
-    /** A single line of loot detail. {@code title}/{@code tags} may be null. */
-    public record Item(String title, String body, List<String> tags) { }
+    /** A single line of loot detail. {@code title}/{@code metadata} may be null. */
+    public record Item(String title, String body, List<String> metadata) { }
 
     /**
      * A stateful follow-up button. When surfaced, {@code action} (a keyword name)

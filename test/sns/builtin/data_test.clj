@@ -11,22 +11,22 @@
 (deftest single-draw-with-submods
   (testing "a single drawn entry renders title/subtitle and iterates its mods"
     (let [spec {:label    "Unique"
-                :items    [{:name "Only One"                        :base "armour"
-                            :mods [{:effect "Effect A" :tags ["x"]}
+                :items    [{:name "Only One"                            :base "armour"
+                            :mods [{:effect "Effect A" :metadata ["x"]}
                                    {:effect "Effect B"}]}]
                 :title    "{{name}}"
                 :subtitle "Unique · {{base}}"
-                :sections [{:heading "Mods"                           :each :mods
-                            :item    {:body "{{effect}}" :tags :tags}}]}
+                :sections [{:heading "Mods"                                   :each :mods
+                            :item    {:body "{{effect}}" :metadata :metadata}}]}
           vm   (data/interpret spec ctx)]
       (is (schema/validate ::schema/view-model vm))
       (is (= "Only One" (:loot/title vm)))
       (is (= "Unique · armour" (:loot/subtitle vm)))
       (is (= ["Effect A" "Effect B"]
              (map :item/body (-> vm :loot/sections first :section/items))))
-      (testing "tags only present when the entry declares them"
-        (is (= ["x"] (-> vm :loot/sections first :section/items first :item/tags)))
-        (is (nil? (-> vm :loot/sections first :section/items second :item/tags)))))))
+      (testing "metadata only present when the entry declares them"
+        (is (= ["x"] (-> vm :loot/sections first :section/items first :item/metadata)))
+        (is (nil? (-> vm :loot/sections first :section/items second :item/metadata)))))))
 
 (deftest multi-draw-renders-each-entry
   (testing ":each :items iterates the drawn entries"
@@ -51,6 +51,10 @@
           vm   (sns.spi.protocols/generate gen ctx)]
       (is (schema/validate ::schema/view-model vm))
       (is (seq (:loot/title vm))))))
+
+(deftest utility-flag-surfaces-in-loot-spec
+  (let [gen (data/generator :tools {:label "Tools" :utility? true :items [{:name "x"}] :title "t"})]
+    (is (true? (:utility? (sns.spi.protocols/loot-spec gen))))))
 
 (deftest inputs-available-to-templates
   (testing "input values are interpolable in templates"
