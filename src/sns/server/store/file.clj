@@ -17,7 +17,7 @@
 
 (defn- read-coll [^java.io.File file]
   (if (.exists file)
-    (codec/decode (slurp file))
+    (codec/decode-from file)
     {}))
 
 (defn- write-coll! [file m]

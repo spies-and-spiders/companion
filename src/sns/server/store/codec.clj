@@ -6,7 +6,10 @@
    stringifies keyword *values* and can't restore them without a per-document
    schema; EDN needs none and stays readable on disk / in the DB."
   (:require
-    [clojure.edn :as edn]))
+    [clojure.edn :as edn]
+    [clojure.java.io :as io])
+  (:import
+    (java.io PushbackReader)))
 
 (defn encode
   "Serialise a document to an EDN string."
@@ -17,3 +20,10 @@
   "Deserialise an EDN string back to its Clojure value, nil for blank."
   [s]
   (when (seq s) (edn/read-string s)))
+
+(defn decode-from
+  "Deserialise EDN from an `io/reader`-able source (File, InputStream, …)
+   without buffering it into a string, nil for empty."
+  [source]
+  (with-open [r (PushbackReader. (io/reader source))]
+    (edn/read {:eof nil} r)))

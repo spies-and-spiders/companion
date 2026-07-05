@@ -38,7 +38,7 @@
   [source]
   (let [readable (if (string? source) (io/file source) source)]
     (if (json-source? source)
-      (->> (j/read-value (slurp readable) j/keyword-keys-object-mapper)
+      (->> (j/read-value readable j/keyword-keys-object-mapper)
            (schema/decode ::schema/config))
       (aero/read-config readable))))
 

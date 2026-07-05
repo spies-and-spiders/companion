@@ -6,21 +6,27 @@
 
    This is the workhorse for DMs who don't write Clojure. See spi/README.md."
   (:require
+    [clojure.edn :as edn]
     [clojure.java.io :as io]
     [clojure.string :as str]
     [jsonista.core :as j]
     [randy.core :as r]
-    [sns.spi.protocols :as p]))
+    [sns.spi.protocols :as p])
+  (:import
+    (java.io PushbackReader)))
 
 (defn load-spec
-  "Load a loot spec from a classpath resource. `.json` is parsed as JSON with
+  "Load a loot spec from `source`: a classpath resource, falling back to a
+   filesystem path when no resource matches. `.json` is parsed as JSON with
    keywordised keys; anything else is read as EDN."
-  [resource]
-  (let [url (or (io/resource resource)
-                (throw (ex-info "Data plugin source not found" {:resource resource})))]
-    (if (str/ends-with? resource ".json")
-      (j/read-value (slurp url) j/keyword-keys-object-mapper)
-      (read-string (slurp url)))))
+  [source]
+  (let [readable (or (io/resource source)
+                     (let [f (io/file source)] (when (.exists f) f))
+                     (throw (ex-info "Data plugin source not found" {:source source})))]
+    (if (str/ends-with? source ".json")
+      (j/read-value readable j/keyword-keys-object-mapper)
+      (with-open [r (PushbackReader. (io/reader readable))]
+        (edn/read r)))))
 
 (defn- enabled [entries]
   (filterv #(:enabled? % true) entries))

@@ -109,9 +109,6 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   overflow-y: auto;
 }
 
-/* the utilities group hugs its content; the disciplines list absorbs shrink */
-.rail__list--utilities { flex: 0 0 auto; }
-
 .rail__eyebrow--utilities { margin-top: 0.6rem; }
 
 .discipline {

@@ -215,8 +215,7 @@
      [:p.rail__eyebrow "Disciplines"]
      (type-list disciplines loot-selected "◆" nil)
      [:p.rail__eyebrow.rail__eyebrow--utilities "Utilities"]
-     ;; sized to content so the (scrollable) disciplines list keeps the room
-     [:ul.rail__list.rail__list--utilities
+     [:ul.rail__list
       ;; the group tracker is part of the app, not a plugin — always present
       [:li {:replicant/key "__social"}
        (type-button (= :social page) [:ui/open-social] "✦" "Group Social")]
