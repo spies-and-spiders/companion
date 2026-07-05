@@ -2,6 +2,7 @@
   "Resolves config plugin entries into `LootGenerator` instances. Each plugin
    `:type` has a `build-generator` method."
   (:require
+    [flatland.ordered.map :refer [ordered-map]]
     [sns.builtin.cli :as cli]
     [sns.builtin.data :as data]
     [sns.builtin.dust :as dust]
@@ -53,11 +54,12 @@
   (throw (ex-info "Unsupported plugin type" {:type type :plugin plugin})))
 
 (defn build
-  "Resolve all plugins into a map of loot-type id -> LootGenerator."
+  "Resolve all plugins into a map of loot-type id -> LootGenerator, ordered as
+   they appear in config (the UI picker preserves this order)."
   [{:keys [plugins]}]
   (reduce (fn [reg {:keys [id] :as plugin}]
             (when (contains? reg id)
               (throw (ex-info "Duplicate loot-type id" {:id id})))
             (assoc reg id (build-generator plugin)))
-          {}
+          (ordered-map)
           plugins))

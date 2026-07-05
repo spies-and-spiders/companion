@@ -74,7 +74,8 @@
       (assoc :inputs inputs)))
 
 (defn loot-specs
-  "Data-only specs for every registered loot type (drives the UI picker/forms)."
+  "Data-only specs for every registered loot type (drives the UI picker/forms),
+   in the order the plugins appear in config."
   [{:keys [registry]}]
   (mapv p/loot-spec (vals registry)))
 
