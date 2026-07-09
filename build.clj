@@ -14,10 +14,6 @@
 (def ^:private version (str/trim (slurp "VERSION")))
 (def ^:private class-dir "target/classes")
 (def ^:private entrypoint 'sns.server.core)
-;; Native-image entrypoint that preloads every sns.* namespace at build time so
-;; config-driven plugins land in the closed-world image. Lives under native/ (only
-;; on the classpath via the :graalvm alias). See native/sns/aot_preload.clj.
-(def ^:private native-entrypoint 'sns.aot-preload)
 (def ^:private uber-file (format "target/%s-%s-standalone.jar" (name lib) version))
 
 ;; The SPI library jar shipped for plugin authors: Clojure sources (protocols +
@@ -70,18 +66,16 @@
 
 (defn uber [{:keys [aliases]}]
   (clean nil)
-  (let [native?    (contains? (set aliases) :graalvm)
-        namespaces (sns-namespaces ["src" "spi/src"])]
+  (let [namespaces (sns-namespaces ["src" "spi/src"])]
     (b/copy-dir {:src-dirs   (cond-> ["src" "resources" "spi/src"]
                                      native? (conj "native"))
                  :target-dir class-dir})
     (b/compile-clj {:basis      (basis aliases)
-                    :ns-compile (cond-> namespaces
-                                        native? (conj native-entrypoint))
+                    :ns-compile namespaces
                     :class-dir  class-dir})
     (b/uber {:class-dir         class-dir
              :uber-file         uber-file
              :basis             (basis aliases)
-             :main              (if native? native-entrypoint entrypoint)
+             :main              entrypoint
              :conflict-handlers helidon-conflict-handlers})
     (println "Built" uber-file)))
