@@ -11,12 +11,14 @@
 (deftest single-draw-with-submods
   (testing "a single drawn entry renders title/subtitle and iterates its mods"
     (let [spec {:label    "Unique"
-                :items    [{:name "Only One"                            :base "armour"
+                :items    [{:name "Only One"
+                            :base "armour"
                             :mods [{:effect "Effect A" :metadata ["x"]}
                                    {:effect "Effect B"}]}]
                 :title    "{{name}}"
                 :subtitle "Unique · {{base}}"
-                :sections [{:heading "Mods"                                   :each :mods
+                :sections [{:heading "Mods"
+                            :each    :mods
                             :item    {:body "{{effect}}" :metadata :metadata}}]}
           vm   (data/interpret spec ctx)]
       (is (schema/validate ::schema/view-model vm))
@@ -44,7 +46,7 @@
       (is (= 2 (count items)))
       (is (every? :item/title items)))))
 
-(deftest enabled-filtering-and-loaded-resource
+(deftest enabled-filtering-and-loaded-from-file
   (testing "the shipped uniques.edn loads and produces a valid view-model"
     (let [spec (data/load-spec "data/uniques.edn")
           gen  (data/generator :uniques spec)

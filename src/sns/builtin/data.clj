@@ -15,17 +15,13 @@
   (:import
     (java.io PushbackReader)))
 
-(defn load-spec
-  "Load a loot spec from `source`: a classpath resource, falling back to a
-   filesystem path when no resource matches. `.json` is parsed as JSON with
-   keywordised keys; anything else is read as EDN."
-  [source]
-  (let [readable (or (io/resource source)
-                     (let [f (io/file source)] (when (.exists f) f))
-                     (throw (ex-info "Data plugin source not found" {:source source})))]
+(defn load-spec [source]
+  (let [f (io/file source)]
+    (when-not (.exists f)
+      (throw (ex-info "Data plugin source not found" {:source source})))
     (if (str/ends-with? source ".json")
-      (j/read-value readable j/keyword-keys-object-mapper)
-      (with-open [r (PushbackReader. (io/reader readable))]
+      (j/read-value f j/keyword-keys-object-mapper)
+      (with-open [r (PushbackReader. (io/reader f))]
         (edn/read r)))))
 
 (defn- enabled [entries]

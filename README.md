@@ -191,7 +191,7 @@ deterministically from it.
 ## The data DSL (`:data`)
 
 A code-free loot type in one EDN (or `.json`) file, loaded from `:source` (a
-classpath resource, or a filesystem path when no resource matches):
+filesystem path):
 
 ```clojure
 {:label    "Unique"

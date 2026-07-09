@@ -44,7 +44,7 @@
  ;;              (:divine-dust, :relics). An optional :entrypoint Clojure var
  ;;              overrides the lookup.
  ;;   :data    — a code-free loot type defined entirely in an EDN/JSON spec
- ;;              file (:source is resolved on the classpath / inside the jar).
+ ;;              file (:source is a filesystem path, e.g. relative to config.edn).
  ;;   :cli     — shell out to any external program (any language). See
  ;;              examples/cli-plugin/weather.py.
  ;;   :jar     — a generator from an external library jar on disk. Only
