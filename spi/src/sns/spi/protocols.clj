@@ -50,6 +50,10 @@
   "Persistence abstraction. Built-in backends: a MySQL-compatible SQL server, a
    JSON file per collection, or in-memory. `coll` is a collection/table keyword,
    `id` a document key."
+  (setup! [this]
+    "Prepare the backend for use (e.g. create a schema, ensure a directory
+     exists). Called once at startup, before any `fetch`/`query`/`put!`/
+     `update!`; construction itself must stay side-effect-free.")
   (fetch [this coll id]
     "Return the document at `id`, or nil.")
   (query [this coll q]
@@ -161,6 +165,7 @@
 
 (extend-type sns.spi.Store
   Store
+  (setup! [this] (.setup this))
   (fetch [this coll id] (.fetch this coll id))
   (query [this coll q] (.query this coll q))
   (put! [this coll id doc] (.put this coll id doc))

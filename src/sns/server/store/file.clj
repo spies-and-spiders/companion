@@ -27,12 +27,13 @@
 (defn create
   "A `Store` that persists each collection to `<dir>/<collection>.edn`. Reads and
    writes are guarded by a per-store lock so `update!` is atomic; built for a
-   single writer, not concurrent processes."
+   single writer, not concurrent processes. `setup!` creates `dir` if it doesn't
+   already exist; call it once before use."
   ([] (create "./state"))
   ([dir]
    (let [lock (Object.)]
-     (.mkdirs (io/file dir))
      (reify p/Store
+       (setup! [_] (.mkdirs (io/file dir)))
        (fetch [_ coll id]
          (locking lock
            (get (read-coll (coll-file dir coll)) (id->key id))))

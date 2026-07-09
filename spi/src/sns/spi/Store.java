@@ -10,6 +10,13 @@ import java.util.function.Function;
  */
 public interface Store {
 
+    /**
+     * Prepare the backend for use (e.g. create a schema, ensure a directory
+     * exists). Called once at startup, before any other method; construction
+     * itself must stay side-effect-free. Default is a no-op.
+     */
+    default void setup() {}
+
     /** Return the document at {@code id}, or {@code null}. */
     Object fetch(Object coll, Object id);
 

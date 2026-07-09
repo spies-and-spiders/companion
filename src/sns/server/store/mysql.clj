@@ -28,11 +28,12 @@
   "A `Store` backed by a MySQL-compatible server reachable at JDBC `url`
    (e.g. \"jdbc:mariadb://localhost:3306/sns\"). Documents are stored generically
    in a `documents(collection, id, doc LONGTEXT)` table; `coll`/`id` are coerced
-   to strings and `doc` is EDN-encoded."
+   to strings and `doc` is EDN-encoded. `setup!` creates the table if it doesn't
+   already exist; call it once before use."
   [url]
   (let [ds (jdbc/get-datasource {:jdbcUrl url})]
-    (ensure-schema! ds)
     (reify p/Store
+      (setup! [_] (ensure-schema! ds))
       (fetch [_ coll id]
         (-> (jdbc/execute-one!
               ds ["SELECT doc FROM documents WHERE collection = ? AND id = ?"

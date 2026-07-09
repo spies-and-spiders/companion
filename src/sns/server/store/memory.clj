@@ -11,6 +11,7 @@
   ([init]
    (let [state (atom init)]
      (reify p/Store
+       (setup! [_])
        (fetch [_ coll id] (get-in @state [coll id]))
        (query [_ coll q]
          (->> (vals (get @state coll))

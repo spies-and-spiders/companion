@@ -21,7 +21,7 @@ changes when you switch.
 The app talks only over the MySQL wire protocol via JDBC (using the MariaDB
 driver), so the server is interchangeable: **Dolt**, MySQL, MariaDB, etc. all
 work. Point `:url` at your server; it must contain the database named in the URL
-(here, `sns`). On first connect the app creates a single
+(here, `sns`). At startup the app creates a single
 `documents(collection, id, doc JSON)` table if it doesn't exist.
 
 ### Quickstart with Dolt (recommended — git-versioned, Apache 2.0)

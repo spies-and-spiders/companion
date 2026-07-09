@@ -49,6 +49,7 @@
          registry (registry/build config)
          render (or render render/render)
          store (or store (store/from-config (:storage config)))]
+     (p/setup! store)
      (when (seq table)
        (validate-table! registry table))
      {:config          config

@@ -9,6 +9,7 @@
    `put!`/`update!` honour the return contract but discard the document."
   []
   (reify p/Store
+    (setup! [_])
     (fetch [_ _coll _id] nil)
     (query [_ _coll _q] [])
     (put! [_ _coll _id doc] doc)
