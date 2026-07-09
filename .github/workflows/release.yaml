@@ -146,6 +146,11 @@ jobs:
           cp "$src" "$dest"
           echo "artifact=$dest" >> "$GITHUB_OUTPUT"
 
+      - name: Make artifact executable
+        if: matrix.os != 'windows'
+        shell: bash
+        run: chmod 700 "${{ steps.rename.outputs.artifact }}"
+
       - name: Upload native image
         uses: actions/upload-artifact@v7
         with:
