@@ -24,33 +24,34 @@
   (io/make-parents file)
   (spit file (codec/encode m)))
 
+(defrecord FileStore [dir lock]
+  p/Store
+  (setup! [_] (.mkdirs (io/file dir)))
+  (fetch [_ coll id]
+    (locking lock
+      (get (read-coll (coll-file dir coll)) (id->key id))))
+  (query [_ coll q]
+    (locking lock
+      (->> (vals (read-coll (coll-file dir coll)))
+           (filterv (fn [doc] (every? (fn [[k v]] (= v (get doc k))) q))))))
+  (put! [_ coll id doc]
+    (locking lock
+      (let [file (coll-file dir coll)]
+        (write-coll! file (assoc (read-coll file) (id->key id) doc))
+        doc)))
+  (update! [_ coll id f]
+    (locking lock
+      (let [file    (coll-file dir coll)
+            k       (id->key id)
+            m       (read-coll file)
+            updated (f (get m k))]
+        (write-coll! file (assoc m k updated))
+        updated))))
+
 (defn create
   "A `Store` that persists each collection to `<dir>/<collection>.edn`. Reads and
    writes are guarded by a per-store lock so `update!` is atomic; built for a
    single writer, not concurrent processes. `setup!` creates `dir` if it doesn't
    already exist; call it once before use."
   ([] (create "./state"))
-  ([dir]
-   (let [lock (Object.)]
-     (reify p/Store
-       (setup! [_] (.mkdirs (io/file dir)))
-       (fetch [_ coll id]
-         (locking lock
-           (get (read-coll (coll-file dir coll)) (id->key id))))
-       (query [_ coll q]
-         (locking lock
-           (->> (vals (read-coll (coll-file dir coll)))
-                (filterv (fn [doc] (every? (fn [[k v]] (= v (get doc k))) q))))))
-       (put! [_ coll id doc]
-         (locking lock
-           (let [file (coll-file dir coll)]
-             (write-coll! file (assoc (read-coll file) (id->key id) doc))
-             doc)))
-       (update! [_ coll id f]
-         (locking lock
-           (let [file    (coll-file dir coll)
-                 k       (id->key id)
-                 m       (read-coll file)
-                 updated (f (get m k))]
-             (write-coll! file (assoc m k updated))
-             updated)))))))
+  ([dir] (->FileStore dir (Object.))))

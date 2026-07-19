@@ -24,44 +24,40 @@
                         doc        LONGTEXT     NOT NULL,
                         PRIMARY KEY (collection, id))"]))
 
-(defn create
-  "A `Store` backed by a MySQL-compatible server reachable at JDBC `url`
-   (e.g. \"jdbc:mariadb://localhost:3306/sns\"). Documents are stored generically
-   in a `documents(collection, id, doc LONGTEXT)` table; `coll`/`id` are coerced
-   to strings and `doc` is EDN-encoded. `setup!` creates the table if it doesn't
-   already exist; call it once before use."
-  [url]
-  (let [ds (jdbc/get-datasource {:jdbcUrl url})]
-    (reify p/Store
-      (setup! [_] (ensure-schema! ds))
-      (fetch [_ coll id]
-        (-> (jdbc/execute-one!
-              ds ["SELECT doc FROM documents WHERE collection = ? AND id = ?"
-                  (name coll) (str id)])
-            :documents/doc
-            ->doc))
-      (query [_ coll q]
-        (->> (jdbc/execute!
-               ds ["SELECT doc FROM documents WHERE collection = ?" (name coll)])
-             (map (comp ->doc :documents/doc))
-             (filterv (fn [doc] (every? (fn [[k v]] (= v (get doc k))) q)))))
-      (put! [_ coll id doc]
+(defrecord MysqlStore [ds]
+  p/Store
+  (setup! [_] (ensure-schema! ds))
+  (fetch [_ coll id]
+    (-> (jdbc/execute-one!
+          ds ["SELECT doc FROM documents WHERE collection = ? AND id = ?"
+              (name coll) (str id)])
+        :documents/doc
+        ->doc))
+  (query [_ coll q]
+    (->> (jdbc/execute!
+           ds ["SELECT doc FROM documents WHERE collection = ?" (name coll)])
+         (map (comp ->doc :documents/doc))
+         (filterv (fn [doc] (every? (fn [[k v]] (= v (get doc k))) q)))))
+  (put! [_ coll id doc]
+    (jdbc/execute!
+      ds ["INSERT INTO documents (collection, id, doc) VALUES (?, ?, ?)
+           ON DUPLICATE KEY UPDATE doc = VALUES(doc)"
+          (name coll) (str id) (codec/encode doc)])
+    doc)
+  (update! [_ coll id f]
+    (jdbc/with-transaction [tx ds]
+      (let [current (-> (jdbc/execute-one!
+                          tx ["SELECT doc FROM documents
+                               WHERE collection = ? AND id = ? FOR UPDATE"
+                              (name coll) (str id)])
+                        :documents/doc
+                        ->doc)
+            updated (f current)]
         (jdbc/execute!
-          ds ["INSERT INTO documents (collection, id, doc) VALUES (?, ?, ?)
+          tx ["INSERT INTO documents (collection, id, doc) VALUES (?, ?, ?)
                ON DUPLICATE KEY UPDATE doc = VALUES(doc)"
-              (name coll) (str id) (codec/encode doc)])
-        doc)
-      (update! [_ coll id f]
-        (jdbc/with-transaction [tx ds]
-          (let [current (-> (jdbc/execute-one!
-                              tx ["SELECT doc FROM documents
-                                   WHERE collection = ? AND id = ? FOR UPDATE"
-                                  (name coll) (str id)])
-                            :documents/doc
-                            ->doc)
-                updated (f current)]
-            (jdbc/execute!
-              tx ["INSERT INTO documents (collection, id, doc) VALUES (?, ?, ?)
-                   ON DUPLICATE KEY UPDATE doc = VALUES(doc)"
-                  (name coll) (str id) (codec/encode updated)])
-            updated))))))
+              (name coll) (str id) (codec/encode updated)])
+        updated))))
+
+(defn create [url]
+  (->MysqlStore (jdbc/get-datasource {:jdbcUrl url})))

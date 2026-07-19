@@ -13,7 +13,22 @@
     (io.helidon.webserver WebServer)
     (java.io IOException)
     (java.net InetAddress ServerSocket)
+    (java.time Instant)
     (java.util.concurrent.locks LockSupport)))
+
+(defn- fix-bridged-log-timestamps!
+  "SLF4J events bridged from `java.lang.System$Logger` (e.g. Helidon's, via
+   slf4j-jdk-platform-logging) arrive with an unset timestamp of 0. telemere-slf4j
+   renders that as 1970-01-01 because its `when-let` treats the primitive 0 as
+   truthy rather than falling back to the current instant. Rewrite an epoch-0
+   `:inst` to now so bridged log lines get a real timestamp."
+  []
+  (t/set-xfn!
+    (fn [signal]
+      (let [^Instant inst (:inst signal)]
+        (if (and inst (zero? (.toEpochMilli inst)))
+          (assoc signal :inst (Instant/now))
+          signal)))))
 
 (defn- check-port-free! [host port]
   (try
@@ -25,6 +40,7 @@
 (defn start! [{{:keys [host port]
                 :or   {host "127.0.0.1"}} :server
                :as                        config}]
+  (fix-bridged-log-timestamps!)
   (when port
     (check-port-free! host port))
   (let [server (-> {:http-handler (http/app (engine/create config))
