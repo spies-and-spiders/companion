@@ -67,8 +67,7 @@
 (defn uber [{:keys [aliases]}]
   (clean nil)
   (let [namespaces (sns-namespaces ["src" "spi/src"])]
-    (b/copy-dir {:src-dirs   (cond-> ["src" "resources" "spi/src"]
-                                     native? (conj "native"))
+    (b/copy-dir {:src-dirs   ["src" "resources" "spi/src"]
                  :target-dir class-dir})
     (b/compile-clj {:basis      (basis aliases)
                     :ns-compile namespaces
