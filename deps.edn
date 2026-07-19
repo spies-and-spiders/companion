@@ -24,7 +24,7 @@
                  :extra-deps  {org.clojure/tools.namespace {:mvn/version "1.5.1"}}}
 
            :frontend {:extra-deps {no.cjohansen/replicant {:mvn/version "2026.06.2"}
-                                   no.cjohansen/nexus     {:mvn/version "2026.06.4"}
+                                   no.cjohansen/nexus     {:mvn/version "2026.07.1"}
                                    thheller/shadow-cljs   {:mvn/version "3.4.11"}}}
            :graalvm  {:extra-deps  {com.github.clj-easy/graal-build-time {:mvn/version "1.0.6"}
                                     org.clojure/tools.namespace          {:mvn/version "1.5.1"}}
