@@ -1,25 +1,22 @@
 (ns sns.server.reporter.discord
-  "A `Reporter` that posts a loot view-model to a Discord webhook as a rich
-   embed. Uses the JDK HTTP client so no extra dependency is needed."
+  "A `Reporter` that posts a loot view-model to a Discord webhook as a rich embed."
   (:require
     [clojure.edn :as edn]
     [clojure.java.io :as io]
     [clojure.string :as str]
+    [hato.client :as hc]
     [jsonista.core :as j]
     [randy.core :as r]
     [sns.spi.protocols :as p])
   (:import
-    (java.io PushbackReader)
-    (java.net URI)
-    (java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers HttpResponse$BodyHandlers)
-    (java.time Duration)))
+    (java.io PushbackReader)))
 
 (def ^:private default-username "\uD83D\uDCB0 SNS Companion \uD83D\uDCB0")
 (def ^:private words (-> (io/resource "words.edn")
                          io/reader
                          PushbackReader.
                          edn/read))
-(def ^:private gilt 0xC8A24C)              ; embed accent, matching the UI theme
+(def ^:private gilt 0xC8A24C) ; embed accent, matching the UI theme
 
 (defn- loot-message-unique-name []
   (->> (r/sample-without-replacement 2 words)
@@ -47,30 +44,23 @@
             (seq desc) (assoc :description desc))))
 
 (defn- payload [{:keys [avatar-url discord-username]} view-model]
-  (j/write-value-as-string {:content    (str "||" (loot-message-unique-name) "||")
-                            :avatar_url avatar-url
-                            :username   (or discord-username default-username)
-                            :embeds     [(view-model->embed view-model)]}))
+  {:content    (str "||" (loot-message-unique-name) "||")
+   :avatar_url avatar-url
+   :username   (or discord-username default-username)
+   :embeds     [(view-model->embed view-model)]})
 
 (defn create
   "Build a Discord `Reporter` posting to `webhook-url`."
   [{:keys [webhook-url] :as config}]
   (when (str/blank? webhook-url)
     (throw (ex-info "Discord reporting requires a :webhook-url" {})))
-  (let [client (-> (HttpClient/newBuilder)
-                   (.connectTimeout (Duration/ofSeconds 10))
-                   (.build))]
+  (let [client (hc/build-http-client {:connect-timeout 10000})]
     (reify p/Reporter
       (report-label [_] "Send to Discord")
       (report! [_ view-model]
-        (let [req  (-> (HttpRequest/newBuilder (URI/create webhook-url))
-                       (.header "Content-Type" "application/json")
-                       (.timeout (Duration/ofSeconds 10))
-                       (.POST (HttpRequest$BodyPublishers/ofString (payload config view-model)))
-                       (.build))
-              resp (.send client req (HttpResponse$BodyHandlers/ofString))
-              code (.statusCode resp)]
-          (if (<= 200 code 299)
-            {:ok true :status code}
-            (throw (ex-info "Discord webhook rejected the report"
-                            {:status code :body (.body resp)}))))))))
+        (hc/post webhook-url {:http-client  client
+                              :timeout      10000
+                              :content-type :json
+                              :body         (-> (payload config view-model)
+                                                j/write-value-as-string)})
+        nil))))

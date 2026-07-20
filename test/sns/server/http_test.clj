@@ -47,7 +47,7 @@
 (defn- recording-reporter [sink]
   (reify sns.spi.protocols/Reporter
     (report-label [_] "Send to Discord")
-    (report! [_ vm] (reset! sink vm) {:ok true})))
+    (report! [_ vm] (reset! sink vm) nil)))
 
 (deftest capabilities-endpoint
   (testing "no reporter -> only the social-storage flag"
@@ -73,7 +73,6 @@
                                               :reporter (recording-reporter sink)}))
         resp (post app "/api/report" {:view-model {:loot/title "Dust"}})]
     (is (= 200 (:status resp)))
-    (is (= {:ok true} (body resp)))
     (is (= {:loot/title "Dust"} @sink))))
 
 (deftest social-endpoints

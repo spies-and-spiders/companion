@@ -18,7 +18,7 @@
 (defn- recording-reporter [sink]
   (reify p/Reporter
     (report-label [_] "Send")
-    (report! [_ vm] (reset! sink vm) {:ok true})))
+    (report! [_ vm] (reset! sink vm) nil)))
 
 (def ^:private base-config
   {:plugins    [{:type :builtin :id :divine-dust :entrypoint 'sns.builtin.dust/generator}]
@@ -36,7 +36,7 @@
   (let [sink (atom nil)
         eng  (engine/create base-config {:reporter (recording-reporter sink)})]
     (testing "a valid view-model is forwarded to the reporter"
-      (is (= {:ok true} (engine/report! eng {:loot/title "Dust"})))
+      (engine/report! eng {:loot/title "Dust"})
       (is (= {:loot/title "Dust"} @sink)))
     (testing "an invalid view-model is rejected before reaching the reporter"
       (reset! sink nil)
