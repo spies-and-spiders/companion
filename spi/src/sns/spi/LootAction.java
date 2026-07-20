@@ -10,12 +10,6 @@ import java.util.Map;
 public interface LootAction {
 
     /**
-     * Data-only description of the actions this generator supports, keyed by
-     * action name (which becomes a keyword).
-     */
-    Map<String, Models.ActionSpecValue> actionSpec();
-
-    /**
      * Apply {@code action} (the keyword's name) with {@code params}. Returns an
      * updated view-model. {@code ctx} is the opaque engine context map.
      */

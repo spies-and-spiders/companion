@@ -36,12 +36,12 @@
   (let [sink (atom nil)
         eng  (engine/create base-config {:reporter (recording-reporter sink)})]
     (testing "a valid view-model is forwarded to the reporter"
-      (is (= {:ok true} (engine/report eng {:loot/title "Dust"})))
+      (is (= {:ok true} (engine/report! eng {:loot/title "Dust"})))
       (is (= {:loot/title "Dust"} @sink)))
     (testing "an invalid view-model is rejected before reaching the reporter"
       (reset! sink nil)
-      (is (thrown? Exception (engine/report eng {:not "a view-model"})))
+      (is (thrown? Exception (engine/report! eng {:not "a view-model"})))
       (is (nil? @sink)))))
 
 (deftest report-without-reporter-throws
-  (is (thrown? Exception (engine/report (engine/create base-config) {:loot/title "x"}))))
+  (is (thrown? Exception (engine/report! (engine/create base-config) {:loot/title "x"}))))

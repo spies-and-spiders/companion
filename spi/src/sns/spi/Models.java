@@ -50,9 +50,4 @@ public final class Models {
      * and {@code params} are routed back to {@link LootAction#handleAction}.
      */
     public record Action(String label, String action, Map<String, Object> params) { }
-
-    // --- action spec (static description of a loot type's actions) -----------
-
-    /** One action's metadata; {@code params} names its parameters (as keywords). */
-    public record ActionSpecValue(String label, List<String> params) { }
 }

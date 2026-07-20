@@ -3,8 +3,7 @@
    external JAR plugins can depend on this module without pulling in the app."
   (:import
     (java.util HashMap)
-    (java.util.function Function)
-    (sns.spi Models$Action Models$ActionSpecValue Models$Field Models$Item
+    (sns.spi Models$Action Models$Field Models$Item
              Models$LootSpec Models$Section Models$ViewModel)))
 
 (defprotocol LootGenerator
@@ -22,8 +21,6 @@
 (defprotocol LootAction
   "Optional. Stateful follow-up operations on previously generated loot
    (e.g. levelling a relic up). Surfaced to the UI via view-model `:loot/actions`."
-  (action-spec [this]
-    "Data-only description of the actions this generator supports.")
   (handle-action [this ctx action params]
     "Apply `action` (a keyword) with `params`. Returns an updated view-model."))
 
@@ -43,8 +40,7 @@
   (report-label [this]
     "Human label for the report button, e.g. \"Send to Discord\".")
   (report! [this view-model]
-    "Send `view-model` (`sns.spi.schema/view-model`) to the destination. Returns
-     a result map (e.g. {:ok true}); throws ex-info on failure."))
+    "Send `view-model` (`sns.spi.schema/view-model`) to the destination; throws ex-info on failure."))
 
 (defprotocol Store
   "Persistence abstraction. Built-in backends: a MySQL-compatible SQL server, a
@@ -107,8 +103,6 @@
           (seq (.sections vm)) (assoc :loot/sections (mapv section->clj (.sections vm)))
           (seq (.actions vm))  (assoc :loot/actions (mapv #(action->clj loot-id %) (.actions vm)))))
 
-;; --- Clojure data -> Models (for `report`, which receives a view-model) ---
-
 (defn- clj->item [{:item/keys [title body metadata]}]
   (Models$Item. title body metadata))
 
@@ -141,14 +135,6 @@
 
 (extend-type sns.spi.LootAction
   LootAction
-  (action-spec [this] (into {}
-                            (map (juxt (comp keyword key)
-                                       (comp
-                                         (fn [^Models$ActionSpecValue v]
-                                           {:label  (.label v)
-                                            :params (mapv keyword (.params v))})
-                                         val)))
-                            (.actionSpec this)))
   (handle-action [this ctx action params]
     (view-model->clj (loot-id this) (.handleAction this (clj->java-map ctx) (name action) (clj->java-map params)))))
 

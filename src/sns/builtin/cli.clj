@@ -67,8 +67,5 @@
      (generate [_ {:keys [inputs session]}]
        (run id command {:inputs inputs :session session}))
      p/LootAction
-    ;; Actions are declared dynamically in each stdout view-model, so there's no
-    ;; static spec to surface.
-     (action-spec [_] {})
      (handle-action [_ {:keys [session]} action params]
        (run id command {:action action :params params :session session})))))

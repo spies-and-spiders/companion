@@ -113,7 +113,6 @@ backend routes to your `LootAction/handle-action`.
 
 ### `LootAction` (optional — stateful follow-ups)
 ```clojure
-(action-spec   [this])
 (handle-action [this ctx action params]) ; => an updated view-model
 ```
 

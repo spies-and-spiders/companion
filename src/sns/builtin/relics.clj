@@ -77,8 +77,6 @@
         (p/put! store collection (:id relic) relic)
         (view-model progression relic)))
     p/LootAction
-    (action-spec [_]
-      {:level-up {:label "Level up" :params [:relic-id :choice]}})
     (handle-action [_ {:keys [store rng progression]} action {:keys [relic-id choice]}]
       (case action
         :level-up

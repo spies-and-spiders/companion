@@ -12,7 +12,6 @@ public interface Reporter {
 
     /**
      * Send {@code viewModel} to the destination
-     * @return true when the model was reported successfully, otherwise false.
      */
-    boolean report(Models.ViewModel viewModel);
+    void report(Models.ViewModel viewModel);
 }

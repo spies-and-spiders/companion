@@ -6,6 +6,7 @@
     [reitit.http.interceptors.muuntaja :as format]
     [reitit.interceptor.sieppari :as sieppari]
     [reitit.ring :as ring]
+    [ring.util.http-response :refer [ok]]
     [ring.util.response :as response]
     [sns.server.engine :as engine]
     [sns.server.social :as social]
@@ -29,8 +30,6 @@
     (-> muuntaja/default-options
         (assoc :default-format "application/edn")
         (update :formats select-keys ["application/edn"]))))
-
-(defn- ok [body] {:status 200 :body body})
 
 (def ^:private exception-interceptor
   (exception/exception-interceptor
@@ -71,7 +70,8 @@
 
 (defn- report-handler [eng]
   (fn [{{:keys [view-model]} :body-params}]
-    (ok (engine/report eng view-model))))
+    (engine/report! eng view-model)
+    (ok)))
 
 ;; --- the always-on Group Deception & Persuasion tracker (not a plugin) -------
 

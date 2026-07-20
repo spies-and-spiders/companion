@@ -120,7 +120,7 @@
           reporter (assoc :report? true
                           :report-label (p/report-label reporter))))
 
-(defn report
+(defn report!
   "Send a (validated) `view-model` to the configured reporter."
   [{:keys [reporter]} view-model]
   (when-not reporter
