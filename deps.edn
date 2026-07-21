@@ -3,7 +3,7 @@
          sns/spi                              {:local/root "spi"}
          metosin/malli                        {:mvn/version "0.20.1"}
          aero/aero                            {:mvn/version "1.1.6"}
-         com.github.dekelpilli/randy          {:mvn/version "0.0.39"}
+         com.github.dekelpilli/randy          {:mvn/version "0.0.40"}
          org.flatland/ordered                 {:mvn/version "1.15.12"}
          selmer/selmer                        {:mvn/version "1.13.4"}
          com.github.seancorfield/next.jdbc    {:mvn/version "1.3.1118"}
@@ -16,8 +16,10 @@
          metosin/reitit-interceptors          {:mvn/version "0.10.1"}
          metosin/ring-http-response           {:mvn/version "0.9.5"}
          metosin/reitit-sieppari              {:mvn/version "0.10.1"}
+
          ring/ring-core                       {:mvn/version "1.15.5"}
-         com.s-exp/hirundo                    {:mvn/version "1.0.0-alpha214"}
+         com.s-exp/hirundo                    {:mvn/version "1.0.0-alpha214"
+                                               :exclusions  [io.helidon.webserver/helidon-webserver-grpc]}
          com.taoensso/telemere                {:mvn/version "1.2.1"}
          com.taoensso/telemere-slf4j          {:mvn/version "1.2.1"}
          org.slf4j/slf4j-api                  {:mvn/version "2.0.18"}}
