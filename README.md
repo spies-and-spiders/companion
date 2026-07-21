@@ -1,3 +1,6 @@
+[![Check](https://github.com/spies-and-spiders/companion/actions/workflows/check.yaml/badge.svg)](https://github.com/spies-and-spiders/companion/actions/workflows/check.yaml)
+[![sns-spi on Maven Central](https://img.shields.io/maven-central/v/tools.spies/sns-spi?label=tools.spies%2Fsns-spi)](https://central.sonatype.com/artifact/tools.spies/sns-spi)
+
 ## Customising the S&S Companion
 
 There are four types of loot plugins, all used to define custom loot:
