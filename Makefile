@@ -7,6 +7,8 @@ VERSION := $(shell cat VERSION)
 NATIVE_IMAGE := target/companion-$(VERSION)-standalone
 UBERJAR := target/companion.jar
 
+NATIVE_OPT ?= $(if $(CI),-Os,-Ob)
+
 .PHONY: help
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -63,6 +65,8 @@ graalvm: prep frontend ## Build GraalVM Native Image
 	native-image -jar $(UBERJAR) \
 	    -classpath target/classes \
 	    -o $(NATIVE_IMAGE) \
+	    $(NATIVE_OPT) \
+	    --no-fallback \
 	    --features=clj_easy.graal_build_time.InitClojureClasses
 
 # --- test --------------------------------------------------------------------
