@@ -5,7 +5,7 @@
 ;; Copy it to `config.edn` in the directory you run the app from, or
 ;; point at it explicitly:
 ;;
-;;     java -jar sns-companion-standalone.jar --config examples/config.edn
+;;     java -jar companion-<version>-standalone.jar --config examples/config.edn
 ;;
 ;; With no `--config`, the app looks for `config.edn` (then `config.json`) in the
 ;; working directory.
@@ -63,10 +63,11 @@
               ;; UI shows (defaults to the id). Add :utility? true to group it
               ;; under Utilities instead of Disciplines (and bar it from the
               ;; :loot-table).
-           {:type    :cli
-            :id      :weather
-            :label   "Weather"
-            :command ["python3" "examples/cli-plugin/weather.py"]}
+           {:type     :cli
+            :id       :weather
+            :utility? true
+            :label    "Weather"
+            :command  ["python3" "examples/cli-plugin/weather.py"]}
               ;; A generator from an external jar. Put the jar on disk and name
               ;; its generator: either an :entrypoint Clojure var, or — for
               ;; plugins written in Java/Kotlin/Scala with no Clojure — a :class

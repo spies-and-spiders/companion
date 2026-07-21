@@ -48,8 +48,11 @@
                  (case (int (mod n 10)) 1 "st" 2 "nd" 3 "rd" "th"))]
     (str n suffix)))
 
+(declare render)
+
 (defonce ^:private filters-registered
   (do
+    (selmer/add-filter! :render-template (fn [tpl] (render tpl {})))
     (selmer/add-filter! :times times-format)
     (selmer/add-filter! :dice scale-dice)
     (selmer/add-filter! :percentage percentage)

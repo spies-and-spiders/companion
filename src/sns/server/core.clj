@@ -4,10 +4,10 @@
   (:require
     [clojure.java.io :as io]
     [clojure.string :as str]
-    [s-exp.hirundo :as hirundo]
     [sns.server.config :as config]
     [sns.server.engine :as engine]
     [sns.server.http :as http]
+    [sns.server.webserver :as webserver]
     [taoensso.telemere :as t])
   (:import
     (io.helidon.webserver WebServer)
@@ -46,7 +46,7 @@
   (let [server (-> {:http-handler (http/app (engine/create config))
                     :host         host}
                    (cond-> port (assoc :port port))
-                   hirundo/start!)
+                   webserver/start!)
         actual-port (WebServer/.port server)]
     (t/log! {:level :info}
             (str "S&S Companion listening on http://" host ":" actual-port))))
