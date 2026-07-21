@@ -5,6 +5,7 @@
     [clojure.java.io :as io]
     [clojure.java.shell :as shell]
     [clojure.test :refer [deftest is testing]]
+    [sns.server.classpath :as classpath]
     [sns.server.registry :as registry]
     [sns.spi.protocols :as p]))
 
@@ -14,7 +15,11 @@
    (defn generator [_plugin]
      (reify p/LootGenerator
        (loot-spec [_] {:id :test-jar :label \"Test Jar\"})
-       (generate [_ _ctx] {:loot/title \"From a JAR\"})))")
+       (generate [_ _ctx] {:loot/title \"From a JAR\"})))
+   (defn other-generator [_plugin]
+     (reify p/LootGenerator
+       (loot-spec [_] {:id :test-jar-2 :label \"Test Jar 2\"})
+       (generate [_ _ctx] {:loot/title \"Also from a JAR\"})))")
 
 (defn- build-plugin-jar! []
   (let [dir (io/file (System/getProperty "java.io.tmpdir")
@@ -69,6 +74,19 @@
                  :entrypoint 'testplugin.loot/generator})]
       (is (= {:id :test-jar :label "Test Jar"} (p/loot-spec gen)))
       (is (= "From a JAR" (:loot/title (p/generate gen {})))))))
+
+(deftest reuses-loader-across-plugins-from-one-jar
+  (testing "several plugins may name the same jar, which is loaded only once"
+    (let [jar (build-plugin-jar!)
+          reg (registry/build
+                {:plugins [{:type       :jar                       :id :test-jar :jar jar
+                            :entrypoint 'testplugin.loot/generator}
+                           {:type       :jar                             :id :test-jar-2 :jar jar
+                            :entrypoint 'testplugin.loot/other-generator}]})]
+      (is (= "From a JAR" (:loot/title (p/generate (:test-jar reg) {}))))
+      (is (= "Also from a JAR" (:loot/title (p/generate (:test-jar-2 reg) {}))))
+      (is (identical? (classpath/add-jar! jar) (classpath/add-jar! jar))
+          "the same shared classloader is returned rather than a fresh one per call"))))
 
 (deftest loads-class-from-external-jar
   (testing "a :class plugin is constructed via its 0-arity constructor"

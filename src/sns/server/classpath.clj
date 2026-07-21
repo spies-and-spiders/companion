@@ -5,11 +5,22 @@
   (:import
     (clojure.lang DynamicClassLoader RT)))
 
+(defonce ^:private plugin-loader
+  ;; One DynamicClassLoader shared by every jar plugin. Sharing it means jars can
+  ;; see each other's classes, and a jar hosting several plugins is added once
+  ;; rather than defining all its classes again per plugin.
+  (delay (DynamicClassLoader. (RT/baseLoader))))
+
+(defonce ^:private added-jars
+  ;; Canonical paths already added to `plugin-loader`.
+  (atom #{}))
+
 (defn add-jar!
   "Add `path` (a jar file) to the runtime classpath so its namespaces can be
-   required. Creates a DynamicClassLoader parented to the current base loader,
-   adds the jar, and installs it as the thread context classloader so subsequent
-   `requiring-resolve` calls can see the jar's namespaces.
+   required, and install the shared plugin classloader as the thread context
+   classloader so subsequent `requiring-resolve` calls can see the jar's
+   namespaces. Adding a jar already loaded is a no-op, so several plugins may
+   name the same jar.
 
    This resolves plugins at registry-build time (startup). Inside a packaged
    uberjar this still works for resolution, but if a host environment forbids
@@ -19,9 +30,11 @@
   (let [file (io/file path)]
     (when-not (.exists file)
       (throw (ex-info "Plugin jar not found" {:path path})))
-    (let [url    (.. file toURI toURL)
-          loader (doto (DynamicClassLoader. (RT/baseLoader))
-                   (.addURL url))]
+    (let [loader    @plugin-loader
+          canonical (.getCanonicalPath file)
+          [already] (swap-vals! added-jars conj canonical)]
+      (when-not (contains? already canonical)
+        (DynamicClassLoader/.addURL loader (.. file toURI toURL)))
       (.setContextClassLoader (Thread/currentThread) loader)
       loader)))
 
