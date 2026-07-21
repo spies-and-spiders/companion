@@ -5,7 +5,7 @@
 
 VERSION := $(shell cat VERSION)
 NATIVE_IMAGE := target/companion-$(VERSION)-standalone
-UBERJAR := $(NATIVE_IMAGE).jar
+UBERJAR := target/companion.jar
 
 .PHONY: help
 help: ## Show this help

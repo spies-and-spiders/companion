@@ -52,11 +52,14 @@ jobs:
       - name: Generate config schema
         run: make config-schema
 
+      - name: Name uberjar for release
+        run: cp target/companion.jar "companion-${{ github.ref_name }}-standalone.jar"
+
       - name: Upload uberjar
         uses: actions/upload-artifact@v7
         with:
           name: uberjar
-          path: target/companion-${{ github.ref_name }}-standalone.jar
+          path: companion-${{ github.ref_name }}-standalone.jar
           if-no-files-found: error
 
       - name: Upload SPI jar

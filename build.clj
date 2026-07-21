@@ -14,7 +14,7 @@
 (def ^:private version (str/trim (slurp "VERSION")))
 (def ^:private class-dir "target/classes")
 (def ^:private entrypoint 'sns.server.core)
-(def ^:private uber-file (format "target/%s-%s-standalone.jar" (name lib) version))
+(def ^:private uber-file (format "target/%s.jar" (name lib)))
 
 ;; The SPI library jar shipped for plugin authors
 (def ^:private spi-lib 'tools.spies/sns-spi)
