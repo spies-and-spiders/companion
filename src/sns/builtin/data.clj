@@ -31,16 +31,16 @@
   "Sample from the spec's top-level `:items`. `take` (default 1) is how many to
    draw; `weighted` draws with replacement by each entry's `:weight`, otherwise
    draws without replacement."
-  [items {:keys [take weighted]}]
+  [rng items {:keys [take weighted]}]
   (let [pool (enabled items)
         n    (or take 1)]
     (when (empty? pool)
       (throw (ex-info "Draw from empty :items list" {})))
     (cond
-      weighted (mapv (fn [_] (r/weighted-sample (into {} (map (juxt identity :weight)) pool)))
+      weighted (mapv (fn [_] (r/weighted-sample rng (into {} (map (juxt identity :weight)) pool)))
                      (range n))
-      (> n 1)  (vec (r/sample-without-replacement (min n (count pool)) pool))
-      :else    [(r/sample pool)])))
+      (> n 1)  (vec (r/sample-without-replacement rng (min n (count pool)) pool))
+      :else    [(r/sample rng pool)])))
 
 (defn- build-item [render {:keys [title body metadata]} entry]
   (cond-> {:item/body (render body entry)}
@@ -56,9 +56,10 @@
 
 (defn interpret
   "Evaluate `spec` against the request `ctx`, returning a view-model."
-  [spec {:keys [render inputs]}]
-  (let [{:keys [items title subtitle sections]} spec
-        entries   (draw-entries items spec)
+  [spec {:keys [render inputs rng]}]
+  (let [rng       (or rng @r/default-rng)
+        {:keys [items title subtitle sections]} spec
+        entries   (draw-entries rng items spec)
         single    (when (= 1 (count entries)) (first entries))
         ;; templates render against the single drawn entry, with inputs available
         base      (merge (or single {}) inputs)

@@ -100,6 +100,10 @@ backend routes to your `LootAction/handle-action`.
 
 ## Protocols (`sns.spi.protocols`)
 
+**SPI** = *Service Provider Interface*: the contract you implement to plug into the
+Companion, as opposed to an API you call. Everything below lives in the `spi/`
+module, published as `tools.spies/sns-spi`.
+
 ### `LootGenerator` (required)
 ```clojure
 (loot-spec [this])   ; => {:id :relics :label "Relic" :stateful? true :inputs [...]}

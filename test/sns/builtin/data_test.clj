@@ -1,6 +1,7 @@
 (ns sns.builtin.data-test
   (:require
     [clojure.test :refer [deftest is testing]]
+    [randy.rng]
     [sns.builtin.data :as data]
     [sns.server.render :as render]
     [sns.spi.protocols]
@@ -57,6 +58,16 @@
 (deftest utility-flag-surfaces-in-loot-spec
   (let [gen (data/generator :tools {:label "Tools" :utility? true :items [{:name "x"}] :title "t"})]
     (is (true? (:utility? (sns.spi.protocols/loot-spec gen))))))
+
+(deftest honours-injected-rng
+  (testing "draws use the rng threaded through the context, not the global default"
+    (let [spec {:label "Pick" :items [{:name "A"} {:name "B"} {:name "C"}] :title "{{name}}"}
+          ;; a stub rng that always returns index 2 -> "C"
+          rng  (reify randy.rng/RandomNumberGenerator
+                 (next-int [_ _] 2)
+                 (next-int [_ _ _] 2))
+          vm   (data/interpret spec (assoc ctx :rng rng))]
+      (is (= "C" (:loot/title vm))))))
 
 (deftest inputs-available-to-templates
   (testing "input values are interpolable in templates"

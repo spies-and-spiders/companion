@@ -93,3 +93,12 @@
                              {:store (memory/create)})]
       (is (= "Divine Dust" (:loot/title (engine/generate eng :divine-dust))))
       (is (re-find #"Relic" (:loot/subtitle (engine/generate eng :relics)))))))
+
+(deftest input-defaults-fill-blank-values
+  (let [eng (engine/create
+              {:plugins [{:type :data :id :potion :source "test/resources/enum-default.edn"}]})]
+    (testing "a blank enum input falls back to its declared :default"
+      (is (= "common potion" (:loot/title (engine/generate eng :potion {}))))
+      (is (= "common potion" (:loot/title (engine/generate eng :potion {:rarity ""})))))
+    (testing "a provided value overrides the default"
+      (is (= "rare potion" (:loot/title (engine/generate eng :potion {:rarity "rare"})))))))
