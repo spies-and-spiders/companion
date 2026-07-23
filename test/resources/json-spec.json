@@ -1,0 +1,13 @@
+{
+  "label": "Json Spec",
+  "inputs": [
+    {"id": "who", "label": "Who", "type": "text"}
+  ],
+  "items": [
+    {"name": "Only One", "mods": [{"effect": "Effect A", "tags": ["accuracy"]}]}
+  ],
+  "title": "{{name}} for {{who}}",
+  "sections": [
+    {"heading": "Mods", "each": "mods", "item": {"body": "{{effect}}", "metadata": "tags"}}
+  ]
+}
