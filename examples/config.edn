@@ -44,7 +44,9 @@
  ;;              (:divine-dust, :relics). An optional :entrypoint Clojure var
  ;;              overrides the lookup.
  ;;   :data    — a code-free loot type defined entirely in an EDN/JSON spec
- ;;              file (:source is a filesystem path, e.g. relative to config.edn).
+ ;;              file (:source is a filesystem path, e.g. relative to config.edn),
+ ;;              or written straight into this file under :inline (which wins
+ ;;              over :source).
  ;;   :cli     — shell out to any external program (any language). See
  ;;              examples/cli-plugin/weather.py.
  ;;   :jar     — a generator from an external library jar on disk. Only
@@ -53,15 +55,29 @@
  ;; Every plugin needs a unique :id; that id is what the :loot-table references.
  ;; (The Group Deception & Persuasion tracker is part of the app itself — it is
  ;; always available under Utilities and needs no plugin entry.)
+ ;;
+ ;; Any plugin may add :hidden? true to keep itself out of the UI's loot-type
+ ;; picker, so it can only turn up by rolling the :loot-table. (It still appears
+ ;; on the picker while it is the type on screen.)
  :plugins [{:type :builtin :id :divine-dust}
            {:type :builtin :id :relics}
            {:type :data :id :uniques :source "data/uniques.edn"}
            {:type :data :id :rings :source "data/rings.edn"}
+              ;; The same DSL, written inline: handy for a short table you don't
+              ;; want in its own file. :hidden? keeps it off the picker, so an
+              ;; omen only ever arrives as a surprise off the loot-table below.
+           {:type    :data
+            :id      :omens
+            :hidden? true
+            :inline  {:label "Omen"
+                      :items [{:text "A crow lands on the wagon."}
+                              {:text "The lanterns gutter without wind."}]
+                      :title "{{text}}"}}
               ;; A loot generator in any language. :command is the program plus
               ;; args; the engine pipes the request context as JSON on stdin and
               ;; reads a friendly view-model as JSON on stdout. :label is what the
               ;; UI shows (defaults to the id). Add :utility? true to group it
-              ;; under Utilities instead of Disciplines (and bar it from the
+              ;; under Utilities instead of Loot Types (and bar it from the
               ;; :loot-table).
            {:type     :cli
             :id       :weather
@@ -106,4 +122,6 @@
  :loot-table [{:id :divine-dust :weight 40}
               {:id :uniques :weight 25}
               {:id :rings :weight 20}
-              {:id :relics :weight 15}]}
+              {:id :relics :weight 15}
+              ;; :omens is :hidden?, so this is the only way it ever comes up.
+              {:id :omens :weight 5}]}

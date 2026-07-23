@@ -183,23 +183,32 @@
 
 ;; --- loot-type picker --------------------------------------------------------
 
-(defn- type-button [active? event glyph label]
-  [:button.discipline {:class (when active? "discipline--active")
+;; A hidden type only ever appears as a transient row (see `picker`), so it is
+;; styled to read as one: present for now, not part of the standing rail.
+(defn- modifier [{:keys [hidden?]}]
+  (when hidden? "discipline--transient"))
+
+(defn- type-button [active? event glyph label modifier]
+  [:button.discipline {:class [(when active? "discipline--active") modifier]
                        :on    {:click [event]}}
    [:span.discipline__glyph glyph]
    [:span.discipline__name label]])
 
-(defn- type-list [types selected glyph class]
+(defn- type-list [types selected glyph]
   [:ul.rail__list
-   {:class class}
-   (for [{:keys [id label]} types]
+   (for [{:keys [id label] :as spec} types]
      [:li {:replicant/key id}
-      (type-button (= id selected) [:ui/select-type id] glyph label)])])
+      (type-button (= id selected) [:ui/select-type id] glyph label (modifier spec))])])
 
 (defn picker [{:keys [loot-types selected roll-n page]}]
-  (let [utilities     (filterv :utility? loot-types)
-        disciplines   (filterv (complement :utility?) loot-types)
-        loot-selected (when (= :loot page) selected)]
+  (let [loot-selected (when (= :loot page) selected)
+        ;; A hidden type is meant to be reached only by rolling the loot-table,
+        ;; so it stays off the rail — except while it is the type on screen,
+        ;; where it appears (in its config position) so the rail keeps showing
+        ;; what the workbench holds.
+        visible       (filterv #(or (not (:hidden? %)) (= loot-selected (:id %))) loot-types)
+        utilities     (filterv :utility? visible)
+        disciplines   (filterv (complement :utility?) visible)]
     [:nav.rail
      [:div.roll-group
       [:input.roll__input
@@ -212,13 +221,13 @@
       [:button.roll {:on {:click [[:ui/roll]]}}
        (if (str/blank? (str roll-n)) "Roll Loot" (str "Roll " roll-n))]]
      [:p.rail__hint "Enter 1–100 to roll on the table, or leave blank for random."]
-     [:p.rail__eyebrow "Disciplines"]
-     (type-list disciplines loot-selected "◆" nil)
+     [:p.rail__eyebrow "Loot Types"]
+     (type-list disciplines loot-selected "◆")
      [:p.rail__eyebrow.rail__eyebrow--utilities "Utilities"]
      [:ul.rail__list
       ;; the group tracker is part of the app, not a plugin — always present
       [:li {:replicant/key "__social"}
-       (type-button (= :social page) [:ui/open-social] "✦" "Group Social")]
-      (for [{:keys [id label]} utilities]
+       (type-button (= :social page) [:ui/open-social] "✦" "Group Social" nil)]
+      (for [{:keys [id label] :as spec} utilities]
         [:li {:replicant/key id}
-         (type-button (= id loot-selected) [:ui/select-type id] "✦" label)])]]))
+         (type-button (= id loot-selected) [:ui/select-type id] "✦" label (modifier spec))])]]))

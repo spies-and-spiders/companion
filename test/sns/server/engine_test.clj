@@ -79,6 +79,19 @@
                    {:plugins    [{:type :builtin :id :divine-dust}]
                     :loot-table [{:id :nonexistent}]})))))
 
+(deftest folds-config-hidden-into-loot-specs
+  (let [eng (engine/create
+              {:plugins    [{:type :builtin :id :divine-dust :entrypoint 'sns.builtin.dust/generator :hidden? true}
+                            {:type :builtin :id :other :entrypoint 'sns.builtin.dust/generator}]
+               :loot-table [{:id :divine-dust}]})]
+    (testing "the flag is applied by the engine, so it works for a generator that knows nothing of it"
+      (is (= [true nil] (mapv :hidden? (engine/loot-specs eng)))))
+    (testing "a hidden type is still listed (the UI needs its spec) and still rollable"
+      (is (= [:divine-dust :other] (mapv :id (engine/loot-specs eng))))
+      (is (= :divine-dust (:id (engine/roll eng)))))
+    (testing "and is still generable by id, e.g. for a follow-up action"
+      (is (= "Divine Dust" (:loot/title (engine/generate eng :divine-dust)))))))
+
 (deftest rejects-duplicate-ids
   (is (thrown? Exception
                (engine/create
@@ -93,6 +106,18 @@
                              {:store (memory/create)})]
       (is (= "Divine Dust" (:loot/title (engine/generate eng :divine-dust))))
       (is (re-find #"Relic" (:loot/subtitle (engine/generate eng :relics)))))))
+
+(deftest data-inline-spec
+  (let [spec {:label "Omen" :items [{:text "a crow lands"}] :title "{{text}}"}]
+    (testing "an :inline spec is used in place of a file"
+      (let [eng (engine/create {:plugins [{:type :data :id :omens :inline spec}]})]
+        (is (= "a crow lands" (:loot/title (engine/generate eng :omens))))))
+    (testing ":inline takes precedence over :source, which is not read"
+      (let [eng (engine/create {:plugins [{:type   :data
+                                           :id     :omens
+                                           :inline spec
+                                           :source "test/resources/does-not-exist.edn"}]})]
+        (is (= "a crow lands" (:loot/title (engine/generate eng :omens))))))))
 
 (deftest input-defaults-fill-blank-values
   (let [eng (engine/create

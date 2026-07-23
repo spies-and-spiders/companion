@@ -35,8 +35,9 @@
       (factory plugin)
       (throw (ex-info "Unknown builtin plugin" {:id id :known (vec (keys builtins))})))))
 
-(defmethod build-generator :data [{:keys [id source]}]
-  (data/generator id (data/load-spec source)))
+(defmethod build-generator :data [{:keys [id source inline]}]
+  ;; An :inline spec takes precedence over loading one from a :source file.
+  (data/generator id (or inline (data/load-spec source))))
 
 (defmethod build-generator :cli [{:keys [id command label utility?]}]
   (cli/generator id command label utility?))

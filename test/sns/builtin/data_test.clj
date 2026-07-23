@@ -55,6 +55,19 @@
       (is (schema/validate ::schema/view-model vm))
       (is (seq (:loot/title vm))))))
 
+(deftest json-spec-coerces-keyword-positions
+  (testing "a .json spec decodes the positions the DSL reads as keywords"
+    (let [spec (data/load-spec "test/resources/json-spec.json")]
+      (is (= :mods (-> spec :sections first :each)))
+      (is (= :tags (-> spec :sections first :item :metadata)))
+      (is (= [:who :text] (-> spec :inputs first ((juxt :id :type)))))
+      (testing "and renders as an EDN spec would"
+        (let [vm (data/interpret spec (assoc ctx :inputs {:who "Thoros"}))]
+          (is (schema/validate ::schema/view-model vm))
+          (is (= "Only One for Thoros" (:loot/title vm)))
+          (is (= [{:item/body "Effect A" :item/metadata ["accuracy"]}]
+                 (-> vm :loot/sections first :section/items))))))))
+
 (deftest utility-flag-surfaces-in-loot-spec
   (let [gen (data/generator :tools {:label "Tools" :utility? true :items [{:name "x"}] :title "t"})]
     (is (true? (:utility? (sns.spi.protocols/loot-spec gen))))))

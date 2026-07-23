@@ -34,6 +34,7 @@
   "Apply one option's mutation ops (plus any persisted `:rolled` values) to the
    accumulator `{:state :template}`. Ordered so a set/template establishes the
    base, rolled values override, then numeric/text accumulation applies."
+  ;TODO add defmulti to spi, use that from here
   [acc {set-op      :set
         inc-op      :inc
         dec-op      :dec

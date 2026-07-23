@@ -32,6 +32,15 @@ Builtin/`:jar` plugins set `:utility? true` in their loot-spec (Java: the `LootS
 record's `utility` component); `:data` specs set it in the spec file; `:cli` plugins
 set it on the config entry.
 
+A plugin may also be marked **hidden** with `:hidden? true` on its config entry — this
+works for every plugin type, since the engine applies it rather than the generator (so
+a compiled `:jar` plugin can be hidden without touching its code). A hidden type is
+kept out of the UI picker, so the only way to reach it is by rolling the `:loot-table`
+(or from another loot type's action) — useful for loot that should only ever turn up by
+chance. Whichever hidden type is on screen appears on the picker while it is there, so
+the rail always reflects what you're looking at. A hidden type that is in no
+`:loot-table` is unreachable; nothing stops you configuring that.
+
 Separate from plugins, the **Group Deception & Persuasion tracker** is part of the app
 itself: always available under Utilities, with its own page (add characters and their
 two bonuses, tick/untick who's present, roll 1d20 + the group bonus). Its state
@@ -197,7 +206,8 @@ deterministically from it.
 ## The data DSL (`:data`)
 
 A code-free loot type in one EDN (or `.json`) file, loaded from `:source` (a
-filesystem path):
+filesystem path) — or written straight into the config under `:inline`, which
+takes precedence over `:source` when both are given:
 
 ```clojure
 {:label    "Unique"

@@ -11,7 +11,8 @@
     [clojure.string :as str]
     [jsonista.core :as j]
     [randy.core :as r]
-    [sns.spi.protocols :as p])
+    [sns.spi.protocols :as p]
+    [sns.spi.schema :as schema])
   (:import
     (java.io PushbackReader)))
 
@@ -20,7 +21,7 @@
     (when-not (.exists f)
       (throw (ex-info "Data plugin source not found" {:source source})))
     (if (str/ends-with? source ".json")
-      (j/read-value f j/keyword-keys-object-mapper)
+      (schema/decode ::schema/data-spec (j/read-value f j/keyword-keys-object-mapper))
       (with-open [r (PushbackReader. (io/reader f))]
         (edn/read r)))))
 

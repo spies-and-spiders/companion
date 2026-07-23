@@ -15,8 +15,7 @@
   (let [spec (current-spec state)]
     [:div.app
      [:header.topbar
-      [:div.brand [:span.brand__mark "✦"] [:span.brand__name "sns-companion"]]
-      [:p.topbar__tag "loot at the table"]]
+      [:div.brand [:span.brand__mark "✦"] [:span.brand__name "sns-companion"]]]
      [:div.stage
       (render/picker state)
       [:main.workbench
@@ -51,7 +50,7 @@
                    (or (:report-label state) "Send"))])])
            (when (and (nil? (:result state)) (nil? spec))
              [:div.empty
-              [:p.empty__line "Choose a discipline, or roll the hoard."]])))]]]))
+              [:p.empty__line "Choose a loot type, or make a loot roll."]])))]]]))
 
 (defn- render! [state]
   (r/render (js/document.getElementById "app") (view state)))

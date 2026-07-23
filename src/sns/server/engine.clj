@@ -90,9 +90,18 @@
 
 (defn loot-specs
   "Data-only specs for every registered loot type (drives the UI picker/forms),
-   in the order the plugins appear in config."
-  [{:keys [registry]}]
-  (mapv p/loot-spec (vals registry)))
+   in the order the plugins appear in config. A plugin config entry marked
+   `:hidden?` has that folded into its spec here rather than in the generator, so
+   hiding works for every plugin type — including compiled `:jar` plugins that
+   know nothing about it. Hidden types are still returned: the UI needs the spec
+   (label, inputs) to render one that has been rolled off the loot-table."
+  [{:keys [registry config]}]
+  (let [hidden (into #{} (comp (filter :hidden?) (map :id)) (:plugins config))]
+    (mapv (fn [generator]
+            (let [spec (p/loot-spec generator)]
+              (cond-> spec
+                      (hidden (:id spec)) (assoc :hidden? true))))
+          (vals registry))))
 
 (defn generate
   "Generate loot of type `id` with `inputs`, returning a validated view-model."

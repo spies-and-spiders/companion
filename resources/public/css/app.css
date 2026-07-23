@@ -63,14 +63,6 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   font-weight: 600;
   letter-spacing: 0.01em;
 }
-.topbar__tag {
-  margin: 0;
-  font-size: 0.72rem;
-  letter-spacing: 0.32em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
 .stage {
   flex: 1;
   display: grid;
@@ -127,6 +119,10 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .discipline__glyph { color: var(--gilt); font-size: 0.6rem; opacity: 0.5; transition: opacity 0.15s ease; }
 .discipline--active { background: var(--ink-2); border-color: var(--gilt-dim); }
 .discipline--active .discipline__glyph { color: var(--arcane); opacity: 1; }
+/* A hidden loot type, on the rail only while it is the one on screen: dashed
+   and italic so it reads as a passing row rather than a standing entry. */
+.discipline--transient { border-style: dashed; }
+.discipline--transient .discipline__name { font-style: italic; }
 
 .roll-group {
   display: flex;
