@@ -72,3 +72,24 @@
 
 (deftest unknown-option-is-rejected
   (is (thrown? Exception (effect [{:id :nope}]))))
+
+(def ^:private ordering
+  {:state    {:ab 99}
+   :template "base"
+   :upgrades {:select  :choice
+              :options [{:id             :everything
+                         :set            {:ab 1 :dmg 9}
+                         :inc            {:ab 4}
+                         :roll           {:dmg [1 6]}
+                         :assoc-template "{{ab}}/{{dmg}}"}]}})
+
+(deftest ops-apply-in-a-fixed-order
+  (testing ":set establishes the base, :rolled overrides it, then accumulation applies"
+    (is (= "5/3"
+           (:effect (progression/derive-mod render/render ordering
+                                            [{:id :everything :rolled {:dmg 3}}]))))))
+
+(deftest option-keys-that-are-not-ops-are-ignored
+  (testing "graph keys never dispatch as mutations"
+    (is (= {} (:state (progression/derive-mod render/render single-shot
+                                              [{:id :only}]))))))

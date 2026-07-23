@@ -7,7 +7,7 @@
     [hato.client :as hc]
     [jsonista.core :as j]
     [randy.core :as r]
-    [sns.spi.protocols :as p])
+    [sns.sdk.protocols :as p])
   (:import
     (java.io PushbackReader)))
 

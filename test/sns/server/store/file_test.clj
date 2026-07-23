@@ -2,8 +2,8 @@
   (:require
     [clojure.java.io :as io]
     [clojure.test :refer [deftest is testing]]
-    [sns.server.store.file :as file]
-    [sns.spi.protocols :as p]))
+    [sns.sdk.protocols :as p]
+    [sns.server.store.file :as file]))
 
 (defn- temp-dir []
   (str (io/file (System/getProperty "java.io.tmpdir")

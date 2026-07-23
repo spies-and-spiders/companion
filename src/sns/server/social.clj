@@ -5,8 +5,8 @@
    tracker locally instead — see the capabilities endpoint.)"
   (:require
     [randy.rng :as rng]
-    [sns.social :as social]
-    [sns.spi.protocols :as p]))
+    [sns.sdk.protocols :as p]
+    [sns.social :as social]))
 
 (def ^:private collection :__social)
 (def ^:private doc-id "characters")

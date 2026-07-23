@@ -2,10 +2,10 @@
   (:require
     [clojure.java.io :as io]
     [clojure.test :refer [deftest is testing]]
+    [sns.sdk.protocols :as p]
     [sns.server.engine :as engine]
     [sns.server.store.file :as file]
-    [sns.server.store.memory :as memory]
-    [sns.spi.protocols :as p]))
+    [sns.server.store.memory :as memory]))
 
 (def ^:private config
   {:plugins    [{:type :builtin :id :relics :entrypoint 'sns.builtin.relics/generator}]

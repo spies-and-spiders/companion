@@ -7,7 +7,7 @@
     [jsonista.core :as j]
     [malli.core :as m]
     [malli.json-schema :as mjs]
-    [sns.spi.schema :as schema]))
+    [sns.sdk.schema :as schema]))
 
 (defn config-json-schema
   "The config spec rendered as a JSON Schema (a plain Clojure map)."

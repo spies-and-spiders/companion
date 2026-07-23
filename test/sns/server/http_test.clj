@@ -2,10 +2,10 @@
   (:require
     [clojure.edn :as edn]
     [clojure.test :refer [deftest is testing]]
+    [sns.sdk.protocols]
     [sns.server.engine :as engine]
     [sns.server.http :as http]
-    [sns.server.store.memory :as memory]
-    [sns.spi.protocols])
+    [sns.server.store.memory :as memory])
   (:import
     (java.io ByteArrayInputStream)))
 
@@ -45,7 +45,7 @@
     (is (re-find #"level 2" (:loot/subtitle levelled)))))
 
 (defn- recording-reporter [sink]
-  (reify sns.spi.protocols/Reporter
+  (reify sns.sdk.protocols/Reporter
     (report-label [_] "Send to Discord")
     (report! [_ vm] (reset! sink vm) nil)))
 

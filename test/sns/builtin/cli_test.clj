@@ -2,8 +2,8 @@
   (:require
     [clojure.test :refer [deftest is testing]]
     [sns.builtin.cli :as cli]
-    [sns.spi.protocols :as p]
-    [sns.spi.schema :as schema]))
+    [sns.sdk.protocols :as p]
+    [sns.sdk.schema :as schema]))
 
 (deftest converts-stdout-json-to-view-model
   (testing "friendly JSON on stdout becomes a namespaced, valid view-model"

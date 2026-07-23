@@ -1,5 +1,5 @@
 (ns build
-  "Compiles the SPI's Java interfaces and records (the .java files under spi/src)
+  "Compiles the SDK's Java interfaces and records (the .java files under sdk/src)
    into target/classes so the protocols namespace can extend onto them. Wired as
    this lib's `:deps/prep-lib` step, so consumers run it via `clojure -X:deps
    prep`."
@@ -14,4 +14,4 @@
             :class-dir  class-dir
             :basis      (b/create-basis {:project "deps.edn"})
             :javac-opts ["--release" "21"]})
-  (println "Compiled SPI Java interfaces to spi/" class-dir))
+  (println "Compiled SDK Java interfaces to sdk/" class-dir))

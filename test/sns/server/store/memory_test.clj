@@ -1,8 +1,8 @@
 (ns sns.server.store.memory-test
   (:require
     [clojure.test :refer [deftest is testing]]
-    [sns.server.store.memory :as memory]
-    [sns.spi.protocols :as p]))
+    [sns.sdk.protocols :as p]
+    [sns.server.store.memory :as memory]))
 
 (deftest round-trips
   (let [s (memory/create)]

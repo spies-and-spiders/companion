@@ -100,6 +100,22 @@
               :jar   "plugins/homebrew-java.jar"
               :class "my.homebrew.JavaLoot"}]
 
+ ;; --- randoms ---------------------------------------------------------------
+ ;; Optional. Named lists any plugin's templates can draw a value from while an
+ ;; item is being rendered, with the `random` filter:
+ ;;
+ ;;   "You gain the {{ \"\"|random:feats }} feat."
+ ;;   "Resistance to {{ \"\"|random:damage-types }} damage."
+ ;;   "Proficiency in {{ \"\"|random:without-replacement:2:skills }}."
+ ;;
+ ;; The app ships no vocabulary of its own — these lists are your campaign's
+ ;; content. Two presets are always available regardless: :literal (values
+ ;; written in the template, e.g. random:literal:north:south) and
+ ;; :without-replacement (draw N distinct values from another preset).
+ :randoms {:feats        ["Alert" "Athlete" "Brawler" "Charger" "Durable"]
+           :skills       ["Athletics" "Deception" "Insight" "Stealth"]
+           :damage-types ["acid" "cold" "fire" "lightning" "necrotic" "radiant"]}
+
  ;; --- reporting -------------------------------------------------------------
  ;; Optional. Enables the per-item "Send to Discord" button, posting the rolled
  ;; loot to a webhook as a rich embed.

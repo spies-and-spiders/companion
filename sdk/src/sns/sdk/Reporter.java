@@ -1,9 +1,9 @@
-package sns.spi;
+package sns.sdk;
 
 /**
  * Optional. Sends a generated loot view-model to an external destination (e.g. a
  * Discord webhook). Config-driven via {@code :reporting}. Mirrors the {@code
- * sns.spi.protocols/Reporter} protocol.
+ * sns.sdk.protocols/Reporter} protocol.
  */
 public interface Reporter {
 

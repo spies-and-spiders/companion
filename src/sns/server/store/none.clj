@@ -2,7 +2,7 @@
   "No-op `Store` for DMs who run only stateless loot types. Nothing is ever
    persisted: reads find nothing and writes are discarded."
   (:require
-    [sns.spi.protocols :as p]))
+    [sns.sdk.protocols :as p]))
 
 (defrecord NoneStore []
   p/Store

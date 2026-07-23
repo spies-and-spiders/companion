@@ -2,10 +2,10 @@
   (:require
     [clojure.test :refer [deftest is testing]]
     [randy.core :as r]
+    [sns.sdk.protocols :as p]
     [sns.server.social :as social]
     [sns.server.store.memory :as memory]
-    [sns.social :as pure]
-    [sns.spi.protocols :as p]))
+    [sns.social :as pure]))
 
 (deftest group-bonus-weighted-average
   (testing "the documented example: top two bonuses counted twice"

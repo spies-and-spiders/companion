@@ -4,15 +4,15 @@
    `:take`/`:weighted` draw controls, and a view template; the interpreter
    samples and renders it to a view-model.
 
-   This is the workhorse for DMs who don't write Clojure. See spi/README.md."
+   This is the workhorse for DMs who don't write Clojure. See the README."
   (:require
     [clojure.edn :as edn]
     [clojure.java.io :as io]
     [clojure.string :as str]
     [jsonista.core :as j]
     [randy.core :as r]
-    [sns.spi.protocols :as p]
-    [sns.spi.schema :as schema])
+    [sns.sdk.protocols :as p]
+    [sns.sdk.schema :as schema])
   (:import
     (java.io PushbackReader)))
 

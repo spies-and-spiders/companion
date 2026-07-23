@@ -16,19 +16,22 @@
 (def ^:private entrypoint 'sns.server.core)
 (def ^:private uber-file (format "target/%s.jar" (name lib)))
 
-;; The SPI library jar shipped for plugin authors
-(def ^:private spi-lib 'tools.spies/sns-spi)
-(def ^:private spi-class-dir "target/spi-classes")
-(def ^:private spi-javadoc-dir "target/spi-javadoc")
-(def ^:private spi-jar-file (format "target/sns-spi-%s.jar" version))
-(def ^:private spi-pom-file (format "target/sns-spi-%s.pom" version))
-(def ^:private spi-sources-jar-file (format "target/sns-spi-%s-sources.jar" version))
-(def ^:private spi-javadoc-jar-file (format "target/sns-spi-%s-javadoc.jar" version))
+;; The SDK library jar shipped for plugin authors
+(def ^:private sdk-lib 'tools.spies/sns-companion-sdk)
+(def ^:private sdk-class-dir "target/sdk-classes")
+(def ^:private sdk-javadoc-dir "target/sdk-javadoc")
+;; Consistently named (unversioned) like the uberjar, so local commands and CI
+;; steps never have to know the version; the release workflow stamps the version
+;; into the filenames Maven Central requires.
+(def ^:private sdk-jar-file (format "target/%s.jar" (name sdk-lib)))
+(def ^:private sdk-pom-file (format "target/%s.pom" (name sdk-lib)))
+(def ^:private sdk-sources-jar-file (format "target/%s-sources.jar" (name sdk-lib)))
+(def ^:private sdk-javadoc-jar-file (format "target/%s-javadoc.jar" (name sdk-lib)))
 
 (def ^:private github-url "https://github.com/spies-and-spiders/companion")
 
-(def ^:private spi-pom-data
-  [[:description "Service-provider interfaces for sns-companion loot plugins: the Java interfaces, Clojure protocols, and data schemas plugin authors implement against."]
+(def ^:private sdk-pom-data
+  [[:description "The sns-companion plugin SDK: the Java interfaces, Clojure protocols and data schemas loot plugins implement against, plus the shared logic (config schemas, template randoms, upgrade-graph ops) they build on."]
    [:url github-url]
    [:licenses
     [:license
@@ -65,61 +68,62 @@
 (defn clean [_]
   (b/delete {:path "target"}))
 
-(defn- spi-javadoc []
-  (b/delete {:path spi-javadoc-dir})
+(defn- sdk-javadoc []
+  (b/delete {:path sdk-javadoc-dir})
   (let [java-files (into []
                          (comp (filter #(str/ends-with? (.getName ^java.io.File %) ".java"))
                                (map str))
-                         (file-seq (io/file "spi/src")))
-        {:keys [exit]} (b/process {:command-args (into ["javadoc" "-d" spi-javadoc-dir
+                         (file-seq (io/file "sdk/src")))
+        {:keys [exit]} (b/process {:command-args (into ["javadoc" "-d" sdk-javadoc-dir
                                                         "-quiet" "-Xdoclint:none"
                                                         "--release" "21"]
                                                        (sort java-files))})]
     (when-not (zero? exit)
-      (throw (ex-info "javadoc failed for SPI sources" {:exit exit}))))
-  (b/jar {:class-dir spi-javadoc-dir
-          :jar-file  spi-javadoc-jar-file}))
+      (throw (ex-info "javadoc failed for SDK sources" {:exit exit}))))
+  (b/jar {:class-dir sdk-javadoc-dir
+          :jar-file  sdk-javadoc-jar-file}))
 
-(defn spi-jar
-  "Build the standalone SPI library jar plugin authors depend on: the `spi/src`
-   Clojure sources (`sns.spi.protocols`/`sns.spi.schema`) plus the compiled Java
-   interfaces and records. Shipped as a release artifact and deployed to Maven
+(defn sdk-jar
+  "Build the standalone SDK library jar plugin authors depend on: the `sdk/src`
+   Clojure sources (`sns.sdk.protocols`/`sns.sdk.schema`/`sns.sdk.randoms`/
+   `sns.sdk.progression`) plus the compiled Java interfaces and records. Shipped
+   as a release artifact and deployed to Maven
    Central, so this also produces the pom, -sources jar, and -javadoc jar
    Central requires."
   [_]
-  (b/delete {:path spi-class-dir})
-  (b/copy-dir {:src-dirs   ["spi/src"]
-               :target-dir spi-class-dir})
-  (b/copy-file {:src    "spi/LICENSE"
-                :target (str spi-class-dir "/META-INF/LICENSE")})
-  (b/javac {:src-dirs   ["spi/src"]
-            :class-dir  spi-class-dir
-            :basis      (b/create-basis {:project "spi/deps.edn"})
+  (b/delete {:path sdk-class-dir})
+  (b/copy-dir {:src-dirs   ["sdk/src"]
+               :target-dir sdk-class-dir})
+  (b/copy-file {:src    "sdk/LICENSE"
+                :target (str sdk-class-dir "/META-INF/LICENSE")})
+  (b/javac {:src-dirs   ["sdk/src"]
+            :class-dir  sdk-class-dir
+            :basis      (b/create-basis {:project "sdk/deps.edn"})
             :javac-opts ["--release" "21"]})
-  (b/write-pom {:class-dir spi-class-dir
-                :lib       spi-lib
+  (b/write-pom {:class-dir sdk-class-dir
+                :lib       sdk-lib
                 :version   version
-                :basis     (b/create-basis {:project "spi/deps.edn"})
-                :src-dirs  ["spi/src"]
+                :basis     (b/create-basis {:project "sdk/deps.edn"})
+                :src-dirs  ["sdk/src"]
                 :scm       {:url                 github-url
                             :connection          (str "scm:git:" github-url ".git")
                             :developerConnection (str "scm:git:ssh://git@github.com/spies-and-spiders/companion.git")
                             :tag                 version}
-                :pom-data  spi-pom-data})
-  (b/jar {:class-dir spi-class-dir
-          :jar-file  spi-jar-file})
+                :pom-data  sdk-pom-data})
+  (b/jar {:class-dir sdk-class-dir
+          :jar-file  sdk-jar-file})
   (b/copy-file {:src    (format "%s/META-INF/maven/%s/%s/pom.xml"
-                                spi-class-dir (namespace spi-lib) (name spi-lib))
-                :target spi-pom-file})
-  (b/jar {:class-dir "spi/src"
-          :jar-file  spi-sources-jar-file})
-  (spi-javadoc)
-  (println "Built" spi-jar-file "+ pom, sources, and javadoc jars"))
+                                sdk-class-dir (namespace sdk-lib) (name sdk-lib))
+                :target sdk-pom-file})
+  (b/jar {:class-dir "sdk/src"
+          :jar-file  sdk-sources-jar-file})
+  (sdk-javadoc)
+  (println "Built" sdk-jar-file "+ pom, sources, and javadoc jars"))
 
 (defn uber [{:keys [aliases]}]
   (clean nil)
-  (let [namespaces (sns-namespaces ["src" "spi/src"])]
-    (b/copy-dir {:src-dirs   ["src" "resources" "spi/src"]
+  (let [namespaces (sns-namespaces ["src" "sdk/src"])]
+    (b/copy-dir {:src-dirs   ["src" "resources" "sdk/src"]
                  :target-dir class-dir})
     (b/compile-clj {:basis      (basis aliases)
                     :ns-compile namespaces

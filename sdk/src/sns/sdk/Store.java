@@ -1,11 +1,11 @@
-package sns.spi;
+package sns.sdk;
 
 import java.util.function.Function;
 
 /**
  * Persistence abstraction. Built-in backends are a MySQL-compatible SQL server, a
  * file per collection, or in-memory; a plugin may supply its own by implementing
- * this interface. Mirrors the {@code sns.spi.protocols/Store} protocol. {@code
+ * this interface. Mirrors the {@code sns.sdk.protocols/Store} protocol. {@code
  * coll} is a collection keyword and {@code id} a document key.
  */
 public interface Store {

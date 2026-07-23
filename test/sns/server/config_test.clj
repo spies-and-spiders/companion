@@ -4,8 +4,8 @@
     [clojure.java.io :as io]
     [clojure.test :refer [deftest is testing]]
     [malli.error :as me]
-    [sns.server.config :as config]
-    [sns.spi.schema :as schema]))
+    [sns.sdk.schema :as schema]
+    [sns.server.config :as config]))
 
 (defn- write-temp-json [content]
   (let [f (java.io.File/createTempFile "sns-config" ".json")]

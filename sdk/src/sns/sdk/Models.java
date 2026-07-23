@@ -1,4 +1,4 @@
-package sns.spi;
+package sns.sdk;
 
 import java.util.List;
 import java.util.Map;
@@ -6,8 +6,8 @@ import java.util.Map;
 /**
  * Typed data shapes exchanged with plugins, so JVM-language authors build and
  * receive records instead of untyped maps. The Clojure bridge in {@code
- * sns.spi.protocols} converts each record to/from the idiomatic namespaced
- * Clojure data the engine and UI use (see {@code sns.spi.schema}).
+ * sns.sdk.protocols} converts each record to/from the idiomatic namespaced
+ * Clojure data the engine and UI use (see {@code sns.sdk.schema}).
  */
 public final class Models {
     private Models() {}
@@ -18,7 +18,7 @@ public final class Models {
      * Static description of a loot type. {@code id} becomes a keyword; {@code
      * inputs} may be null/empty. A {@code utility} is a session tool rather than
      * loot: grouped separately in the UI and barred from the loot-table.
-     * Conforms to {@code sns.spi.schema/loot-spec}.
+     * Conforms to {@code sns.sdk.schema/loot-spec}.
      */
     public record LootSpec(String id, String label, boolean stateful, List<Field> inputs, boolean utility) {
         public LootSpec(String id, String label) { this(id, label, false, null, false); }
@@ -34,7 +34,7 @@ public final class Models {
 
     // --- view-model (what a loot type returns) -------------------------------
 
-    /** A rendered loot result. Conforms to {@code sns.spi.schema/view-model}. */
+    /** A rendered loot result. Conforms to {@code sns.sdk.schema/view-model}. */
     public record ViewModel(String title, String subtitle, List<Section> sections, List<Action> actions) {
         public ViewModel(String title) { this(title, null, null, null); }
     }

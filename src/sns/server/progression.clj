@@ -2,19 +2,45 @@
   "Default `Progression`: interprets the upgrade-graph DSL. Upgrades transform
    structured *state*; the effect text is derived (rendered once) from the
    accumulated state. This is what makes choosing the same option N times
-   well-defined — see the architecture plan."
-  (:require
-    [randy.rng :as rng]
-    [sns.spi.protocols :as p]))
+   well-defined — see the architecture plan.
 
-(defn roll-option
-  "Build the persisted path-step for taking `option`, rolling any `:roll` specs
-   with `rng` (inclusive bounds). The rolled values are recorded under `:rolled`
-   so the resulting effect re-derives deterministically."
-  [rng-impl {:keys [id roll]}]
-  (cond-> {:id id}
-          roll (assoc :rolled (update-vals roll (fn [[lo hi]]
-                                                  (rng/next-int rng-impl lo (inc hi)))))))
+   The graph walk lives here; the *ops* an option may carry are the open
+   vocabulary in `sns.sdk.progression`, so a plugin extends what an upgrade can
+   do without replacing this interpreter."
+  (:require
+    [sns.sdk.progression :as sp]
+    [sns.sdk.protocols :as p]))
+
+(def ^:private structural-keys
+  "Keys on an option that describe the graph rather than mutate state, so they
+   are never dispatched as ops. Everything else on an option is an op — which is
+   what makes a typo'd op an error rather than a silent no-op."
+  #{:id :repeatable :upgrades :roll})
+
+(def ^:private op-order
+  "The built-in ops in application order: a template swap and `:set` establish
+   the base, the step's persisted `:rolled` values override them, then the
+   accumulating ops apply. Ops outside this list (a plugin's own) are applied
+   afterwards in name order, so an option's ops resolve identically on every
+   derivation regardless of map ordering."
+  [:assoc-template :set :rolled :inc :dec :append :conj :enable :disable])
+
+(defn- ordered
+  "The keys of `ops`, sorted into `op-order` with unknown (plugin) ops last."
+  [ops]
+  (let [order (zipmap op-order (range))]
+    (sort-by (fn [op] [(get order op (count op-order)) (name op)])
+             (keys ops))))
+
+(defn- apply-ops
+  "Apply every op on `option` — plus the step's persisted `rolled` values — to
+   the accumulator `acc`."
+  [acc option rolled]
+  (let [ops (cond-> (apply dissoc option structural-keys)
+                    (seq rolled) (assoc :rolled rolled))]
+    (reduce (fn [acc op] (sp/apply-op acc op (get ops op)))
+            acc
+            (ordered ops))))
 
 (defn- find-option [upgrades id]
   (->> (:options upgrades)
@@ -30,34 +56,6 @@
   [current option]
   (or (:upgrades option) current))
 
-(defn- apply-option
-  "Apply one option's mutation ops (plus any persisted `:rolled` values) to the
-   accumulator `{:state :template}`. Ordered so a set/template establishes the
-   base, rolled values override, then numeric/text accumulation applies."
-  ;TODO add defmulti to spi, use that from here
-  [acc {set-op      :set
-        inc-op      :inc
-        dec-op      :dec
-        append-op   :append
-        conj-op     :conj
-        template-op :assoc-template
-        enable-op   :enable
-        disable-op  :disable}
-   rolled]
-  (cond-> acc
-          template-op (assoc :template template-op)
-          set-op      (update :state merge set-op)
-          rolled      (update :state merge rolled)
-          inc-op      (update :state #(merge-with + % inc-op))
-          dec-op      (update :state #(merge-with - % dec-op))
-          append-op   (update :state #(merge-with str % append-op))
-          conj-op     (update :state (fn [s]
-                                       (reduce-kv (fn [s k v]
-                                                    (update s k (fnil conj []) v))
-                                                  s conj-op)))
-          enable-op   (update :state #(reduce (fn [s k] (assoc s k true)) % enable-op))
-          disable-op  (update :state #(reduce (fn [s k] (assoc s k false)) % disable-op))))
-
 (defn derive-mod
   "Fold the chosen `path` over `base` mod and render. Returns `base` with its
    final `:state`, active `:template`, and the rendered `:effect`. `render` is
@@ -68,7 +66,7 @@
                   (let [option (or (find-option upgrades id)
                                    (throw (ex-info "Unknown upgrade option"
                                                    {:id id :available (mapv :id (:options upgrades))})))]
-                    (-> (apply-option acc option rolled)
+                    (-> (apply-ops acc option rolled)
                         (assoc :upgrades (next-upgrades upgrades option)))))
                 (-> (select-keys base [:state :template])
                     (assoc :upgrades (:upgrades base)))

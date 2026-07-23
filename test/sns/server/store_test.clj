@@ -2,8 +2,8 @@
   (:require
     [clojure.java.io :as io]
     [clojure.test :refer [deftest is testing]]
-    [sns.server.store :as store]
-    [sns.spi.protocols :as p]))
+    [sns.sdk.protocols :as p]
+    [sns.server.store :as store]))
 
 (deftest from-config-selects-backend
   (testing "defaults to in-memory"

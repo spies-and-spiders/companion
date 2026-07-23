@@ -3,13 +3,14 @@
    milestones) state and template rendering, and emits validated view-models."
   (:require
     [randy.core :as r]
+    [sns.sdk.protocols :as p]
+    [sns.sdk.randoms :as randoms]
+    [sns.sdk.schema :as schema]
     [sns.server.progression :as progression]
     [sns.server.registry :as registry]
     [sns.server.render :as render]
     [sns.server.reporter :as reporter]
-    [sns.server.store :as store]
-    [sns.spi.protocols :as p]
-    [sns.spi.schema :as schema])
+    [sns.server.store :as store])
   (:import
     (java.util.random RandomGeneratorFactory)))
 
@@ -28,6 +29,14 @@
                    :entries (conj entries {:id id :max (long (Math/ceil (* 100.0 (/ acc total))))})}))
               {:acc 0 :entries []}
               table))))
+
+(defn- install-randoms!
+  "Install each config-declared preset as a `randoms/preset` method, so a DM's
+   `:randoms` and a plugin's own presets are the same mechanism. Config is
+   applied after the plugins are built, so it wins on a name clash."
+  [randoms]
+  (doseq [[id values] randoms]
+    (defmethod randoms/preset id [_ _] values)))
 
 (defn- validate-table!
   "Every loot-table entry must reference a registered, rollable loot type;
@@ -54,6 +63,9 @@
      (p/setup! store)
      (when (seq table)
        (validate-table! registry table))
+     ;; Config-declared random presets, usable from any plugin's templates as
+     ;; `{{ ""|random:<preset> }}`.
+     (install-randoms! (:randoms config))
      {:config          config
       :registry        registry
       :store           store
@@ -106,13 +118,16 @@
 (defn generate
   "Generate loot of type `id` with `inputs`, returning a validated view-model."
   ([engine id] (generate engine id {}))
-  ([{:keys [registry] :as engine} id inputs]
+  ([{:keys [registry rng] :as engine} id inputs]
    (let [generator (or (get registry id)
                        (throw (ex-info "Unknown loot type" {:id id :known (keys registry)})))
          inputs    (apply-input-defaults (p/loot-spec generator) inputs)]
-     (->> (ctx engine inputs)
-          (p/generate generator)
-          (schema/assert! ::schema/view-model)))))
+     ;; `random` template filters draw from the request's rng, wherever
+     ;; downstream the rendering happens.
+     (randoms/with-rng rng
+       (->> (ctx engine inputs)
+            (p/generate generator)
+            (schema/assert! ::schema/view-model))))))
 
 (defn- roll->id
   "Resolve the entered d100 roll `n` (1-100) to a loot type via the allocation."
@@ -154,10 +169,11 @@
 (defn handle-action
   "Dispatch a stateful follow-up `action` (with `params`) to loot type `id`,
    returning an updated, validated view-model."
-  [{:keys [registry] :as engine} id action params]
+  [{:keys [registry rng] :as engine} id action params]
   (let [generator (or (get registry id)
                       (throw (ex-info "Unknown loot type" {:id id})))]
     (when-not (satisfies? p/LootAction generator)
       (throw (ex-info "Loot type does not support actions" {:id id})))
-    (->> (p/handle-action generator (ctx engine nil) action params)
-         (schema/assert! ::schema/view-model))))
+    (randoms/with-rng rng
+      (->> (p/handle-action generator (ctx engine nil) action params)
+           (schema/assert! ::schema/view-model)))))

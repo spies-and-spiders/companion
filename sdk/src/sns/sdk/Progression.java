@@ -1,10 +1,10 @@
-package sns.spi;
+package sns.sdk;
 
 /**
  * How a single mod evolves. The default implementation interprets the
- * upgrade-graph DSL ({@code sns.spi.schema/mod}); plugins may supply bespoke
+ * upgrade-graph DSL ({@code sns.sdk.schema/mod}); plugins may supply bespoke
  * logic by implementing this interface. Mirrors the {@code
- * sns.spi.protocols/Progression} protocol.
+ * sns.sdk.protocols/Progression} protocol.
  */
 public interface Progression {
 

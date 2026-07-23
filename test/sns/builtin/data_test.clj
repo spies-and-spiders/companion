@@ -3,9 +3,11 @@
     [clojure.test :refer [deftest is testing]]
     [randy.rng]
     [sns.builtin.data :as data]
-    [sns.server.render :as render]
-    [sns.spi.protocols]
-    [sns.spi.schema :as schema]))
+    [sns.sdk.protocols]
+    [sns.sdk.schema :as schema]
+    [sns.server.render :as render])
+  (:import
+    (java.util.random RandomGeneratorFactory)))
 
 (def ^:private ctx {:render render/render :inputs {}})
 
@@ -47,11 +49,29 @@
       (is (= 2 (count items)))
       (is (every? :item/title items)))))
 
+(deftest multi-draw-works-with-the-engine-rng
+  ;; regression: drawing without replacement went through randy's shuffle
+  ;; strategy whenever take/pool was over ~2/11, which threw for any rng that
+  ;; was not a java.util.Random — including the RandomGenerator the engine
+  ;; builds. The existing multi-draw tests missed it by falling back to randy's
+  ;; default rng, which *is* a java.util.Random.
+  (testing "a small pool (so the shuffle strategy is chosen) draws with the engine's rng"
+    (let [spec  {:label    "Rings"
+                 :items    [{:name "A"} {:name "B"} {:name "C"}]
+                 :take     2
+                 :title    "Two rings"
+                 :sections [{:each :items :item {:body "{{name}}"}}]}
+          rng   (.create (RandomGeneratorFactory/of "L64X128MixRandom"))
+          items (-> (data/interpret spec (assoc ctx :rng rng))
+                    :loot/sections first :section/items)]
+      (is (= 2 (count items)))
+      (is (= 2 (count (set (map :item/body items))))))))
+
 (deftest enabled-filtering-and-loaded-from-file
   (testing "the shipped uniques.edn loads and produces a valid view-model"
     (let [spec (data/load-spec "data/uniques.edn")
           gen  (data/generator :uniques spec)
-          vm   (sns.spi.protocols/generate gen ctx)]
+          vm   (sns.sdk.protocols/generate gen ctx)]
       (is (schema/validate ::schema/view-model vm))
       (is (seq (:loot/title vm))))))
 
@@ -70,7 +90,7 @@
 
 (deftest utility-flag-surfaces-in-loot-spec
   (let [gen (data/generator :tools {:label "Tools" :utility? true :items [{:name "x"}] :title "t"})]
-    (is (true? (:utility? (sns.spi.protocols/loot-spec gen))))))
+    (is (true? (:utility? (sns.sdk.protocols/loot-spec gen))))))
 
 (deftest honours-injected-rng
   (testing "draws use the rng threaded through the context, not the global default"

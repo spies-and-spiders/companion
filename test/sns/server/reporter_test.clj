@@ -1,9 +1,9 @@
 (ns sns.server.reporter-test
   (:require
     [clojure.test :refer [deftest is testing]]
+    [sns.sdk.protocols :as p]
     [sns.server.engine :as engine]
-    [sns.server.reporter :as reporter]
-    [sns.spi.protocols :as p]))
+    [sns.server.reporter :as reporter]))
 
 (deftest from-config-selects-backend
   (testing "nil when reporting is not configured"

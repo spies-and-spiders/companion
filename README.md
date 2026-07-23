@@ -1,5 +1,5 @@
 [![Check](https://github.com/spies-and-spiders/companion/actions/workflows/check.yaml/badge.svg)](https://github.com/spies-and-spiders/companion/actions/workflows/check.yaml)
-[![sns-spi on Maven Central](https://img.shields.io/maven-central/v/tools.spies/sns-spi?label=tools.spies%2Fsns-spi)](https://central.sonatype.com/artifact/tools.spies/sns-spi)
+[![sns-companion-sdk on Maven Central](https://img.shields.io/maven-central/v/tools.spies/sns-companion-sdk?label=tools.spies%2Fsns-companion-sdk)](https://central.sonatype.com/artifact/tools.spies/sns-companion-sdk)
 
 ## Customising the S&S Companion
 
@@ -107,11 +107,21 @@ backend routes to your `LootAction/handle-action`.
 ### TODO: Update the below slop
 
 
-## Protocols (`sns.spi.protocols`)
+## The plugin SDK (`sns.sdk.*`)
 
-**SPI** = *Service Provider Interface*: the contract you implement to plug into the
-Companion, as opposed to an API you call. Everything below lives in the `spi/`
-module, published as `tools.spies/sns-spi`.
+Everything below lives in the `sdk/` module, published as
+**`tools.spies/sns-companion-sdk`** — the one dependency a plugin needs, and the only
+part of this repo with a stable contract.
+
+| Namespace | What it gives you |
+|---|---|
+| `sns.sdk.protocols` | the protocols you implement (`LootGenerator`, `LootAction`, `Progression`, `Reporter`, `Store`), and the Java interfaces they are bridged onto |
+| `sns.sdk.schema` | the malli schemas for every shape crossing the boundary (loot-spec, view-model, upgrade graph, config) |
+| `sns.sdk.randoms` | the `random` template filter and its preset vocabulary |
+| `sns.sdk.progression` | the upgrade-graph op vocabulary and `roll-option` |
+
+The first two are contracts you implement; the last two are shared logic you can use
+and extend without depending on the app.
 
 ### `LootGenerator` (required)
 ```clojure
@@ -123,7 +133,8 @@ module, published as `tools.spies/sns-spi`.
 - `:rng` — a randy RNG (or use randy's default-rng functions).
 - `:store` — the `Store` (see below) for stateful loot.
 - `:render` — `(fn [template state] -> string)`, Selmer with cosmetic filters
-  (`times`, `dice`, `ordinal`, `percentage`).
+  (`times`, `dice`, `ordinal`, `percentage`) plus `random` (see below). It is
+  already bound to `:rng` for the duration of the call.
 - `:progression` — the default `Progression` (upgrade-graph interpreter).
 - `:inputs` — values collected from the loot-spec's declared `:inputs`.
 
@@ -201,6 +212,67 @@ Op vocabulary on an option: `:set` `:roll` (rolled at selection, persisted)
 progression is a `path` of `{:id … :rolled {…}}` steps; the effect re-derives
 deterministically from it.
 
+The vocabulary is **open**: each op is a method of `sns.sdk.progression/apply-op`,
+so a plugin can add one without replacing the graph interpreter.
+
+```clojure
+(ns my.plugin
+  (:require [sns.sdk.progression :as sp]))
+
+(defmethod sp/apply-op :multiply [acc _ m]
+  (update acc :state #(merge-with * % m)))
+
+;; …now usable in any upgrade graph: {:id :doubled :multiply {:ab 2}}
+```
+
+Only the vocabulary is shared — the interpreter that folds ops over a path is the
+`Progression` handed to you on the context. It applies ops in a fixed order (a
+template swap and `:set` first, then the step's persisted `:rolled`, then the
+accumulating ops), with plugin ops last in name order, so a mod derives identically
+every time. Anything on an option that isn't a structural key (`:id` `:repeatable`
+`:upgrades` `:roll`) is treated as an op, so a typo'd op name is an error rather
+than a silent no-op.
+
+---
+
+## Randoms (`{{ ""|random:… }}`)
+
+Templates can draw a random value *at render time* — for effect text like "you gain
+the Alert feat" where the feat is rolled per item. Declare the vocabulary in config:
+
+```clojure
+:randoms {:feats  ["Alert" "Athlete" "Brawler"]
+          :skills ["Athletics" "Deception" "Insight" "Stealth"]}
+```
+
+and draw from it in any plugin's template (the piped value is ignored — `""` is
+the conventional placeholder):
+
+```clojure
+"You gain the {{ \"\"|random:feats }} feat."
+"You head {{ \"\"|random:literal:north:south:east:west }}."
+;; a multi-draw returns a collection, so bind it and index the values:
+"{% with x=v|random:without-replacement:2:skills %}Proficiency in {{x.0}} and {{x.1}}.{% endwith %}"
+```
+
+Two presets are always available: **`:literal`** (values written inline in the
+template) and **`:without-replacement`** (N distinct values from another preset).
+Everything else is your campaign's content — the app ships no vocabulary of its own.
+
+Draws use the rng of the request being served, so a generated item is reproducible
+from its seed. A `:jar` plugin can add presets in code, and use the filter in its
+own rendering by depending on the SDK alone:
+
+```clojure
+(ns my.plugin
+  (:require [sns.sdk.randoms :as randoms]))
+
+(defmethod randoms/preset :monster-types [_ _]
+  ["aberration" "beast" "celestial" "construct"])
+
+;; or, outside a render: (randoms/sample-preset rng :monster-types)
+```
+
 ---
 
 ## The data DSL (`:data`)
@@ -271,7 +343,7 @@ Depend on this module, implement `LootGenerator`, and expose a factory:
 
 ```clojure
 (ns my.plugin
-  (:require [sns.spi.protocols :as p]))
+  (:require [sns.sdk.protocols :as p]))
 
 (defn generator [_plugin-config]
   (reify p/LootGenerator
@@ -282,7 +354,7 @@ Depend on this module, implement `LootGenerator`, and expose a factory:
 Build a jar, point `:jar`/`:entrypoint` at it, and it loads at startup.
 
 A plugin with no Clojure in it (e.g. pure Java/Kotlin) can skip the factory var:
-implement the `sns.spi.LootGenerator` interface on a class with a 0-arity
+implement the `sns.sdk.LootGenerator` interface on a class with a 0-arity
 constructor and point `:jar`/`:class` at it instead:
 
 ```clojure

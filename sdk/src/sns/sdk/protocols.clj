@@ -1,20 +1,20 @@
-(ns sns.spi.protocols
+(ns sns.sdk.protocols
   "The extension points third-party plugins implement. Kept dependency-light so
    external JAR plugins can depend on this module without pulling in the app."
   (:import
     (java.util HashMap)
-    (sns.spi Models$Action Models$Field Models$Item
+    (sns.sdk Models$Action Models$Field Models$Item
              Models$LootSpec Models$Section Models$ViewModel)))
 
 (defprotocol LootGenerator
   "A loot type. Implementations are resolved from config by the registry."
   (loot-spec [this]
     "Static, data-only description of this loot type. Conforms to
-     `sns.spi.schema/loot-spec`, e.g.
+     `sns.sdk.schema/loot-spec`, e.g.
      {:id :relics :label \"Relic\" :stateful? true
       :inputs [{:id :character :label \"Character\" :type :enum :options [...]}]}")
   (generate [this ctx]
-    "Produce loot. Returns a view-model (`sns.spi.schema/view-model`).
+    "Produce loot. Returns a view-model (`sns.sdk.schema/view-model`).
      `ctx` is `{:rng :store :render :inputs :config :session}` — see the engine.
      Stateful types read/write via `(:store ctx)`."))
 
@@ -26,7 +26,7 @@
 
 (defprotocol Progression
   "How a single mod evolves. The default implementation interprets the
-   upgrade-graph DSL (`sns.spi.schema/mod`); plugins may supply bespoke logic."
+   upgrade-graph DSL (`sns.sdk.schema/mod`); plugins may supply bespoke logic."
   (current-state [this mod path]
     "Derive `mod` at the progression described by `path`
      (a vector of `{:id ... :rolled {...}}`). Returns the final, rendered mod.")
@@ -40,7 +40,7 @@
   (report-label [this]
     "Human label for the report button, e.g. \"Send to Discord\".")
   (report! [this view-model]
-    "Send `view-model` (`sns.spi.schema/view-model`) to the destination; throws ex-info on failure."))
+    "Send `view-model` (`sns.sdk.schema/view-model`) to the destination; throws ex-info on failure."))
 
 (defprotocol Store
   "Persistence abstraction. Built-in backends: a MySQL-compatible SQL server, a
@@ -63,8 +63,8 @@
   "The loot-type id a generator declares, used to route a view-model's actions
    back to it. `nil` when `x` is not also a `LootGenerator`."
   [x]
-  (when (instance? sns.spi.LootGenerator x)
-    (keyword (.id (.lootSpec ^sns.spi.LootGenerator x)))))
+  (when (instance? sns.sdk.LootGenerator x)
+    (keyword (.id (.lootSpec ^sns.sdk.LootGenerator x)))))
 
 ;; --- Models -> Clojure data ---
 
@@ -126,30 +126,30 @@
     (HashMap.)
     m))
 
-(extend-type sns.spi.LootGenerator
+(extend-type sns.sdk.LootGenerator
   LootGenerator
   (loot-spec [this] (loot-spec->clj (.lootSpec this)))
   (generate [this ctx] (->> (clj->java-map ctx)
                             (.generate this)
                             (view-model->clj (loot-id this)))))
 
-(extend-type sns.spi.LootAction
+(extend-type sns.sdk.LootAction
   LootAction
   (handle-action [this ctx action params]
     (view-model->clj (loot-id this) (.handleAction this (clj->java-map ctx) (name action) (clj->java-map params)))))
 
-(extend-type sns.spi.Progression
+(extend-type sns.sdk.Progression
   Progression
   (current-state [this mod path] (.currentState this mod path))
   (level-options [this mod path] (.levelOptions this mod path)))
 
-(extend-type sns.spi.Reporter
+(extend-type sns.sdk.Reporter
   Reporter
   (report-label [this] (.reportLabel this))
   (report! [this view-model]
     (.report this (clj->view-model view-model))))
 
-(extend-type sns.spi.Store
+(extend-type sns.sdk.Store
   Store
   (setup! [this] (.setup this))
   (fetch [this coll id] (.fetch this coll id))

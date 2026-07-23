@@ -46,14 +46,24 @@ jobs:
       - name: Build uberjar
         run: make uber
 
-      - name: Build SPI jar
-        run: make spi-jar
+      - name: Build SDK jar
+        run: make sdk-jar
 
       - name: Generate config schema
         run: make config-schema
 
       - name: Name uberjar for release
         run: cp target/companion.jar "companion-${{ github.ref_name }}-standalone.jar"
+
+      # The builds emit consistently named artefacts; the version is stamped in
+      # here, where it is known — Maven Central requires <artifactId>-<version>.
+      - name: Name SDK artefacts for release
+        run: |
+          version="${{ github.ref_name }}"
+          cp target/sns-companion-sdk.jar "sns-companion-sdk-${version}.jar"
+          cp target/sns-companion-sdk.pom "sns-companion-sdk-${version}.pom"
+          cp target/sns-companion-sdk-sources.jar "sns-companion-sdk-${version}-sources.jar"
+          cp target/sns-companion-sdk-javadoc.jar "sns-companion-sdk-${version}-javadoc.jar"
 
       - name: Upload uberjar
         uses: actions/upload-artifact@v7
@@ -62,11 +72,11 @@ jobs:
           path: companion-${{ github.ref_name }}-standalone.jar
           if-no-files-found: error
 
-      - name: Upload SPI jar
+      - name: Upload SDK jar
         uses: actions/upload-artifact@v7
         with:
-          name: spi-jar
-          path: target/sns-spi-${{ github.ref_name }}.jar
+          name: sdk-jar
+          path: sns-companion-sdk-${{ github.ref_name }}.jar
           if-no-files-found: error
 
       - name: Upload config schema
@@ -76,15 +86,15 @@ jobs:
           path: config.schema.json
           if-no-files-found: error
 
-      - name: Upload SPI maven artefacts
+      - name: Upload SDK maven artefacts
         uses: actions/upload-artifact@v7
         with:
-          name: spi-maven
+          name: sdk-maven
           path: |
-            target/sns-spi-${{ github.ref_name }}.jar
-            target/sns-spi-${{ github.ref_name }}.pom
-            target/sns-spi-${{ github.ref_name }}-sources.jar
-            target/sns-spi-${{ github.ref_name }}-javadoc.jar
+            sns-companion-sdk-${{ github.ref_name }}.jar
+            sns-companion-sdk-${{ github.ref_name }}.pom
+            sns-companion-sdk-${{ github.ref_name }}-sources.jar
+            sns-companion-sdk-${{ github.ref_name }}-javadoc.jar
           if-no-files-found: error
 
   native:
@@ -178,11 +188,11 @@ jobs:
       - uberjar
       - native
     steps:
-      - name: Download SPI maven artefacts
+      - name: Download SDK maven artefacts
         uses: actions/download-artifact@v8
         with:
-          name: spi-maven
-          path: spi-maven
+          name: sdk-maven
+          path: sdk-maven
 
       - name: Import GPG signing key
         env:
@@ -194,9 +204,9 @@ jobs:
           GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
         run: |
           version="${{ github.ref_name }}"
-          dir="bundle/tools/spies/sns-spi/${version}"
+          dir="bundle/tools/spies/sns-companion-sdk/${version}"
           mkdir -p "$dir"
-          cp spi-maven/* "$dir/"
+          cp sdk-maven/* "$dir/"
           cd "$dir"
           for f in *; do
             gpg --batch --yes --pinentry-mode loopback \
@@ -217,7 +227,7 @@ jobs:
           curl --fail-with-body -sS -X POST \
             -H "Authorization: Bearer ${token}" \
             -F "bundle=@central-bundle.zip" \
-            "https://central.sonatype.com/api/v1/publisher/upload?name=sns-spi-${{ github.ref_name }}&publishingType=AUTOMATIC"
+            "https://central.sonatype.com/api/v1/publisher/upload?name=sns-companion-sdk-${{ github.ref_name }}&publishingType=AUTOMATIC"
 
   release:
     runs-on: ubuntu-latest
@@ -230,7 +240,7 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
-          pattern: '{uberjar,spi-jar,config-schema,native-*}'
+          pattern: '{uberjar,sdk-jar,config-schema,native-*}'
 
       - name: Create release
         env:

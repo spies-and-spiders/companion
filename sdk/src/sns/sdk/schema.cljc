@@ -1,4 +1,4 @@
-(ns sns.spi.schema
+(ns sns.sdk.schema
   "Malli schemas shared across the backend, plugins, and (the view-model/spec
    subset) the ClojureScript frontend. All schemas live in one registry so they
    can reference each other, including the recursive upgrade-graph."
@@ -11,7 +11,9 @@
 (def ^:private op-entries
   "The mutation entries an upgrade option may carry. Shared by `::op` (a bare
    op) and `::option` (an op plus identity/recursion) to avoid `:merge`, which
-   expands eagerly and cannot express the recursive graph."
+   expands eagerly and cannot express the recursive graph. These are the ops
+   `sns.sdk.progression` defines; a plugin's own op is an extra key the open
+   `:map` admits."
   [[:set {:optional true} [:map-of keyword? any?]]
    ;; :roll declares random values (inclusive [min max]) rolled when the option
    ;; is taken; the result is persisted in the path-step's :rolled and merged
@@ -175,6 +177,12 @@
 
    ::loot-entry   [:map [:id keyword?] [:weight {:optional true} number?]]
 
+   ;; --- random presets (content for `sns.sdk.randoms`) ---
+   ;; Named value lists any plugin's templates can draw from with
+   ;; `{{ ""|random:<preset> }}`. The library ships the mechanism only; these
+   ;; are the DM's vocabulary.
+   ::randoms      [:map-of keyword? [:sequential any?]]
+
    ;; --- reporting (send a generated item to an external destination) ---
    ;; A `:multi` like `::plugin` so new backends slot in; dispatch coerces the
    ;; backend to a keyword for JSON configs.
@@ -189,6 +197,7 @@
                    [:server {:optional true} ::server]
                    [:storage {:optional true} ::storage]
                    [:plugins [:sequential ::plugin]]
+                   [:randoms {:optional true} ::randoms]
                    [:reporting {:optional true} ::reporting]
                    [:loot-table {:optional true} [:sequential ::loot-entry]]]})
 

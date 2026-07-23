@@ -119,6 +119,18 @@
                                            :source "test/resources/does-not-exist.edn"}]})]
         (is (= "a crow lands" (:loot/title (engine/generate eng :omens))))))))
 
+(deftest config-randoms-are-available-to-templates
+  (testing "a config-declared preset is drawn from inside a plugin's template"
+    (let [eng (engine/create
+                {:randoms {:omens ["a crow lands" "the lanterns gutter"]}
+                 :plugins [{:type   :data
+                            :id     :portents
+                            :inline {:label "Portent"
+                                     :items [{:x 1}]
+                                     :title "You see {{ \"\"|random:omens }}."}}]})]
+      (is (contains? #{"You see a crow lands." "You see the lanterns gutter."}
+                     (:loot/title (engine/generate eng :portents)))))))
+
 (deftest input-defaults-fill-blank-values
   (let [eng (engine/create
               {:plugins [{:type :data :id :potion :source "test/resources/enum-default.edn"}]})]

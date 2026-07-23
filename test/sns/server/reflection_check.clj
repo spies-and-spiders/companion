@@ -9,7 +9,7 @@
 
 (def ^:private backend-nses
   ;; dependency order; each compiles on first require under the binding below
-  '[sns.spi.protocols sns.spi.schema
+  '[sns.sdk.protocols sns.sdk.schema
     sns.server.classpath sns.server.render sns.server.progression
     sns.server.store.memory sns.server.store.file sns.server.store.mysql sns.server.store
     sns.server.registry

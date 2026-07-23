@@ -1,6 +1,6 @@
 # Storage backends
 
-Stateful loot reads and writes through the `Store` SPI. The backend is chosen in
+Stateful loot reads and writes through the `Store` protocol. The backend is chosen in
 `config.edn` under `:storage` and is fully swappable — nothing else in the app
 changes when you switch.
 

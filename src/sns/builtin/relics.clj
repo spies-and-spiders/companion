@@ -5,8 +5,8 @@
    exercises the full Store + Progression + LootAction loop."
   (:require
     [randy.core :as r]
-    [sns.server.progression :as progression]
-    [sns.spi.protocols :as p]))
+    [sns.sdk.progression :as sp]
+    [sns.sdk.protocols :as p]))
 
 (def ^:private collection :relics)
 
@@ -63,7 +63,7 @@
                           (= :random select) (r/sample rng options)
                           (= :all select) (first options) ; :all handled as sequential steps
                           :else nil)]
-        (update relic :path conj (progression/roll-option rng option))))))
+        (update relic :path conj (sp/roll-option rng option))))))
 
 (defn generator
   [_plugin]

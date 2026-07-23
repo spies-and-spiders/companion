@@ -4,7 +4,7 @@
     [clojure.java.io :as io]
     [clojure.string :as str]
     [jsonista.core :as j]
-    [sns.spi.schema :as schema])
+    [sns.sdk.schema :as schema])
   (:import
     (java.io File)))
 

@@ -1,9 +1,8 @@
 {:paths ["src" "resources"]
  :deps  {org.clojure/clojure                  {:mvn/version "1.12.5"}
-         sns/spi                              {:local/root "spi"}
+         sns/sdk                              {:local/root "sdk"}
          metosin/malli                        {:mvn/version "0.20.1"}
          aero/aero                            {:mvn/version "1.1.6"}
-         com.github.dekelpilli/randy          {:mvn/version "0.0.42"}
          org.flatland/ordered                 {:mvn/version "1.15.12"}
          selmer/selmer                        {:mvn/version "1.13.4"}
          com.github.seancorfield/next.jdbc    {:mvn/version "1.3.1118"}
@@ -17,12 +16,12 @@
          metosin/ring-http-response           {:mvn/version "0.9.5"}
          metosin/reitit-sieppari              {:mvn/version "0.10.1"}
 
-         ring/ring-core                       {:mvn/version "1.15.5"}
-         com.s-exp/hirundo                    {:mvn/version "1.0.0-alpha214"
-                                               :exclusions  [io.helidon.webserver/helidon-webserver-grpc]}
-         com.taoensso/telemere                {:mvn/version "1.2.1"}
-         com.taoensso/telemere-slf4j          {:mvn/version "1.2.1"}
-         org.slf4j/slf4j-api                  {:mvn/version "2.0.18"}}
+         ring/ring-core              {:mvn/version "1.15.5"}
+         com.s-exp/hirundo           {:mvn/version "1.0.0-alpha214"
+                                      :exclusions  [io.helidon.webserver/helidon-webserver-grpc]}
+         com.taoensso/telemere       {:mvn/version "1.2.1"}
+         com.taoensso/telemere-slf4j {:mvn/version "1.2.1"}
+         org.slf4j/slf4j-api         {:mvn/version "2.0.18"}}
 
  :aliases {:dev {:extra-paths ["dev"]
                  :extra-deps  {org.clojure/tools.namespace {:mvn/version "1.5.1"}}}
@@ -30,8 +29,8 @@
            :frontend {:extra-deps {no.cjohansen/replicant {:mvn/version "2026.06.2"}
                                    no.cjohansen/nexus     {:mvn/version "2026.07.1"}
                                    thheller/shadow-cljs   {:mvn/version "3.4.11"}}}
-           :graalvm  {:extra-deps  {com.github.clj-easy/graal-build-time {:mvn/version "1.0.6"}
-                                    org.clojure/tools.namespace          {:mvn/version "1.5.1"}}}
+           :graalvm  {:extra-deps {com.github.clj-easy/graal-build-time {:mvn/version "1.0.6"}
+                                   org.clojure/tools.namespace          {:mvn/version "1.5.1"}}}
            :test     {:extra-paths ["test"]
                       :extra-deps  {io.github.cognitect-labs/test-runner
                                     {:git/tag "v0.5.1" :git/sha "dfb30dd"}}

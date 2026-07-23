@@ -1,11 +1,15 @@
 (ns sns.server.render
   "The default, swappable template renderer. Selmer interpolates a mod's state
    into its effect text. Only *cosmetic* filters live here (ordinal, percentage,
-   times, dice) — randomness and level-scaling are handled upstream by the
-   progression/state system, not by inline template filters as in campaign4."
+   times, dice) — level-scaling is handled upstream by the progression/state
+   system, not by inline template filters as in campaign4. The one exception is
+   `random`, which is a genuine per-render draw; it is registered by
+   `sns.sdk.randoms` (required here so it is always available) against the rng
+   the engine binds for the request."
   (:require
     [selmer.parser :as selmer]
-    [selmer.util :as su]))
+    [selmer.util :as su]
+    [sns.sdk.randoms]))
 
 (defn- times-format [n]
   (case (long n)

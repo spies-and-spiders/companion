@@ -1,10 +1,10 @@
-package sns.spi;
+package sns.sdk;
 
 import java.util.Map;
 
 /**
  * A loot type. Java/Kotlin/Scala plugins may implement this interface instead of
- * reifying the {@code sns.spi.protocols/LootGenerator} Clojure protocol; the SPI
+ * reifying the {@code sns.sdk.protocols/LootGenerator} Clojure protocol; the SDK
  * extends the protocol onto this interface, so implementing it is sufficient.
  *
  * <p>Data shapes are exchanged as {@link Models} records; the engine context

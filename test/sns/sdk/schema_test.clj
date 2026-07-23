@@ -1,7 +1,7 @@
-(ns sns.spi.schema-test
+(ns sns.sdk.schema-test
   (:require
     [clojure.test :refer [deftest is testing]]
-    [sns.spi.schema :as schema]))
+    [sns.sdk.schema :as schema]))
 
 (deftest view-model-schema
   (testing "a fully-populated view-model is accepted"

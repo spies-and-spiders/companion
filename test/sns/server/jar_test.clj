@@ -5,13 +5,13 @@
     [clojure.java.io :as io]
     [clojure.java.shell :as shell]
     [clojure.test :refer [deftest is testing]]
+    [sns.sdk.protocols :as p]
     [sns.server.classpath :as classpath]
-    [sns.server.registry :as registry]
-    [sns.spi.protocols :as p]))
+    [sns.server.registry :as registry]))
 
 (def ^:private plugin-source
   "(ns testplugin.loot
-     (:require [sns.spi.protocols :as p]))
+     (:require [sns.sdk.protocols :as p]))
    (defn generator [_plugin]
      (reify p/LootGenerator
        (loot-spec [_] {:id :test-jar :label \"Test Jar\"})
@@ -37,8 +37,8 @@
   "package testplugin;
 
    import java.util.Map;
-   import sns.spi.LootGenerator;
-   import sns.spi.Models;
+   import sns.sdk.LootGenerator;
+   import sns.sdk.Models;
 
    public class JavaLoot implements LootGenerator {
        public Models.LootSpec lootSpec() {

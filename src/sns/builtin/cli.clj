@@ -12,7 +12,7 @@
   (:require
     [clojure.java.shell :as shell]
     [jsonista.core :as j]
-    [sns.spi.protocols :as p]))
+    [sns.sdk.protocols :as p]))
 
 (def ^:private mapper j/keyword-keys-object-mapper)
 

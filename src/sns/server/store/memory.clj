@@ -2,7 +2,7 @@
   "In-memory `Store`, for tests and headless dev. State lives in an atom and is
    lost when the process exits."
   (:require
-    [sns.spi.protocols :as p]))
+    [sns.sdk.protocols :as p]))
 
 (defrecord MemoryStore [state]
   p/Store

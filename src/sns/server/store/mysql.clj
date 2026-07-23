@@ -11,8 +11,8 @@
    functions, and plain text avoids the server reformatting the payload."
   (:require
     [next.jdbc :as jdbc]
-    [sns.server.store.codec :as codec]
-    [sns.spi.protocols :as p]))
+    [sns.sdk.protocols :as p]
+    [sns.server.store.codec :as codec]))
 
 (defn- ->doc [s]
   (codec/decode s))

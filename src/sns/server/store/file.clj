@@ -6,8 +6,8 @@
    state without a SQL server."
   (:require
     [clojure.java.io :as io]
-    [sns.server.store.codec :as codec]
-    [sns.spi.protocols :as p]))
+    [sns.sdk.protocols :as p]
+    [sns.server.store.codec :as codec]))
 
 (defn- id->key [id]
   (keyword (if (keyword? id) (name id) (str id))))

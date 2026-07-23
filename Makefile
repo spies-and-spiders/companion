@@ -21,7 +21,7 @@ deps: ## Install npm dependencies (shadow-cljs, playwright)
 	npm install
 
 .PHONY: prep
-prep: ## Compile the SPI Java interfaces (required before running/building)
+prep: ## Compile the SDK Java interfaces (required before running/building)
 	clojure -X:deps prep
 
 # --- run (development) -------------------------------------------------------
@@ -51,9 +51,9 @@ uber: prep frontend ## Build the standalone uberjar (builds the frontend first)
 .PHONY: dist
 dist: uber ## Full production artifact (alias for `uber`)
 
-.PHONY: spi-jar
-spi-jar: ## Build the SPI library jar for plugin authors (target/sns-spi-<version>.jar)
-	clojure -T:build spi-jar
+.PHONY: sdk-jar
+sdk-jar: ## Build the SDK library jar for plugin authors (target/sns-companion-sdk.jar)
+	clojure -T:build sdk-jar
 
 .PHONY: config-schema
 config-schema: prep ## Generate config.schema.json (JSON Schema for config.json)
