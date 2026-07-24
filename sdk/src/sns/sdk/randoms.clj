@@ -14,7 +14,7 @@
     [randy.core :as r]
     [selmer.parser :as selmer]))
 
-(def ^:dynamic *rng* @r/default-rng)
+(def ^:dynamic *rng* r/default-rng)
 
 (defmacro with-rng
   "Evaluate `body` with `*rng*` bound to `rng`."
@@ -56,7 +56,7 @@
     (when (fn? values)
       (throw (ex-info "Cannot draw without replacement from a self-sampling preset"
                       {:preset (keyword preset-name)})))
-    #(r/sample-without-replacement *rng* amount values)))
+    #(r/sample-without-replacement (force *rng*) amount values)))
 
 (defn- sample-values
   "Resolve `k`'s definition and realise it into one sampled value."
@@ -64,7 +64,7 @@
   (let [values (preset k args)]
     (if (fn? values)
       (values)
-      (r/sample *rng* values))))
+      (r/sample (force *rng*) values))))
 
 (defn sample-preset
   "Sample one value from the preset named `preset-name`, using `rng`. The
