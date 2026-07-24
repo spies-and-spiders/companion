@@ -1,7 +1,6 @@
 (ns sns.sdk.progression-test
   (:require
     [clojure.test :refer [deftest is testing]]
-    [randy.rng :as rng]
     [sns.sdk.progression :as sp]
     [sns.server.progression :as progression]
     [sns.server.render :as render]))
@@ -35,11 +34,3 @@
                (:effect (progression/derive-mod render/render base [{:id ::doubled}])))))
       (finally
         (remove-method sp/apply-op ::multiply)))))
-
-(deftest roll-option-persists-rolled-values
-  (testing "inclusive bounds, recorded so the effect re-derives deterministically"
-    (let [rng (reify rng/RandomNumberGenerator
-                (next-int [_ lo _] lo))]
-      (is (= {:id :elemental :rolled {:dmg 1}}
-             (sp/roll-option rng {:id :elemental :roll {:dmg [1 6]}})))
-      (is (= {:id :plain} (sp/roll-option rng {:id :plain}))))))

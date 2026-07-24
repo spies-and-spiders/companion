@@ -118,7 +118,7 @@ part of this repo with a stable contract.
 | `sns.sdk.protocols` | the protocols you implement (`LootGenerator`, `LootAction`, `Progression`, `Reporter`, `Store`), and the Java interfaces they are bridged onto |
 | `sns.sdk.schema` | the malli schemas for every shape crossing the boundary (loot-spec, view-model, upgrade graph, config) |
 | `sns.sdk.randoms` | the `random` template filter and its preset vocabulary |
-| `sns.sdk.progression` | the upgrade-graph op vocabulary and `roll-option` |
+| `sns.sdk.progression` | the upgrade-graph op vocabulary |
 
 The first two are contracts you implement; the last two are shared logic you can use
 and extend without depending on the app.
@@ -202,15 +202,19 @@ well-defined.
 {:state    {:ab 1}
  :template "+{{ab}} AB with effects that cannot deal damage."
  :upgrades {:select  :choice            ; :choice | :random | :all
-            :options [{:id :precise :repeatable true :inc {:ab 1}}
-                      {:id :elemental :roll {:dmg [1 6]}
-                       :assoc-template "+{{ab}} AB; deal {{dmg}} fire damage on hit."}]}}
+            :options [{:id :precise :inc {:ab 1}}
+                      {:id :elemental :repeatable false
+                       :assoc-template "+{{ab}} AB; deal 6 fire damage on hit."}]}}
 ```
 
-Op vocabulary on an option: `:set` `:roll` (rolled at selection, persisted)
-`:inc` `:dec` `:append` `:conj` `:assoc-template` `:enable` `:disable`. A persisted
-progression is a `path` of `{:id … :rolled {…}}` steps; the effect re-derives
-deterministically from it.
+An option can be taken again and again; add `:repeatable false` for a one-shot,
+or `:repeatable N` to cap it at N picks. A consumed option is dropped from the
+node (its siblings stay reachable, and the node only goes terminal when every
+option in it is consumed).
+
+Op vocabulary on an option: `:inc` `:dec` `:append` `:conj` `:assoc-template`
+`:enable` `:disable`. A persisted progression is a `path` of `{:id …}` steps; the
+effect re-derives deterministically from it.
 
 The vocabulary is **open**: each op is a method of `sns.sdk.progression/apply-op`,
 so a plugin can add one without replacing the graph interpreter.
@@ -227,11 +231,10 @@ so a plugin can add one without replacing the graph interpreter.
 
 Only the vocabulary is shared — the interpreter that folds ops over a path is the
 `Progression` handed to you on the context. It applies ops in a fixed order (a
-template swap and `:set` first, then the step's persisted `:rolled`, then the
-accumulating ops), with plugin ops last in name order, so a mod derives identically
-every time. Anything on an option that isn't a structural key (`:id` `:repeatable`
-`:upgrades` `:roll`) is treated as an op, so a typo'd op name is an error rather
-than a silent no-op.
+template swap first, then the accumulating ops), with plugin ops last in name
+order, so a mod derives identically every time. Anything on an option that isn't
+a structural key (`:id` `:repeatable` `:upgrades`) is treated as an op, so a
+typo'd op name is an error rather than a silent no-op.
 
 ---
 

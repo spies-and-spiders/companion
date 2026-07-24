@@ -5,7 +5,6 @@
    exercises the full Store + Progression + LootAction loop."
   (:require
     [randy.core :as r]
-    [sns.sdk.progression :as sp]
     [sns.sdk.protocols :as p]))
 
 (def ^:private collection :relics)
@@ -17,17 +16,19 @@
     :mod  {:state    {:ab 1}
            :template "+{{ab}} AB with effects that cannot deal damage."
            :upgrades {:select  :choice
-                      :options [{:id :precise :repeatable true :inc {:ab 1}}
+                      :options [{:id :precise :inc {:ab 1}}
                                 {:id             :elemental
-                                 :roll           {:dmg [1 6]}
-                                 :assoc-template "+{{ab}} AB; deal {{dmg}} fire damage on hit."}]}}}
+                                 :repeatable     false
+                                 :assoc-template "+{{ab}} AB; deal 6 fire damage on hit."}]}}}
    {:name "Wanderer's Compass"
     :base "trinket"
     :mod  {:state    {:range 30}
            :template "Teleport up to {{range}} feet as a bonus action."
            :upgrades {:select  :choice
-                      :options [{:id :far :repeatable true :inc {:range 15}}
-                                {:id :swift :assoc-template "Teleport up to {{range}} feet as a free action."}]}}}])
+                      :options [{:id :far :inc {:range 15}}
+                                {:id             :swift
+                                 :repeatable     false
+                                 :assoc-template "Teleport up to {{range}} feet as a free action."}]}}}])
 
 (defn- option->action [relic-id {:keys [id]}]
   {:action/label (str "Upgrade: " (name id))
@@ -63,7 +64,7 @@
                           (= :random select) (r/sample rng options)
                           (= :all select) (first options) ; :all handled as sequential steps
                           :else nil)]
-        (update relic :path conj (sp/roll-option rng option))))))
+        (update relic :path conj {:id (:id option)})))))
 
 (defn generator
   [_plugin]

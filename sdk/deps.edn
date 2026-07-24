@@ -1,9 +1,6 @@
 {:paths ["src" "target/classes"]
  :deps  {org.clojure/clojure         {:mvn/version "1.12.5"}
          metosin/malli               {:mvn/version "0.20.1"}
-         ;; `sns.sdk.randoms` samples presets (randy) and exposes them to
-         ;; templates as a Selmer filter, so plugins get `{{x|random:…}}` for
-         ;; free wherever they render.
          com.github.dekelpilli/randy {:mvn/version "0.0.43"}
          selmer/selmer               {:mvn/version "1.13.4"}}
 

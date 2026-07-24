@@ -19,9 +19,7 @@
 
    Only the vocabulary is shared: the `Progression` that folds these ops over a
    path is handed to plugins on the request context, so a custom op works in
-   ordinary upgrade graphs without a bespoke `Progression` implementation."
-  (:require
-    [randy.rng :as rng]))
+   ordinary upgrade graphs without a bespoke `Progression` implementation.")
 
 (defmulti apply-op
   "Apply mutation `op` with value `v` to the progression accumulator
@@ -41,14 +39,6 @@
 
 (defmethod apply-op :assoc-template [acc _ template]
   (assoc acc :template template))
-
-(defmethod apply-op :set [acc _ m]
-  (update acc :state merge m))
-
-;; Values rolled when the option was taken (persisted on the path step), applied
-;; as an op so they slot into the same ordering as everything else.
-(defmethod apply-op :rolled [acc _ m]
-  (update acc :state merge m))
 
 (defmethod apply-op :inc [acc _ m]
   (update acc :state #(merge-with + % m)))
@@ -70,12 +60,3 @@
 
 (defmethod apply-op :disable [acc _ ks]
   (update acc :state #(reduce (fn [state k] (assoc state k false)) % ks)))
-
-(defn roll-option
-  "Build the persisted path-step for taking `option`, rolling any `:roll` specs
-   with `rng` (inclusive bounds). The rolled values are recorded under `:rolled`
-   so the resulting effect re-derives deterministically."
-  [rng {:keys [id roll]}]
-  (cond-> {:id id}
-          roll (assoc :rolled (update-vals roll (fn [[lo hi]]
-                                                  (rng/next-int rng lo (inc hi)))))))

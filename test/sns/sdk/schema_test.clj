@@ -27,12 +27,12 @@
                                      :options [{:id :precise :repeatable true :inc {:ab 1}}
                                                {:id       :nested
                                                 :upgrades {:select  :random
-                                                           :options [{:id :deep :set {:ab 5}}]}}]}}))))
+                                                           :options [{:id :deep :inc {:ab 5}}]}}]}}))))
 
 (deftest path-schema
-  (testing "a persisted path carries ids and optional rolled values"
+  (testing "a persisted path carries option ids"
     (is (schema/validate ::schema/path
-                         [{:id :precise} {:id :elemental :rolled {:dmg 4}}]))))
+                         [{:id :precise} {:id :elemental}]))))
 
 (deftest loot-spec-schema
   (testing "a loot-spec may flag itself as a utility"

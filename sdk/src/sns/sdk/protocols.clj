@@ -29,7 +29,7 @@
    upgrade-graph DSL (`sns.sdk.schema/mod`); plugins may supply bespoke logic."
   (current-state [this mod path]
     "Derive `mod` at the progression described by `path`
-     (a vector of `{:id ... :rolled {...}}`). Returns the final, rendered mod.")
+     (a vector of `{:id ...}` steps). Returns the final, rendered mod.")
   (level-options [this mod path]
     "Return the upgrade options available as the next step from `path`."))
 

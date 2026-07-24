@@ -8,13 +8,14 @@
   {:state    {:ab 1}
    :template "+{{ab}} AB with effects that cannot deal damage."
    :upgrades {:select  :choice
-              :options [{:id :precise :repeatable true :inc {:ab 1}}
+              :options [{:id :precise :inc {:ab 1}}
                         {:id             :wide
-                         :set            {:ab 1}
                          :assoc-template "+{{ab}} AB; ignore half cover."
                          :upgrades       {:select  :choice
-                                          :options [{:id :keen :inc {:ab 2}}]}}
-                        {:id :elemental :set {:dmg 0} :assoc-template "Deal {{dmg}} extra fire damage."}]}})
+                                          :options [{:id :keen :repeatable false :inc {:ab 2}}]}}
+                        {:id             :elemental
+                         :repeatable     false
+                         :assoc-template "Deal 6 extra fire damage."}]}})
 
 (defn- effect [path]
   (:effect (progression/derive-mod render/render base path)))
@@ -32,11 +33,16 @@
     (is (= "+3 AB; ignore half cover."
            (effect [{:id :wide} {:id :keen}])))))
 
-(deftest random-path-re-derives-deterministically
-  (testing "persisted :rolled values reproduce the same effect every time"
-    (let [path [{:id :elemental :rolled {:dmg 4}}]]
-      (is (= "Deal 4 extra fire damage." (effect path)))
+(deftest path-re-derives-deterministically
+  (testing "a path reproduces the same effect every time"
+    (let [path [{:id :elemental}]]
+      (is (= "Deal 6 extra fire damage." (effect path)))
       (is (= (effect path) (effect path))))))
+
+(deftest options-repeat-by-default
+  (testing "an option with no :repeatable keeps being offered"
+    (is (= [:precise :wide :elemental]
+           (mapv :id (:options (progression/options-at base [{:id :precise} {:id :precise}])))))))
 
 (deftest options-at-respects-repeatable-and-descent
   (testing "repeatable option keeps offering itself"
@@ -51,7 +57,7 @@
 (def ^:private single-shot
   {:state    {}
    :template "x"
-   :upgrades {:select :choice :options [{:id :only :set {}}]}})
+   :upgrades {:select :choice :options [{:id :only :repeatable false}]}})
 
 (deftest one-shot-option-is-consumed-not-terminal
   (testing "taking a one-shot option removes only itself, leaving the siblings"
@@ -63,31 +69,48 @@
                                  base [{:id :elemental} {:id :precise}])))))
     ;; regression: this path used to throw, since the one-shot made the node
     ;; terminal and the following :precise was then rejected as "unknown"
-    (is (= {:ab 2 :dmg 0}
+    (is (= {:ab 2}
            (:state (progression/derive-mod render/render base
-                                           [{:id :elemental :rolled {:dmg 0}}
+                                           [{:id :elemental}
                                             {:id :precise}])))))
   (testing "the node only goes terminal once every option there is consumed"
     (is (nil? (progression/options-at single-shot [{:id :only}])))))
+
+(def ^:private capped
+  {:state    {:lvl 0}
+   :template "{{lvl}}"
+   :upgrades {:select  :choice
+              :options [{:id :bump :repeatable 3 :inc {:lvl 1}}
+                        {:id :other :inc {:lvl 10}}]}})
+
+(deftest numeric-repeatable-caps-a-node
+  (testing "the option is offered until its cap, then drops out"
+    (is (= [:bump :other]
+           (mapv :id (:options (progression/options-at capped [{:id :bump} {:id :bump}])))))
+    (testing "the uncapped sibling stays after the cap is reached"
+      (is (= [:other]
+             (mapv :id (:options (progression/options-at
+                                   capped [{:id :bump} {:id :bump} {:id :bump}]))))))
+    (testing "reaching the cap does not make the node terminal"
+      (is (some? (progression/options-at capped [{:id :bump} {:id :bump} {:id :bump}]))))))
 
 (deftest unknown-option-is-rejected
   (is (thrown? Exception (effect [{:id :nope}]))))
 
 (def ^:private ordering
-  {:state    {:ab 99}
-   :template "base"
+  {:state    {:ab 0 :log ""}
+   :template "{{ab}}/{{log}}"
    :upgrades {:select  :choice
-              :options [{:id             :everything
-                         :set            {:ab 1 :dmg 9}
-                         :inc            {:ab 4}
-                         :roll           {:dmg [1 6]}
-                         :assoc-template "{{ab}}/{{dmg}}"}]}})
+              :options [{:id     :everything
+                         :inc    {:ab 4}
+                         :dec    {:ab 1}
+                         :append {:log "x"}}]}})
 
 (deftest ops-apply-in-a-fixed-order
-  (testing ":set establishes the base, :rolled overrides it, then accumulation applies"
-    (is (= "5/3"
+  (testing "every op on an option applies, independent of map ordering"
+    (is (= "3/x"
            (:effect (progression/derive-mod render/render ordering
-                                            [{:id :everything :rolled {:dmg 3}}]))))))
+                                            [{:id :everything}]))))))
 
 (deftest option-keys-that-are-not-ops-are-ignored
   (testing "graph keys never dispatch as mutations"

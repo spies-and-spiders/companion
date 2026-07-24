@@ -15,15 +15,14 @@
   "Keys on an option that describe the graph rather than mutate state, so they
    are never dispatched as ops. Everything else on an option is an op — which is
    what makes a typo'd op an error rather than a silent no-op."
-  #{:id :repeatable :upgrades :roll})
+  #{:id :repeatable :upgrades})
 
 (def ^:private op-order
-  "The built-in ops in application order: a template swap and `:set` establish
-   the base, the step's persisted `:rolled` values override them, then the
-   accumulating ops apply. Ops outside this list (a plugin's own) are applied
-   afterwards in name order, so an option's ops resolve identically on every
-   derivation regardless of map ordering."
-  [:assoc-template :set :rolled :inc :dec :append :conj :enable :disable])
+  "The built-in ops in application order: a template swap establishes the base,
+   then the accumulating ops apply. Ops outside this list (a plugin's own) are
+   applied afterwards in name order, so an option's ops resolve identically on
+   every derivation regardless of map ordering."
+  [:assoc-template :inc :dec :append :conj :enable :disable])
 
 (defn- ordered
   "The keys of `ops`, sorted into `op-order` with unknown (plugin) ops last."
@@ -33,11 +32,9 @@
              (keys ops))))
 
 (defn- apply-ops
-  "Apply every op on `option` — plus the step's persisted `rolled` values — to
-   the accumulator `acc`."
-  [acc option rolled]
-  (let [ops (cond-> (apply dissoc option structural-keys)
-                    (seq rolled) (assoc :rolled rolled))]
+  "Apply every op on `option` to the accumulator `acc`."
+  [acc option]
+  (let [ops (apply dissoc option structural-keys)]
     (reduce (fn [acc op] (sp/apply-op acc op (get ops op)))
             acc
             (ordered ops))))
@@ -62,11 +59,11 @@
    the swappable `(fn [template state] -> string)`."
   [render base path]
   (let [{:keys [state template]}
-        (reduce (fn [{:keys [upgrades] :as acc} {:keys [id rolled]}]
+        (reduce (fn [{:keys [upgrades] :as acc} {:keys [id]}]
                   (let [option (or (find-option upgrades id)
                                    (throw (ex-info "Unknown upgrade option"
                                                    {:id id :available (mapv :id (:options upgrades))})))]
-                    (-> (apply-ops acc option rolled)
+                    (-> (apply-ops acc option)
                         (assoc :upgrades (next-upgrades upgrades option)))))
                 (-> (select-keys base [:state :template])
                     (assoc :upgrades (:upgrades base)))
@@ -76,14 +73,24 @@
                :template template
                :effect (render template state)))))
 
+(defn- cap
+  "Max times an option may be taken at its node: a number is its own cap,
+   `:repeatable false` caps at 1, `true`/absent is uncapped."
+  [option]
+  (let [r (get option :repeatable true)]
+    (cond (number? r) r
+          (false? r)  1
+          :else       nil)))
+
 (defn- available-options
-  "Drop non-repeatable options already taken at the current node, so a one-shot
-   upgrade is consumed without closing off the node's other upgrades."
+  "Drop options that have hit their cap at the current node, so a one-shot (or
+   N-shot) upgrade is consumed without closing off the node's other upgrades."
   [upgrades taken]
   (update upgrades :options
           (fn [options]
-            (filterv (fn [{:keys [id repeatable]}]
-                       (or repeatable (not (contains? taken id))))
+            (filterv (fn [{:keys [id] :as option}]
+                       (let [c (cap option)]
+                         (or (nil? c) (< (get taken id 0) c))))
                      options))))
 
 (defn options-at
@@ -94,14 +101,14 @@
    the node open."
   [base path]
   (loop [upgrades (:upgrades base)
-         taken    #{}
+         taken    {}
          [step & more] path]
     (if (and step upgrades)
       (let [option (find-option upgrades (:id step))]
         (if (:upgrades option)
-          (recur (:upgrades option) #{} more)
+          (recur (:upgrades option) {} more)
           (recur upgrades
-                 (cond-> taken (not (:repeatable option)) (conj (:id step)))
+                 (update taken (:id step) (fnil inc 0))
                  more)))
       (when upgrades
         (let [available (available-options upgrades taken)]

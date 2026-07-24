@@ -11,7 +11,6 @@
    Requiring this namespace registers the Selmer `random` filter, so a plugin
    rendering its own templates gets it by depending on the SDK alone."
   (:require
-    [clojure.string :as str]
     [randy.core :as r]
     [selmer.parser :as selmer]))
 
