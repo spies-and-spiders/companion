@@ -35,7 +35,8 @@
   "Render a spec's declared inputs, or nil when there are none."
   [spec inputs]
   (when (seq (:inputs spec))
-    [:div.fields
+    ;; Enter anywhere in the form generates, matching the button.
+    [:div.fields {:on {:keydown [[:ui/generate-on-enter [:event/key]]]}}
      (for [f (:inputs spec)]
        (field inputs f))]))
 
@@ -194,21 +195,34 @@
    [:span.discipline__glyph glyph]
    [:span.discipline__name label]])
 
-(defn- type-list [types selected glyph]
-  [:ul.rail__list
+(defn- type-list [class types selected glyph]
+  [:ul.rail__list {:class class}
    (for [{:keys [id label] :as spec} types]
      [:li {:replicant/key id}
       (type-button (= id selected) [:ui/select-type id] glyph label (modifier spec))])])
 
-(defn picker [{:keys [loot-types selected roll-n page]}]
+(defn- matcher
+  "A case-insensitive substring predicate over labels; matches everything when
+   the query is blank."
+  [type-filter]
+  (let [q (str/lower-case (str/trim (str type-filter)))]
+    (fn [label]
+      (or (str/blank? q)
+          (str/includes? (str/lower-case (str label)) q)))))
+
+(defn picker [{:keys [loot-types selected roll-n page type-filter]}]
   (let [loot-selected (when (= :loot page) selected)
+        match?        (matcher type-filter)
         ;; A hidden type is meant to be reached only by rolling the loot-table,
         ;; so it stays off the rail — except while it is the type on screen,
         ;; where it appears (in its config position) so the rail keeps showing
         ;; what the workbench holds.
-        visible       (filterv #(or (not (:hidden? %)) (= loot-selected (:id %))) loot-types)
+        visible       (filterv #(and (or (not (:hidden? %)) (= loot-selected (:id %)))
+                                     (match? (:label %)))
+                               loot-types)
         utilities     (filterv :utility? visible)
-        disciplines   (filterv (complement :utility?) visible)]
+        disciplines   (filterv (complement :utility?) visible)
+        social?       (match? "Group Social")]
     [:nav.rail
      [:div.roll-group
       [:input.roll__input
@@ -217,17 +231,24 @@
         :max         "100"
         :placeholder "d100"
         :value       (str roll-n)
-        :on          {:input [[:ui/set-roll-input [:event.target/value]]]}}]
+        :on          {:input   [[:ui/set-roll-input [:event.target/value]]]
+                      :keydown [[:ui/roll-on-enter [:event/key]]]}}]
       [:button.roll {:on {:click [[:ui/roll]]}}
        (if (str/blank? (str roll-n)) "Roll Loot" (str "Roll " roll-n))]]
      [:p.rail__hint "Enter 1–100 to roll on the table, or leave blank for random."]
+     [:input.rail__search
+      {:type        "search"
+       :placeholder "Search plugins…"
+       :value       (str type-filter)
+       :on          {:input [[:ui/set-type-filter [:event.target/value]]]}}]
      [:p.rail__eyebrow "Loot Types"]
-     (type-list disciplines loot-selected "◆")
+     (type-list "rail__list--loot" disciplines loot-selected "◆")
      [:p.rail__eyebrow.rail__eyebrow--utilities "Utilities"]
-     [:ul.rail__list
+     [:ul.rail__list.rail__list--utils
       ;; the group tracker is part of the app, not a plugin — always present
-      [:li {:replicant/key "__social"}
-       (type-button (= :social page) [:ui/open-social] "✦" "Group Social" nil)]
+      (when social?
+        [:li {:replicant/key "__social"}
+         (type-button (= :social page) [:ui/open-social] "✦" "Group Social" nil)])
       (for [{:keys [id label] :as spec} utilities]
         [:li {:replicant/key id}
          (type-button (= id loot-selected) [:ui/select-type id] "✦" label (modifier spec))])]]))

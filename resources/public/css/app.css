@@ -101,7 +101,34 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   overflow-y: auto;
 }
 
+/* Loot types stay sized to their entries, capped so a long list scrolls
+   rather than crowding out Utilities; the drag handle on its bottom edge lets
+   a DM re-balance loot vs. utilities to taste. */
+.rail__list--loot {
+  /* no grow/shrink, so a height set via the resize handle sticks instead of
+     being overridden by the flex layout; height stays auto (content-sized)
+     until the DM drags, capped so a long list scrolls */
+  flex: 0 0 auto;
+  max-height: 42vh;
+  min-height: 2rem;
+  resize: vertical;
+}
+
 .rail__eyebrow--utilities { margin-top: 0.6rem; }
+
+.rail__search {
+  width: 100%;
+  margin: 0.2rem 0 0.3rem;
+  padding: 0.5rem 0.65rem;
+  background: var(--ink-2);
+  border: 1px solid var(--ink-3);
+  border-radius: var(--radius);
+  color: var(--vellum);
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+.rail__search::placeholder { color: var(--muted); }
+.rail__search:focus { border-color: var(--arcane); outline: none; }
 
 .discipline {
   width: 100%;

@@ -20,6 +20,10 @@
                            (fn [{:replicant/keys [dom-event]}]
                              (some-> dom-event .-target .-checked)))
 
+(nxr/register-placeholder! :event/key
+                           (fn [{:replicant/keys [dom-event]}]
+                             (some-> dom-event .-key)))
+
 ;; --- effects (impure) --------------------------------------------------------
 
 (nxr/register-effect! :fx/assoc-in
@@ -130,23 +134,41 @@
                       (fn [_state field value]
                         [[:fx/assoc-in [:inputs field] value]]))
 
-(nxr/register-action! :ui/generate
-                      (fn [state]
-                        [[:fx/generate (:selected state) (:inputs state)]]))
+(nxr/register-action! :ui/set-type-filter
+                      (fn [_state value]
+                        [[:fx/assoc-in [:type-filter] value]]))
+
+(defn- generate-fx [{:keys [selected inputs]}]
+  [[:fx/generate selected inputs]])
+
+(nxr/register-action! :ui/generate generate-fx)
+
+;; Enter inside the input form generates, matching the button.
+(nxr/register-action! :ui/generate-on-enter
+                      (fn [state key]
+                        (when (and (= key "Enter") (:selected state))
+                          (generate-fx state))))
 
 (nxr/register-action! :ui/set-roll-input
                       (fn [_state value]
                         [[:fx/assoc-in [:roll-n] value]]))
 
-(nxr/register-action! :ui/roll
-                      (fn [{:keys [inputs roll-n]}]
-                        ;; A blank field rolls randomly; a number rolls that d100
-                        ;; result against the table's allocation (validated server-side).
-                        (let [n (when-not (str/blank? roll-n)
-                                  (let [parsed (js/parseInt roll-n 10)]
-                                    (when-not (js/isNaN parsed) parsed)))]
-                          [[:fx/assoc-in [:page] :loot]
-                           [:fx/roll inputs n]])))
+(defn- roll-fx [{:keys [inputs roll-n]}]
+  ;; A blank field rolls randomly; a number rolls that d100 result against the
+  ;; table's allocation (validated server-side).
+  (let [n (when-not (str/blank? roll-n)
+            (let [parsed (js/parseInt roll-n 10)]
+              (when-not (js/isNaN parsed) parsed)))]
+    [[:fx/assoc-in [:page] :loot]
+     [:fx/roll inputs n]]))
+
+(nxr/register-action! :ui/roll roll-fx)
+
+;; Enter inside the roll input rolls, matching the button.
+(nxr/register-action! :ui/roll-on-enter
+                      (fn [state key]
+                        (when (= key "Enter")
+                          (roll-fx state))))
 
 ;; --- the always-on Group Deception & Persuasion tracker ----------------------
 
