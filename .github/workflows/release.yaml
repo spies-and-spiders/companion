@@ -49,8 +49,8 @@ jobs:
       - name: Build SDK jar
         run: make sdk-jar
 
-      - name: Generate config schema
-        run: make config-schema
+      - name: Generate schemas
+        run: make schemas
 
       - name: Name uberjar for release
         run: cp target/companion.jar "companion-${{ github.ref_name }}-standalone.jar"
@@ -79,11 +79,11 @@ jobs:
           path: sns-companion-sdk-${{ github.ref_name }}.jar
           if-no-files-found: error
 
-      - name: Upload config schema
+      - name: Upload schemas
         uses: actions/upload-artifact@v7
         with:
-          name: config-schema
-          path: config.schema.json
+          name: schemas
+          path: schemas.json
           if-no-files-found: error
 
       - name: Upload SDK maven artefacts
@@ -240,7 +240,7 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
-          pattern: '{uberjar,sdk-jar,config-schema,native-*}'
+          pattern: '{uberjar,sdk-jar,schemas,native-*}'
 
       - name: Create release
         env:

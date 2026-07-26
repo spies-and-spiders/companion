@@ -55,8 +55,8 @@ dist: uber ## Full production artifact (alias for `uber`)
 sdk-jar: ## Build the SDK library jar for plugin authors (target/sns-companion-sdk.jar)
 	clojure -T:build sdk-jar
 
-.PHONY: config-schema
-config-schema: prep ## Generate config.schema.json (JSON Schema for config.json)
+.PHONY: schemas
+schemas: prep ## Generate schemas.json (JSON Schema for config.json + :cli output)
 	clojure -M -m sns.server.schema-gen
 
 .PHONY: graalvm

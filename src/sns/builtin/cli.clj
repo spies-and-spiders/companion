@@ -12,7 +12,8 @@
   (:require
     [clojure.java.shell :as shell]
     [jsonista.core :as j]
-    [sns.sdk.protocols :as p]))
+    [sns.sdk.protocols :as p]
+    [sns.sdk.schema :as schema]))
 
 (def ^:private mapper j/keyword-keys-object-mapper)
 
@@ -49,7 +50,7 @@
         {:keys [exit out err]} (apply shell/sh (concat command [:in payload]))]
     (when-not (zero? exit)
       (throw (ex-info "CLI plugin failed" {:id id :exit exit :err err})))
-    (->view-model id (j/read-value out mapper))))
+    (->view-model id (schema/assert! ::schema/cli-output (j/read-value out mapper)))))
 
 (defn generator
   "Build a `LootGenerator`/`LootAction` that runs `command` (a vector of program

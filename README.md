@@ -320,6 +320,15 @@ and reads a **friendly, un-namespaced** view-model from **stdout**:
 ```
 A non-zero exit is treated as an error. See `examples/cli-plugin/weather.py`.
 
+The stdout JSON is validated before it is mapped, so a contract breach fails with
+an error in *your* keys (e.g. a missing `body`) rather than the namespaced
+view-model. The full contract lives in `schemas.json` as the
+`sns.sdk.schema.cli-output` definition — `$ref` it from your editor for
+autocompletion. In brief: `title` is required; `subtitle`, `sections`, and
+`actions` are optional. Each section needs `items` (`heading` optional); each item
+needs `body` (`title` and a `metadata` array of strings optional); each action
+needs `label` and `action` (`params` object optional).
+
 ### Actions (stateful follow-ups)
 
 A `:cli` plugin can also drive follow-up actions (e.g. "level up") in its own

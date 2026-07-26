@@ -35,6 +35,20 @@
   (let [gen (cli/generator :boom ["bash" "-c" "exit 3"] "Boom")]
     (is (thrown? Exception (p/generate gen {:inputs {} :session nil})))))
 
+(deftest invalid-stdout-rejected-against-cli-output
+  (testing "stdout that breaks the ::cli-output contract throws before mapping,
+            reporting the author's own JSON keys"
+    (let [cmd ["bash" "-c"
+               (str "cat >/dev/null; "
+                    "printf '%s' '{\"title\":\"Loot\",\"sections\":[{\"items\":["
+                    "{\"title\":\"no body\"}]}]}'")]
+          gen (cli/generator :bad cmd "Bad")
+          err (try (p/generate gen {:inputs {} :session nil})
+                   (catch clojure.lang.ExceptionInfo e (ex-data e)))]
+      (is (= ::schema/cli-output (:schema err)))
+      (is (= {:sections [{:items [{:body ["missing required key"]}]}]}
+             (:error err))))))
+
 (deftest example-script-runs
   (testing "the shipped example weather.py produces a valid view-model"
     (let [gen (cli/generator :weather ["python3" "examples/cli-plugin/weather.py"] "Weather")
