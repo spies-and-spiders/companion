@@ -11,9 +11,34 @@ permissions:
 jobs:
   uberjar:
     runs-on: ubuntu-latest
+    outputs:
+      sdk-changed: ${{ steps.sdk-changed.outputs.changed }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Detect SDK changes since last release
+        id: sdk-changed
+        shell: bash
+        env:
+          REF: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prev="$(gh release list --limit 100 --json tagName \
+            --jq 'map(.tagName) | map(select(. != env.REF)) | first // empty')"
+          if [ -z "$prev" ]; then
+            echo "No prior release found — deploying SDK."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$prev" "$REF" -- sdk; then
+            echo "SDK unchanged since release $prev — skipping Maven Central deploy."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "SDK changed since release $prev — deploying to Maven Central."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: actions/setup-java@v5
         with:
@@ -187,6 +212,7 @@ jobs:
     needs:
       - uberjar
       - native
+    if: needs.uberjar.outputs.sdk-changed == 'true'
     steps:
       - name: Download SDK maven artefacts
         uses: actions/download-artifact@v8
