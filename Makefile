@@ -56,7 +56,7 @@ sdk-jar: ## Build the SDK library jar for plugin authors (target/sns-companion-s
 	clojure -T:build sdk-jar
 
 .PHONY: schemas
-schemas: prep ## Generate schemas.json (JSON Schema for config.json + :cli output)
+schemas: prep ## Generate schemas.json (config) + plugin-{request,output}.schema.json (codegen)
 	clojure -M -m sns.server.schema-gen
 
 .PHONY: graalvm

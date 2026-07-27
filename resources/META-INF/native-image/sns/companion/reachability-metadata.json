@@ -9,5 +9,11 @@
     {
       "glob": "public/**"
     }
-  ]
+  ],
+  "foreign": {
+    "downcalls": [
+      { "returnType": "void*", "parameterTypes": ["void*"] },
+      { "returnType": "void", "parameterTypes": ["void*"] }
+    ]
+  }
 }

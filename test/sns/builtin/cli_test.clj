@@ -35,8 +35,8 @@
   (let [gen (cli/generator :boom ["bash" "-c" "exit 3"] "Boom")]
     (is (thrown? Exception (p/generate gen {:inputs {} :session nil})))))
 
-(deftest invalid-stdout-rejected-against-cli-output
-  (testing "stdout that breaks the ::cli-output contract throws before mapping,
+(deftest invalid-stdout-rejected-against-plugin-output
+  (testing "stdout that breaks the ::plugin-output contract throws before mapping,
             reporting the author's own JSON keys"
     (let [cmd ["bash" "-c"
                (str "cat >/dev/null; "
@@ -45,7 +45,7 @@
           gen (cli/generator :bad cmd "Bad")
           err (try (p/generate gen {:inputs {} :session nil})
                    (catch clojure.lang.ExceptionInfo e (ex-data e)))]
-      (is (= ::schema/cli-output (:schema err)))
+      (is (= ::schema/plugin-output (:schema err)))
       (is (= {:sections [{:items [{:body ["missing required key"]}]}]}
              (:error err))))))
 

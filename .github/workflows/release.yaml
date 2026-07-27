@@ -108,7 +108,10 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: schemas
-          path: schemas.json
+          path: |
+            schemas.json
+            plugin-request.schema.json
+            plugin-output.schema.json
           if-no-files-found: error
 
       - name: Upload SDK maven artefacts

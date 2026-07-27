@@ -38,7 +38,7 @@
            :url     "jdbc:mariadb://localhost:3306/sns"}
 
  ;; --- plugins ---------------------------------------------------------------
- ;; The loot types available in the UI. Four kinds:
+ ;; The loot types available in the UI. Five kinds:
  ;;
  ;;   :builtin — a generator shipped in this app: the :id alone selects it
  ;;              (:divine-dust, :relics). An optional :entrypoint Clojure var
@@ -49,6 +49,9 @@
  ;;              over :source).
  ;;   :cli     — shell out to any external program (any language). See
  ;;              examples/cli-plugin/weather.py.
+ ;;   :ffi     — call a C-ABI symbol in a shared library, exchanging the same
+ ;;              JSON as :cli. Works in the native image (unlike :jar). See
+ ;;              examples/ffi-plugin/ (C, Go, and Rust).
  ;;   :jar     — a generator from an external library jar on disk. Only
  ;;              available when running the app via java -jar
  ;;
@@ -84,6 +87,18 @@
             :utility? true
             :label    "Weather"
             :command  ["python3" "examples/cli-plugin/weather.py"]}
+              ;; A C-ABI shared library, exchanging the same JSON as :cli but in
+              ;; process (so it works in the native image, unlike :jar). Build one
+              ;; of the examples first, e.g. from examples/ffi-plugin/:
+              ;;   cc -shared -fPIC -o libloot.dylib loot.c   (or loot.go, loot.rs)
+              ;; then point :library at it. :symbol is the generator; :free-symbol
+              ;; (optional) is called on the returned pointer once its bytes are
+              ;; read. Same :label/:utility?/:hidden? options as any other plugin.
+           #_{:type        :ffi
+              :id          :ffi-loot
+              :library     "plugins/libloot.dylib"
+              :symbol      "generate"
+              :free-symbol "loot_free"}
               ;; A generator from an external jar. Put the jar on disk and name
               ;; its generator: either an :entrypoint Clojure var, or — for
               ;; plugins written in Java/Kotlin/Scala with no Clojure — a :class

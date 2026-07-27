@@ -3,21 +3,24 @@
 
 ## Customising the S&S Companion
 
-There are four types of loot plugins, all used to define custom loot:
+There are five types of loot plugins, all used to define custom loot:
 
 | Type           | Description                                                                                                                                                                                        |
 |----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **`:builtin`** | A pre-defined plugin provided by us, selected by its `:id` alone (`:divine-dust`, `:relics`).                                                                                                      |
 | **`:data`**    | A .json or .edn file that defines the loot that is to be randomly sampled. This cannot support stateful loot.                                                                                      |
 | **`:cli`**     | Shell out to a program in any language, communicating via JSON. CLI plugins that wish to use state must implement their own persistence strategy and state management.                             |
-| **`:jar`**     | An external JAR implementing the protocols or interfaces provided. This provides the best integration into the Companion, but requires the use of a JVM language (e.g. Java/Kotlin/Clojure/Scala). |
+| **`:ffi`**     | Call a C-ABI symbol in a shared library (.so/.dylib/.dll), exchanging the same JSON as `:cli`. In-process (so it can hold state) and works in the native image, unlike `:jar` — at the cost of process isolation and a per-platform build. |
+| **`:jar`**     | An external JAR implementing the protocols or interfaces provided. This provides the best integration into the Companion, but requires the use of a JVM language (e.g. Java/Kotlin/Clojure/Scala) **and a JVM build (not the native image)**. |
 
-All four are configured the same way in `config.edn`:
+All five are configured the same way in `config.edn`:
 ```clojure
 {:storage    {:backend :mysql :url "jdbc:mariadb://localhost:3306/sns"}
  :plugins    [{:type :data    :id :uniques :source "data/uniques.edn"}
               {:type :cli     :id :weather :label "Weather"
                               :command ["python3" "examples/cli-plugin/weather.py"]}
+              {:type :ffi     :id :ffi-loot :library "plugins/libloot.dylib"
+                              :symbol "generate" :free-symbol "loot_free"}
               {:type :jar     :id :custom  :jar "plugins/custom.jar"
                               :entrypoint my.plugin/generator}
               {:type :builtin :id :relics}]
@@ -29,8 +32,8 @@ All four are configured the same way in `config.edn`:
 A plugin may declare itself a **utility** — a session tool rather than loot. Utilities
 are grouped separately in the UI and rejected from the `:loot-table` at startup.
 Builtin/`:jar` plugins set `:utility? true` in their loot-spec (Java: the `LootSpec`
-record's `utility` component); `:data` specs set it in the spec file; `:cli` plugins
-set it on the config entry.
+record's `utility` component); `:data` specs set it in the spec file; `:cli`/`:ffi`
+plugins set it on the config entry.
 
 A plugin may also be marked **hidden** with `:hidden? true` on its config entry — this
 works for every plugin type, since the engine applies it rather than the generator (so
@@ -307,45 +310,58 @@ for stateful loot.)
 
 ---
 
-## The CLI contract (`:cli`)
+## The external plugin contract (`:cli` and `:ffi`)
 
-The engine runs your `:command`, writes the context as JSON to **stdin**:
-```json
-{"inputs": {...}, "session": {...}}
-```
-and reads a **friendly, un-namespaced** view-model from **stdout**:
-```json
-{"title": "Fogfall", "subtitle": "Weather",
- "sections": [{"heading": "Sky", "items": [{"body": "…", "metadata": ["obscured"]}]}]}
-```
-A non-zero exit is treated as an error. See `examples/cli-plugin/weather.py`.
+`:cli` and `:ffi` plugins speak the **same friendly, un-namespaced JSON** — only
+the transport differs. The engine sends a **request** and reads back an **output**:
 
-The stdout JSON is validated before it is mapped, so a contract breach fails with
-an error in *your* keys (e.g. a missing `body`) rather than the namespaced
-view-model. The full contract lives in `schemas.json` as the
-`sns.sdk.schema.cli-output` definition — `$ref` it from your editor for
-autocompletion. In brief: `title` is required; `subtitle`, `sections`, and
-`actions` are optional. Each section needs `items` (`heading` optional); each item
-needs `body` (`title` and a `metadata` array of strings optional); each action
-needs `label` and `action` (`params` object optional).
+```json
+// request → plugin                    // output ← plugin
+{"inputs": {...}, "session": {...}}     {"title": "Fogfall", "subtitle": "Weather",
+                                         "sections": [{"heading": "Sky", "items": [
+                                           {"body": "…", "metadata": ["obscured"]}]}]}
+```
+
+- **`:cli`** runs your `:command`, writing the request to **stdin** and reading the
+  output from **stdout**. A non-zero exit is an error. See
+  `examples/cli-plugin/weather.py`.
+- **`:ffi`** calls `:symbol` in `:library` — a C-ABI function
+  `char* generate(const char* request_json)` returning a malloc'd output string.
+  If `:free-symbol` is set (e.g. `loot_free`) it is called on the returned pointer
+  once the bytes are read; otherwise the library owns that memory. The same C ABI
+  is reachable from any language that can export it — see `examples/ffi-plugin/`
+  for equivalent plugins in C (`loot.c`), Go (`loot.go`), and Rust (`loot.rs`),
+  each with its one-line build command at the top.
+
+The output is validated before it is mapped, so a contract breach fails with an
+error in *your* keys (e.g. a missing `body`) rather than the namespaced view-model.
+Both directions are modelled in `schemas.json` as `sns.sdk.schema.plugin-request`
+and `sns.sdk.schema.plugin-output`, and emitted rooted as
+`plugin-request.schema.json` / `plugin-output.schema.json` so codegen tools
+(quicktype, typify, go-jsonschema) can generate request/output structs for a plugin
+written in another language. In brief: output `title` is required; `subtitle`,
+`sections`, and `actions` optional. Each section needs `items` (`heading` optional);
+each item needs `body` (`title` and a `metadata` array of strings optional); each
+action needs `label` and `action` (`params` object optional).
 
 ### Actions (stateful follow-ups)
 
-A `:cli` plugin can also drive follow-up actions (e.g. "level up") in its own
-language. Emit `actions` in the view-model:
+A plugin can drive follow-up actions (e.g. "level up") in its own language. Emit
+`actions` in the output:
 ```json
 {"title": "Aegis", "actions": [{"label": "Sharpen", "action": "sharpen",
                                  "params": {"by": 1}}]}
 ```
-The engine turns each into a button; clicking it re-invokes your **same command**
-with an action context on **stdin** (note `action`/`params` instead of `inputs`):
+The engine turns each into a button; clicking it re-invokes the **same command /
+symbol** with an action request (note `action`/`params` instead of `inputs`):
 ```json
 {"action": "sharpen", "params": {"by": 1}, "session": {...}}
 ```
-Your program returns a fresh view-model on stdout (which may itself carry the next
-round of `actions`). Branch on whether `action` is present in the stdin JSON to
-tell a generate from an action. Persist any state yourself (via a file, the
-`session`, or an external store) — the engine does not persist CLI plugin state.
+The plugin returns a fresh output (which may itself carry the next round of
+`actions`). Branch on whether `action` is present in the request to tell a generate
+from an action. A `:cli` plugin must persist any state itself (a file, the
+`session`, or an external store) — the engine does not persist it; an `:ffi` plugin
+runs in-process and may instead hold state in memory for the app's lifetime.
 
 ---
 

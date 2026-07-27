@@ -19,5 +19,7 @@ dev/
 resources/public/js/
 # generated
 schemas.json
+plugin-request.schema.json
+plugin-output.schema.json
 # Local runtime config — not committed; a worked example lives in examples/
 /config.edn
