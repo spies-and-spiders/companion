@@ -6,8 +6,8 @@
 
    The library exports `(char* request_json) -> char* output_json`, sharing the
    friendly contract with `:cli` (see sns.builtin.plugin-io). Generation passes
-   `{:inputs :session}`, an action passes `{:action :params :session}`; the
-   presence of `action` tells the plugin which it is. If `free-symbol` is given it
+   `{:inputs}`, an action passes `{:action :params}`; the presence of `action`
+   tells the plugin which it is. If `free-symbol` is given it
    is called on the returned pointer once its bytes are copied out; otherwise the
    library owns that memory (e.g. a reused static buffer).
 
@@ -84,8 +84,8 @@
        (loot-spec [_]
          (cond-> {:id id :label (name id)}
                  utility? (assoc :utility? true)))
-       (generate [_ {:keys [inputs session]}]
-         (call id handle free {:inputs inputs :session session}))
+       (generate [_ {:keys [inputs]}]
+         (call id handle free {:inputs inputs}))
        p/LootAction
-       (handle-action [_ {:keys [session]} action params]
-         (call id handle free {:action action :params params :session session}))))))
+       (handle-action [_ _ action params]
+         (call id handle free {:action action :params params}))))))

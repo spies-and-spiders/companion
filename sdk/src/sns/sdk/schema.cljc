@@ -76,14 +76,17 @@
    ;; to/from the namespaced view-model in sns.builtin.plugin-io. External authors
    ;; work in these keys, never the :loot/... view-model.
 
-   ;; What the engine sends the plugin: a generate call carries `inputs`, an
-   ;; action call carries `action`/`params`; both carry the opaque `session`.
-   ;; Not runtime-validated (the engine produces it) — modelled for codegen/docs.
-   ::plugin-request [:map
-                     [:inputs {:optional true} [:map-of keyword? any?]]
-                     [:action {:optional true} string?]
-                     [:params {:optional true} [:map-of keyword? any?]]
-                     [:session {:optional true} any?]]
+   ;; What the engine sends the plugin, as one of two shapes (never both): a
+   ;; generate call carries `inputs`, an action call carries `action`/`params`.
+   ;; Modelled as a union so codegen emits two request types and the
+   ;; generate-vs-action split is structural. Not runtime-validated — the engine
+   ;; produces it.
+   ::plugin-request [:or
+                     [:map
+                      [:inputs [:map-of keyword? any?]]]
+                     [:map
+                      [:action string?]
+                      [:params {:optional true} [:map-of keyword? any?]]]]
 
    ;; What the plugin returns. `action` is a bare name the adapter keywordises to
    ;; route the follow-up back to the same plugin.

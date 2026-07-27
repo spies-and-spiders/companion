@@ -5,9 +5,8 @@
    view-model mapping and output validation live in `sns.builtin.plugin-io`,
    shared with the `:ffi` adapter.
 
-   Generation writes `{:inputs :session}` to stdin; an action writes
-   `{:action :params :session}` — the presence of `action` tells the script which
-   it is."
+   Generation writes `{:inputs}` to stdin; an action writes `{:action :params}` —
+   the presence of `action` tells the script which it is."
   (:require
     [clojure.java.shell :as shell]
     [sns.builtin.plugin-io :as io]
@@ -33,8 +32,8 @@
      (loot-spec [_]
        (cond-> {:id id :label (or label (name id))}
                utility? (assoc :utility? true)))
-     (generate [_ {:keys [inputs session]}]
-       (run id command {:inputs inputs :session session}))
+     (generate [_ {:keys [inputs]}]
+       (run id command {:inputs inputs}))
      p/LootAction
-     (handle-action [_ {:keys [session]} action params]
-       (run id command {:action action :params params :session session})))))
+     (handle-action [_ _ action params]
+       (run id command {:action action :params params})))))

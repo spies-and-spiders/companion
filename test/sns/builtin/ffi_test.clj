@@ -43,7 +43,7 @@
     (let [lib (compile-example)
           gen (ffi/generator :ffi-loot lib "generate" "loot_free" false)]
       (testing "generate maps the friendly C output to a valid view-model"
-        (let [vm (p/generate gen {:inputs {} :session nil})]
+        (let [vm (p/generate gen {:inputs {}})]
           (is (schema/validate ::schema/view-model vm))
           (is (= "Rusty Dagger" (:loot/title vm)))
           (is (= ["common"] (-> vm :loot/sections first :section/items first :item/metadata)))
@@ -52,7 +52,7 @@
             (is (= [:loot/action {:id :ffi-loot :action :sharpen :params {:by 1}}]
                    (:action/event action))))))
       (testing "an action re-invokes the same symbol with an action request"
-        (let [vm (p/handle-action gen {:session nil} :sharpen {:by 1})]
+        (let [vm (p/handle-action gen {} :sharpen {:by 1})]
           (is (schema/validate ::schema/view-model vm))
           (is (= "Sharpened Blade" (:loot/title vm))))))))
 
@@ -67,5 +67,5 @@
       (testing "two plugins on the same library each generate correctly"
         (let [a (ffi/generator :ffi-a lib "generate" "loot_free" false)
               b (ffi/generator :ffi-b lib "generate" "loot_free" false)]
-          (is (= "Rusty Dagger" (:loot/title (p/generate a {:inputs {} :session nil}))))
-          (is (= "Rusty Dagger" (:loot/title (p/generate b {:inputs {} :session nil})))))))))
+          (is (= "Rusty Dagger" (:loot/title (p/generate a {:inputs {}}))))
+          (is (= "Rusty Dagger" (:loot/title (p/generate b {:inputs {}})))))))))

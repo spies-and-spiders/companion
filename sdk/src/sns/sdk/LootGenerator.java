@@ -9,7 +9,7 @@ import java.util.Map;
  *
  * <p>Data shapes are exchanged as {@link Models} records; the engine context
  * ({@code ctx}) is passed through as an opaque {@link Object} (a Clojure map of
- * {@code {:rng :store :render :progression :config :session :inputs}}).
+ * {@code {:rng :store :render :progression :config :inputs}}).
  */
 public interface LootGenerator {
 
@@ -18,7 +18,7 @@ public interface LootGenerator {
 
     /**
      * Produce loot. {@code ctx} is the engine context map {@code {:rng :store
-     * :render :progression :config :session :inputs}}.
+     * :render :progression :config :inputs}}.
      */
     Models.ViewModel generate(Map<String, Object> ctx);
 }

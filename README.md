@@ -132,7 +132,7 @@ and extend without depending on the app.
 (generate  [this ctx]) ; => a view-model
 ```
 
-`ctx` is `{:rng :store :render :progression :config :session :inputs}`:
+`ctx` is `{:rng :store :render :progression :config :inputs}`:
 - `:rng` — a randy RNG (or use randy's default-rng functions).
 - `:store` — the `Store` (see below) for stateful loot.
 - `:render` — `(fn [template state] -> string)`, Selmer with cosmetic filters
@@ -316,10 +316,10 @@ for stateful loot.)
 the transport differs. The engine sends a **request** and reads back an **output**:
 
 ```json
-// request → plugin                    // output ← plugin
-{"inputs": {...}, "session": {...}}     {"title": "Fogfall", "subtitle": "Weather",
-                                         "sections": [{"heading": "Sky", "items": [
-                                           {"body": "…", "metadata": ["obscured"]}]}]}
+// request → plugin        // output ← plugin
+{"inputs": {...}}           {"title": "Fogfall", "subtitle": "Weather",
+                             "sections": [{"heading": "Sky", "items": [
+                               {"body": "…", "metadata": ["obscured"]}]}]}
 ```
 
 - **`:cli`** runs your `:command`, writing the request to **stdin** and reading the
@@ -339,7 +339,10 @@ Both directions are modelled in `schemas.json` as `sns.sdk.schema.plugin-request
 and `sns.sdk.schema.plugin-output`, and emitted rooted as
 `plugin-request.schema.json` / `plugin-output.schema.json` so codegen tools
 (quicktype, typify, go-jsonschema) can generate request/output structs for a plugin
-written in another language. In brief: output `title` is required; `subtitle`,
+written in another language. The request is a union of the two modes — a generate
+call (`inputs`) or an action call (`action` + `params`) — so codegen yields both,
+and the generate-vs-action split is structural rather than a convention you infer.
+In brief: output `title` is required; `subtitle`,
 `sections`, and `actions` optional. Each section needs `items` (`heading` optional);
 each item needs `body` (`title` and a `metadata` array of strings optional); each
 action needs `label` and `action` (`params` object optional).
@@ -355,13 +358,13 @@ A plugin can drive follow-up actions (e.g. "level up") in its own language. Emit
 The engine turns each into a button; clicking it re-invokes the **same command /
 symbol** with an action request (note `action`/`params` instead of `inputs`):
 ```json
-{"action": "sharpen", "params": {"by": 1}, "session": {...}}
+{"action": "sharpen", "params": {"by": 1}}
 ```
 The plugin returns a fresh output (which may itself carry the next round of
 `actions`). Branch on whether `action` is present in the request to tell a generate
-from an action. A `:cli` plugin must persist any state itself (a file, the
-`session`, or an external store) — the engine does not persist it; an `:ffi` plugin
-runs in-process and may instead hold state in memory for the app's lifetime.
+from an action. A `:cli` plugin must persist any state itself (a file or an external
+store) — the engine does not persist it; an `:ffi` plugin runs in-process and may
+instead hold state in memory for the app's lifetime.
 
 ---
 

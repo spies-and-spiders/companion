@@ -2,7 +2,7 @@
 """Example sns-companion :cli loot plugin.
 
 The engine passes the request context as JSON on stdin:
-    {"inputs": {...}, "session": {...}}
+    {"inputs": {...}}
 and expects a friendly (un-namespaced) view-model as JSON on stdout:
     {"title", "subtitle", "sections": [{"heading", "items": [{"title","body","metadata"}]}]}
 

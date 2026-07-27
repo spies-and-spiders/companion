@@ -15,7 +15,7 @@
       :inputs [{:id :character :label \"Character\" :type :enum :options [...]}]}")
   (generate [this ctx]
     "Produce loot. Returns a view-model (`sns.sdk.schema/view-model`).
-     `ctx` is `{:rng :store :render :inputs :config :session}` — see the engine.
+     `ctx` is `{:rng :store :render :inputs :config}` — see the engine.
      Stateful types read/write via `(:store ctx)`."))
 
 (defprotocol LootAction

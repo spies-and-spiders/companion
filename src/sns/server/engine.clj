@@ -51,11 +51,11 @@
 
 (defn create
   "Build a loot engine from validated `config`. `deps` supplies overridable
-   collaborators: `:store`, `:reporter`, `:render`, `:session`, `:rng`. `:render`,
+   collaborators: `:store`, `:reporter`, `:render`, `:rng`. `:render`,
    the derived `:progression`, `:store`, and `:reporter` default to the built-in
    (swappable) impls."
   ([config] (create config {}))
-  ([config {:keys [store reporter render session rng]}]
+  ([config {:keys [store reporter render rng]}]
    (let [table (:loot-table config)
          registry (registry/build config)
          render (or render render/render)
@@ -72,7 +72,6 @@
       :reporter        (or reporter (reporter/from-config (:reporting config)))
       :render          render
       :progression     (progression/progression render)
-      :session         session
       :rng             (or rng (.create (RandomGeneratorFactory/of "L64X128MixRandom")))
       ;; Missing weights default to 1, so a table without weights is sampled
       ;; uniformly (and partial weights mix evenly-weighted entries in).
@@ -85,7 +84,7 @@
 (defn- ctx
   "Assemble the per-request context handed to a generator."
   [engine inputs]
-  (-> (select-keys engine [:rng :store :render :progression :config :session])
+  (-> (select-keys engine [:rng :store :render :progression :config])
       (assoc :inputs inputs)))
 
 (defn- apply-input-defaults
