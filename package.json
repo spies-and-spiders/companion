@@ -2,7 +2,7 @@
   "name": "sns-companion",
   "private": true,
   "devDependencies": {
-    "playwright": "^1.61.1",
+    "playwright": "^1.62.0",
     "shadow-cljs": "3.4.11"
   },
   "scripts": {
