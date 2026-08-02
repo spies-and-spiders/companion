@@ -290,8 +290,7 @@ jobs:
           irm ${raw}/install.ps1 | iex
           \`\`\`
 
-          Both download the right binary for your machine into the current
-          directory, decompress it, and clear the OS download quarantine.
+          Both download the right binary for your machine into the current directory, decompress it, and clear the OS download quarantine.
           EOF
 
       - name: Create release
