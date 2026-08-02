@@ -68,24 +68,25 @@
   (FunctionDescriptor/ofVoid (into-array MemoryLayout [ValueLayout/ADDRESS])))
 
 (defn generator
-  "Build a `LootGenerator`/`LootAction` bound to `symbol` (and optional
-   `free-symbol`) in the shared library at `library`. The library stays loaded for
-   the app's lifetime (a global arena). `utility?` marks a session tool rather
-   than loot."
-  ([id library symbol free-symbol] (generator id library symbol free-symbol false))
-  ([id library symbol free-symbol utility?]
-   (let [linker (Linker/nativeLinker)
-         lookup (library-lookup (str library))
-         handle (downcall linker lookup (str symbol) (ptr->ptr))
-         free   (when free-symbol
-                  (downcall linker lookup (str free-symbol) (ptr->void)))]
-     (reify
-       p/LootGenerator
-       (loot-spec [_]
-         (cond-> {:id id :label (name id)}
-                 utility? (assoc :utility? true)))
-       (generate [_ {:keys [inputs]}]
-         (call id handle free {:inputs inputs}))
-       p/LootAction
-       (handle-action [_ _ action params]
-         (call id handle free {:action action :params params}))))))
+  "Build a `LootGenerator`/`LootAction` from an `:ffi` plugin config entry, bound
+   to its `:symbol` (and optional `:free-symbol`) in the shared library at
+   `:library`. The library stays loaded for the app's lifetime (a global arena).
+   `:utility?` marks a session tool rather than loot, and `:inputs` declares the
+   form fields whose values are sent as the request's `inputs`."
+  [{:keys [id library free-symbol label utility? inputs] sym :symbol}]
+  (let [linker (Linker/nativeLinker)
+        lookup (library-lookup (str library))
+        handle (downcall linker lookup (str sym) (ptr->ptr))
+        free   (when free-symbol
+                 (downcall linker lookup (str free-symbol) (ptr->void)))]
+    (reify
+      p/LootGenerator
+      (loot-spec [_]
+        (cond-> {:id id :label (or label (name id))}
+                utility? (assoc :utility? true)
+                (seq inputs) (assoc :inputs (vec inputs))))
+      (generate [_ ctx]
+        (call id handle free {:inputs (:inputs ctx)}))
+      p/LootAction
+      (handle-action [_ _ action params]
+        (call id handle free {:action action :params params})))))

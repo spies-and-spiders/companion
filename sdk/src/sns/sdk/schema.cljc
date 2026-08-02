@@ -188,7 +188,13 @@
                             [:id keyword?]
                             [:hidden? {:optional true} boolean?]
                             [:command [:sequential string?]]
-                            [:utility? {:optional true} boolean?]]]
+                            [:utility? {:optional true} boolean?]
+                            [:label {:optional true} string?]
+                        ;; An external plugin has no loot-spec of its own, so it
+                        ;; declares its input fields here; the engine folds them
+                        ;; into the spec and sends the collected values as
+                        ;; `inputs`.
+                            [:inputs {:optional true} [:sequential ::field]]]]
                  ;; An :ffi plugin calls a C-ABI symbol in a shared library
                  ;; (.so/.dylib/.dll): `(char* request_json) -> char* output_json`.
                  ;; If `free-symbol` is given it is called on the returned pointer
@@ -201,7 +207,9 @@
                             [:library string?]
                             [:symbol string?]
                             [:free-symbol {:optional true} string?]
-                            [:utility? {:optional true} boolean?]]]
+                            [:utility? {:optional true} boolean?]
+                            [:label {:optional true} string?]
+                            [:inputs {:optional true} [:sequential ::field]]]]
                  ;; A :jar plugin names its generator either as a Clojure
                  ;; :entrypoint factory var or as a :class with a 0-arity
                  ;; constructor (for pure-JVM-language plugins).

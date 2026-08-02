@@ -190,7 +190,13 @@ round-trip losslessly.
           {:id :lucky? :label "Lucky" :type :bool}]}
 ```
 Field `:type` is one of `:enum` `:int` `:text` `:bool`. The collected values arrive
-as `(:inputs ctx)`.
+as `(:inputs ctx)` — an `:int` as a number, the rest as typed.
+
+An `:enum` renders as a **typeahead combobox** (a text input over a `<datalist>`),
+not a plain dropdown, so a long `:options` list is filtered by typing rather than
+scrolled. The field accepts anything: a value that isn't one of the `:options` is
+flagged in the UI but still submitted, so a generator that wants to be strict
+should say so itself. Clearing the field falls back to the field's `:default`.
 
 ---
 
@@ -323,7 +329,8 @@ the transport differs. The engine sends a **request** and reads back an **output
 ```
 
 - **`:cli`** runs your `:command`, writing the request to **stdin** and reading the
-  output from **stdout**. A non-zero exit is an error. See
+  output from **stdout**. A non-zero exit is an error, and whatever the command
+  wrote to **stderr** becomes the error the DM sees. See
   `examples/cli-plugin/weather.py`.
 - **`:ffi`** calls `:symbol` in `:library` — a C-ABI function
   `char* generate(const char* request_json)` returning a malloc'd output string.
@@ -332,6 +339,17 @@ the transport differs. The engine sends a **request** and reads back an **output
   is reachable from any language that can export it — see `examples/ffi-plugin/`
   for equivalent plugins in C (`loot.c`), Go (`loot.go`), and Rust (`loot.rs`),
   each with its one-line build command at the top.
+
+An external plugin has no loot-spec of its own, so it declares the form fields it
+needs on its **config entry**, in the same shape as a loot-spec's `:inputs`; the
+engine renders the form and sends the collected values as the request's `inputs`
+(an `:int` field arrives as a number, not the form's string):
+
+```json
+{"type": "cli", "id": "insight", "label": "Insight Checks", "utility?": true,
+ "inputs": [{"id": "socialBonus", "label": "Speaker's social bonus", "type": "int"}],
+ "command": ["./5e-cli", "-data", "data", "insight"]}
+```
 
 The output is validated before it is mapped, so a contract breach fails with an
 error in *your* keys (e.g. a missing `body`) rather than the namespaced view-model.

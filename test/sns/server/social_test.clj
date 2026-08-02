@@ -14,9 +14,14 @@
     (is (= 5 (pure/group-bonus [5]))))
   (testing "an empty party has no bonus"
     (is (= 0 (pure/group-bonus []))))
-  (testing "rounds down, including below zero"
-    (is (= 1 (pure/group-bonus [2 1 1])))     ; 7/5
-    (is (= -1 (pure/group-bonus [-1 0 -2]))))) ; -4/5
+  (testing "never rounds, including below zero"
+    (is (= 1.4 (pure/group-bonus [2 1 1])))
+    (is (= -0.8 (pure/group-bonus [-1 0 -2]))))
+  (testing "fractional bonuses are averaged as-is"
+    (is (= 10.5 (pure/group-bonus [10.5])))
+    (is (= 7.75 (pure/group-bonus [10.5 5])))) ; (10.5+5+10.5+5)/4
+  (testing "whole results keep their integral type"
+    (is (= 4 (pure/group-bonus [3.5 4.5])))))
 
 (deftest tracker-flow
   (let [store (memory/create)]
@@ -31,7 +36,14 @@
       (let [s (social/upsert! store {:name "Bob" :deception 1 :persuasion -2})]
         ;; deception [7 1] -> (7+7+1+1)/4 = 4
         (is (= 4 (:deception s)))
-        (is (= 0 (:persuasion s)))))
+        ;; persuasion [3 -2] -> (3-2+3-2)/4 = 0.5
+        (is (= 0.5 (:persuasion s)))))
+    (testing "fractional bonuses survive the round trip unrounded"
+      (let [s (social/upsert! store {:name "Bob" :deception "10.5" :persuasion -2})]
+        ;; deception [7 10.5] -> (7+10.5+10.5+7)/4 = 8.75
+        (is (= 10.5 (:deception (second (:characters s)))))
+        (is (= 8.75 (:deception s))))
+      (social/upsert! store {:name "Bob" :deception 1 :persuasion -2}))
     (testing "state persists under the __-prefixed internal collection"
       (is (= #{"Alice" "Bob"} (set (keys (p/fetch store :__social "characters"))))))
     (testing "unticking excludes a character from the averages"

@@ -139,3 +139,17 @@
       (is (= "common potion" (:loot/title (engine/generate eng :potion {:rarity ""})))))
     (testing "a provided value overrides the default"
       (is (= "rare potion" (:loot/title (engine/generate eng :potion {:rarity "rare"})))))))
+
+(deftest int-inputs-reach-the-generator-as-numbers
+  (let [eng (engine/create
+              {:plugins [{:type    :cli
+                          :id      :echo
+                          :label   "Echo"
+                          :inputs  [{:id :bonus :label "Bonus" :type :int}]
+                          :command ["python3" "-c"
+                                    (str "import sys,json; d=json.load(sys.stdin); "
+                                         "print(json.dumps({'title': type(d['inputs']['bonus']).__name__}))")]}]})]
+    (testing "a :int field entered in the browser form arrives parsed"
+      (is (= "int" (:loot/title (engine/generate eng :echo {:bonus "3"})))))
+    (testing "an unparseable value is passed through for the generator to reject"
+      (is (= "str" (:loot/title (engine/generate eng :echo {:bonus "abc"})))))))

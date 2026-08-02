@@ -225,6 +225,10 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   font-size: 0.9rem;
 }
 .field__control:focus { border-color: var(--arcane); outline: none; }
+/* A typed enum value that isn't one of the declared options: a hint, not a block.
+   Outranks :focus — you are typing when you most need to see it. */
+.field__control--unknown,
+.field__control--unknown:focus { border-color: var(--ember); }
 
 .generate {
   align-self: flex-start;

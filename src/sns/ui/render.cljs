@@ -7,17 +7,33 @@
 
 ;; --- input-form (from a loot-spec's :inputs) ---------------------------------
 
+(defn- enum-field
+  "An enum renders as a combobox rather than a `<select>`: a text input backed by
+   a `<datalist>`, so the browser's own picker filters as the DM types. Options
+   come from config and can be long (every character, every damage type), where a
+   select means scrolling. Free text is the trade — a value that isn't an option
+   is flagged, not blocked, since only the plugin knows what it will accept.
+   Clearing the field is how you get back to `—` (blank falls back to :default)."
+  [id value options]
+  (let [list-id (str "field-options-" (name id))
+        known?  (contains? (into #{} (map str) options) (str value))]
+    (list
+      [:input.field__control
+       {:type  "text"
+        :list  list-id
+        :class (when-not (or (str/blank? (str value)) known?) "field__control--unknown")
+        :value (str value)
+        :on    {:input [[:ui/set-input id [:event.target/value]]]}}]
+      [:datalist {:id list-id}
+       (for [opt options]
+         [:option {:value (str opt)}])])))
+
 (defn- field [inputs {:keys [id label type options]}]
   (let [value (get inputs id)]
     [:label.field {:replicant/key id}
      [:span.field__label label]
      (case type
-       :enum [:select.field__control
-              {:on {:change [[:ui/set-input id [:event.target/value]]]}}
-              [:option {:value ""} "—"]
-              (for [opt options]
-                [:option {:value (str opt) :selected (= (str opt) (str value))}
-                 (str opt)])]
+       :enum (enum-field id value options)
        :bool [:input.field__control
               {:type    "checkbox"
                :checked (boolean value)
@@ -130,6 +146,7 @@
    [:span.field__label label]
    [:input.field__control
     {:type  type
+     :step  (when (= "number" type) "any") ; bonuses may be fractional (e.g. 10.5)
      :value (str (get social-form field))
      :on    {:input [[:ui/set-social-input field [:event.target/value]]]}}]])
 

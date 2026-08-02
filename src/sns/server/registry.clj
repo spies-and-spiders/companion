@@ -40,11 +40,11 @@
   ;; An :inline spec takes precedence over loading one from a :source file.
   (data/generator id (or inline (data/load-spec source))))
 
-(defmethod build-generator :cli [{:keys [id command label utility?]}]
-  (cli/generator id command label utility?))
+(defmethod build-generator :cli [plugin]
+  (cli/generator plugin))
 
-(defmethod build-generator :ffi [{:keys [id library free-symbol utility?] :as plugin}]
-  (ffi/generator id library (:symbol plugin) free-symbol utility?))
+(defmethod build-generator :ffi [plugin]
+  (ffi/generator plugin))
 
 (defmethod build-generator :jar [{:keys [jar entrypoint] :as plugin}]
   ;; Add the external jar to the classpath, then resolve its generator: a

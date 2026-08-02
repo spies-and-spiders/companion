@@ -2,6 +2,7 @@
   "The single generation pipeline: owns the registry, randomness, and (in later
    milestones) state and template rendering, and emits validated view-models."
   (:require
+    [clojure.string :as str]
     [randy.core :as r]
     [sns.sdk.protocols :as p]
     [sns.sdk.randoms :as randoms]
@@ -87,15 +88,25 @@
   (-> (select-keys engine [:rng :store :render :progression :config])
       (assoc :inputs inputs)))
 
+(defn- coerce
+  "An `:int` field arrives from the browser form as a string, so parse it to a
+   number — a plugin that declared an int should be handed one. An unparseable
+   value is passed through untouched, for the generator to reject in its own
+   terms."
+  [type v]
+  (if (and (= :int type) (string? v))
+    (or (parse-long (str/trim v)) v)
+    v))
+
 (defn- apply-input-defaults
   "Resolve each input declared in `loot-spec` against the supplied `inputs`. A
    field left blank (missing or an empty string, e.g. the UI's `—` enum option)
    falls back to the field's `:default`, or nil when it declares none — so a
    template sees the default rather than an empty string."
   [loot-spec inputs]
-  (reduce (fn [acc {:keys [id default]}]
+  (reduce (fn [acc {:keys [id default type]}]
             (let [v (get acc id)]
-              (assoc acc id (if (or (nil? v) (= "" v)) default v))))
+              (assoc acc id (if (or (nil? v) (= "" v)) default (coerce type v)))))
           inputs
           (:inputs loot-spec)))
 

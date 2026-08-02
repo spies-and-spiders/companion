@@ -9,31 +9,38 @@
    the presence of `action` tells the script which it is."
   (:require
     [clojure.java.shell :as shell]
+    [clojure.string :as str]
     [sns.builtin.plugin-io :as io]
     [sns.sdk.protocols :as p]))
 
 (defn- run
   "Run `command` with `ctx` written as JSON on stdin, returning the friendly
-   stdout JSON mapped to a view-model. A non-zero exit is treated as an error."
+   stdout JSON mapped to a view-model. A non-zero exit is treated as an error,
+   carrying the command's stderr in the message so the UI (which shows only the
+   message) explains what the plugin actually objected to."
   [id command ctx]
   (let [{:keys [exit out err]} (apply shell/sh (concat command [:in (io/encode-request ctx)]))]
     (when-not (zero? exit)
-      (throw (ex-info "CLI plugin failed" {:id id :exit exit :err err})))
+      (throw (ex-info (cond-> "CLI plugin failed"
+                              (not (str/blank? err)) (str ": " (str/trim err)))
+                      {:id id :exit exit :err err})))
     (io/read-output id out)))
 
 (defn generator
-  "Build a `LootGenerator`/`LootAction` that runs `command` (a vector of program
-   + args). `utility?` marks a session tool rather than loot (grouped separately
-   in the UI, barred from the :loot-table)."
-  ([id command label] (generator id command label false))
-  ([id command label utility?]
-   (reify
-     p/LootGenerator
-     (loot-spec [_]
-       (cond-> {:id id :label (or label (name id))}
-               utility? (assoc :utility? true)))
-     (generate [_ {:keys [inputs]}]
-       (run id command {:inputs inputs}))
-     p/LootAction
-     (handle-action [_ _ action params]
-       (run id command {:action action :params params})))))
+  "Build a `LootGenerator`/`LootAction` from a `:cli` plugin config entry, running
+   its `:command` (a vector of program + args). `:utility?` marks a session tool
+   rather than loot (grouped separately in the UI, barred from the :loot-table),
+   and `:inputs` declares the form fields whose values are sent as the request's
+   `inputs`."
+  [{:keys [id command label utility? inputs]}]
+  (reify
+    p/LootGenerator
+    (loot-spec [_]
+      (cond-> {:id id :label (or label (name id))}
+              utility? (assoc :utility? true)
+              (seq inputs) (assoc :inputs (vec inputs))))
+    (generate [_ ctx]
+      (run id command {:inputs (:inputs ctx)}))
+    p/LootAction
+    (handle-action [_ _ action params]
+      (run id command {:action action :params params}))))

@@ -2,20 +2,26 @@
   (:require
     [clojure.string :as str]))
 
+(defn- tidy
+  "Keeps fractions exactly as they are, but drops the pointless decimal on whole
+   values so they render as +7 rather than +7.0."
+  [n]
+  (cond-> n (zero? (rem n 1)) long))
+
 (defn group-bonus [bonuses]
   (if (empty? bonuses)
     0
     (let [top-two (take 2 (sort > bonuses))
           total   (+ (reduce + bonuses) (reduce + top-two))]
-      (long (Math/floor (/ total (+ (count bonuses) (count top-two))))))))
+      (tidy (/ (double total) (+ (count bonuses) (count top-two)))))))
 
 (defn- parse-bonus
-  "Bonuses arrive as strings from the UI form; accept numbers too. Blank or
-   unparseable values count as +0."
+  "Bonuses arrive as strings from the UI form; accept numbers too. Fractional
+   bonuses (e.g. 10.5) are kept as-is. Blank or unparseable values count as +0."
   [v]
   (or (cond
-        (number? v) (long v)
-        (string? v) (parse-long (str/trim v)))
+        (number? v) (tidy v)
+        (string? v) (some-> (parse-double (str/trim v)) tidy))
       0))
 
 (defn present-bonuses [characters skill]

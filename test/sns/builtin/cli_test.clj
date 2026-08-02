@@ -12,7 +12,7 @@
                     "printf '%s' '{\"title\":\"Fogfall\",\"subtitle\":\"weather\","
                     "\"sections\":[{\"heading\":\"Sky\",\"items\":["
                     "{\"body\":\"Thick fog rolls in.\",\"metadata\":[\"obscured\"]}]}]}'")]
-          gen (cli/generator :weather cmd "Weather")
+          gen (cli/generator {:id :weather :command cmd :label "Weather"})
           vm  (p/generate gen {:inputs {}})]
       (is (schema/validate ::schema/view-model vm))
       (is (= "Fogfall" (:loot/title vm)))
@@ -23,16 +23,24 @@
   (testing "the request context is delivered as JSON on stdin"
     (let [cmd ["python3" "-c"
                "import sys,json; d=json.load(sys.stdin); print(json.dumps({'title': d['inputs']['who']}))"]
-          gen (cli/generator :echo cmd "Echo")
+          gen (cli/generator {:id :echo :command cmd :label "Echo"})
           vm  (p/generate gen {:inputs {:who "Thoros"}})]
       (is (= "Thoros" (:loot/title vm))))))
 
 (deftest utility-flag-surfaces-in-loot-spec
-  (is (true? (:utility? (p/loot-spec (cli/generator :init ["true"] "Initiative" true)))))
-  (is (nil? (:utility? (p/loot-spec (cli/generator :weather ["true"] "Weather"))))))
+  (is (true? (:utility? (p/loot-spec (cli/generator {:id :init :command ["true"] :label "Initiative" :utility? true})))))
+  (is (nil? (:utility? (p/loot-spec (cli/generator {:id :weather :command ["true"] :label "Weather"}))))))
+
+(deftest declared-inputs-surface-in-loot-spec
+  (testing "config-declared :inputs drive the UI form for an external plugin"
+    (let [fields [{:id :who :label "Who" :type :text}]
+          spec   (p/loot-spec (cli/generator {:id :echo :command ["true"] :inputs fields}))]
+      (is (= fields (:inputs spec)))
+      (is (schema/validate ::schema/loot-spec spec))))
+  (is (nil? (:inputs (p/loot-spec (cli/generator {:id :echo :command ["true"]}))))))
 
 (deftest nonzero-exit-throws
-  (let [gen (cli/generator :boom ["bash" "-c" "exit 3"] "Boom")]
+  (let [gen (cli/generator {:id :boom :command ["bash" "-c" "exit 3"] :label "Boom"})]
     (is (thrown? Exception (p/generate gen {:inputs {}})))))
 
 (deftest invalid-stdout-rejected-against-plugin-output
@@ -42,7 +50,7 @@
                (str "cat >/dev/null; "
                     "printf '%s' '{\"title\":\"Loot\",\"sections\":[{\"items\":["
                     "{\"title\":\"no body\"}]}]}'")]
-          gen (cli/generator :bad cmd "Bad")
+          gen (cli/generator {:id :bad :command cmd :label "Bad"})
           err (try (p/generate gen {:inputs {}})
                    (catch clojure.lang.ExceptionInfo e (ex-data e)))]
       (is (= ::schema/plugin-output (:schema err)))
@@ -51,7 +59,7 @@
 
 (deftest example-script-runs
   (testing "the shipped example weather.py produces a valid view-model"
-    (let [gen (cli/generator :weather ["python3" "examples/cli-plugin/weather.py"] "Weather")
+    (let [gen (cli/generator {:id :weather :command ["python3" "examples/cli-plugin/weather.py"] :label "Weather"})
           vm  (p/generate gen {:inputs {}})]
       (is (schema/validate ::schema/view-model vm))
       (is (seq (:loot/title vm))))))
@@ -62,7 +70,7 @@
                (str "import sys,json; json.load(sys.stdin); "
                     "print(json.dumps({'title':'Blade','actions':["
                     "{'label':'Sharpen','action':'sharpen','params':{'by':1}}]}))")]
-          gen (cli/generator :forge cmd "Forge")
+          gen (cli/generator {:id :forge :command cmd :label "Forge"})
           vm  (p/generate gen {:inputs {}})
           [action] (:loot/actions vm)]
       (is (schema/validate ::schema/view-model vm))
@@ -75,7 +83,7 @@
     (let [cmd ["python3" "-c"
                (str "import sys,json; d=json.load(sys.stdin); "
                     "print(json.dumps({'title': d['action'] + ':' + str(d['params']['n'])}))")]
-          gen (cli/generator :counter cmd "Counter")
+          gen (cli/generator {:id :counter :command cmd :label "Counter"})
           vm  (p/handle-action gen {} :bump {:n 5})]
       (is (schema/validate ::schema/view-model vm))
       (is (= "bump:5" (:loot/title vm))))))
