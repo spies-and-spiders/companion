@@ -38,10 +38,12 @@
               {:type    "checkbox"
                :checked (boolean value)
                :on      {:change [[:ui/set-input id [:event.target/checked]]]}}]
-       :int  [:input.field__control
-              {:type  "number"
-               :value (str value)
-               :on    {:input [[:ui/set-input id [:event.target/value]]]}}]
+       (:int :decimal)
+       [:input.field__control
+        {:type  "number"
+         :step  (when (= :decimal type) "any") ; the default step of 1 rejects 1.3
+         :value (str value)
+         :on    {:input [[:ui/set-input id [:event.target/value]]]}}]
        [:input.field__control
         {:type  "text"
          :value (str value)

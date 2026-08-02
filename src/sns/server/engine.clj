@@ -88,25 +88,36 @@
   (-> (select-keys engine [:rng :store :render :progression :config])
       (assoc :inputs inputs)))
 
+(defn- ->decimal
+  "BigDecimal rather than a double, so a value like 1.3 stays exact."
+  [v]
+  (cond
+    (string? v) (try (bigdec (str/trim v)) (catch NumberFormatException _ v))
+    (number? v) (bigdec v)
+    :else v))
+
 (defn- coerce
-  "An `:int` field arrives from the browser form as a string, so parse it to a
-   number — a plugin that declared an int should be handed one. An unparseable
-   value is passed through untouched, for the generator to reject in its own
-   terms."
+  "A numeric field arrives from the browser form as a string, so parse it — a
+   plugin that declared an `:int` or a `:decimal` should be handed one. An
+   unparseable value is passed through untouched, for the generator to reject in
+   its own terms."
   [type v]
-  (if (and (= :int type) (string? v))
-    (or (parse-long (str/trim v)) v)
+  (case type
+    :int (if (string? v) (or (parse-long (str/trim v)) v) v)
+    :decimal (->decimal v)
     v))
 
 (defn- apply-input-defaults
   "Resolve each input declared in `loot-spec` against the supplied `inputs`. A
    field left blank (missing or an empty string, e.g. the UI's `—` enum option)
    falls back to the field's `:default`, or nil when it declares none — so a
-   template sees the default rather than an empty string."
+   template sees the default rather than an empty string. Either way the value is
+   coerced, so a `:default` written as a string reaches the generator in the same
+   type an entered one does."
   [loot-spec inputs]
   (reduce (fn [acc {:keys [id default type]}]
             (let [v (get acc id)]
-              (assoc acc id (if (or (nil? v) (= "" v)) default (coerce type v)))))
+              (assoc acc id (coerce type (if (or (nil? v) (= "" v)) default v)))))
           inputs
           (:inputs loot-spec)))
 

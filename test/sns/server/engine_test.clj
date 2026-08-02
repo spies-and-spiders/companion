@@ -140,6 +140,29 @@
     (testing "a provided value overrides the default"
       (is (= "rare potion" (:loot/title (engine/generate eng :potion {:rarity "rare"})))))))
 
+(deftest decimal-inputs-reach-the-generator-as-exact-numbers
+  ;; The plugin echoes the raw request back as its title, so these assert on the
+  ;; literal JSON sent over the wire — parsing it first would round the precision
+  ;; away in the test harness rather than in the engine.
+  (let [eng   (engine/create
+                {:plugins [{:type    :cli
+                            :id      :echo
+                            :label   "Echo"
+                            :inputs  [{:id :multiplier :label "Multiplier" :type :decimal :default "1.3"}]
+                            :command ["python3" "-c"
+                                      (str "import sys,json; "
+                                           "print(json.dumps({'title': sys.stdin.read()}))")]}]})
+        sent  #(:loot/title (engine/generate eng :echo %))]
+    (testing "a :decimal field is sent as a JSON number, not the form's string"
+      (is (= "{\"inputs\":{\"multiplier\":1.3}}" (sent {:multiplier "1.3"}))))
+    (testing "it keeps a BigDecimal's precision, which a double would round away"
+      (is (= "{\"inputs\":{\"multiplier\":1.0000000000000000001}}"
+             (sent {:multiplier "1.0000000000000000001"}))))
+    (testing "a blank field falls back to its :default, coerced the same way"
+      (is (= "{\"inputs\":{\"multiplier\":1.3}}" (sent {:multiplier ""}))))
+    (testing "an unparseable value is passed through for the generator to reject"
+      (is (= "{\"inputs\":{\"multiplier\":\"abc\"}}" (sent {:multiplier "abc"}))))))
+
 (deftest int-inputs-reach-the-generator-as-numbers
   (let [eng (engine/create
               {:plugins [{:type    :cli

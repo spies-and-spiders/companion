@@ -189,8 +189,11 @@ round-trip losslessly.
  :inputs [{:id :character :label "Character" :type :enum :options ["Thoros" "Simo"]}
           {:id :lucky? :label "Lucky" :type :bool}]}
 ```
-Field `:type` is one of `:enum` `:int` `:text` `:bool`. The collected values arrive
-as `(:inputs ctx)` — an `:int` as a number, the rest as typed.
+Field `:type` is one of `:enum` `:int` `:decimal` `:text` `:bool`. The collected
+values arrive as `(:inputs ctx)` — an `:int` as a long and a `:decimal` as a
+BigDecimal (so a value like `1.3` is exact rather than a binary float), the rest
+as typed. A numeric value that will not parse is passed through as the entered
+string, for the generator to reject in its own terms.
 
 An `:enum` renders as a **typeahead combobox** (a text input over a `<datalist>`),
 not a plain dropdown, so a long `:options` list is filtered by typing rather than
@@ -343,7 +346,7 @@ the transport differs. The engine sends a **request** and reads back an **output
 An external plugin has no loot-spec of its own, so it declares the form fields it
 needs on its **config entry**, in the same shape as a loot-spec's `:inputs`; the
 engine renders the form and sends the collected values as the request's `inputs`
-(an `:int` field arrives as a number, not the form's string):
+(an `:int` or `:decimal` field arrives as a JSON number, not the form's string):
 
 ```json
 {"type": "cli", "id": "insight", "label": "Insight Checks", "utility?": true,
