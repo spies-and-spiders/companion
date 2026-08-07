@@ -7,6 +7,7 @@
          :type-filter   ""    ; picker search box (filters loot types + utilities)
          :roll-n        ""     ; optional d100 roll (blank = random)
          :inputs        {}    ; collected input-form values
+         :drag          nil   ; in-progress list-input reorder: {:field :from}
          :result        nil   ; the latest view-model
          :error         nil
          :loading?      false

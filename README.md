@@ -128,7 +128,7 @@ and extend without depending on the app.
 
 ### `LootGenerator` (required)
 ```clojure
-(loot-spec [this])   ; => {:id :relics :label "Relic" :stateful? true :inputs [...]}
+(loot-spec [this])   ; => {:id :relics :label "Relic" :inputs [...]}
 (generate  [this ctx]) ; => a view-model
 ```
 

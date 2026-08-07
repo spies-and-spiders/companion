@@ -30,12 +30,12 @@
             [:label string?]
             [:type [:enum :enum :int :decimal :text :bool]]
             [:default {:optional true} any?]
+            [:list? {:optional true} boolean?]
             [:options {:optional true} [:sequential any?]]]
 
    ::loot-spec [:map
                 [:id keyword?]
                 [:label string?]
-                [:stateful? {:optional true} boolean?]
                  ;; Utilities are session tools (e.g. the group social roller)
                  ;; rather than loot: grouped separately in the UI and barred
                  ;; from the :loot-table.
@@ -245,7 +245,9 @@
                            [:backend [:= :discord]]
                            [:webhook-url string?]
                            [:discord-username {:optional true} string?]
-                           [:avatar-url {:optional true} string?]]]]
+                           [:avatar-url {:optional true} string?]
+                           [:words {:optional true} [:sequential string?]]
+                           [:extra-words {:optional true} [:sequential string?]]]]]
 
    ::config [:map
              [:server {:optional true} ::server]

@@ -12,13 +12,13 @@
     (java.io PushbackReader)))
 
 (def ^:private default-username "\uD83D\uDCB0 SNS Companion \uD83D\uDCB0")
-(def ^:private words (-> (io/resource "words.edn")
-                         io/reader
-                         PushbackReader.
-                         edn/read))
+(def ^:private default-words (-> (io/resource "words.edn")
+                                 io/reader
+                                 PushbackReader.
+                                 edn/read))
 (def ^:private gilt 0xC8A24C) ; embed accent, matching the UI theme
 
-(defn- loot-message-unique-name []
+(defn- loot-message-unique-name [words]
   (->> (r/sample-without-replacement 2 words)
        (str/join \space)))
 
@@ -43,18 +43,26 @@
     (cond-> {:title (or title "Loot") :color gilt}
             (seq desc) (assoc :description desc))))
 
-(defn- payload [{:keys [avatar-url discord-username]} view-model]
-  {:content    (str "||" (loot-message-unique-name) "||")
+(defn- payload [{:keys [avatar-url discord-username words]} view-model]
+  {:content    (str "||" (loot-message-unique-name words) "||")
    :avatar_url avatar-url
    :username   (or discord-username default-username)
    :embeds     [(view-model->embed view-model)]})
 
+(defn- build-words [words extra-words]
+  (cond
+    (seq words) words
+    (seq extra-words) (vec (into (set default-words) extra-words))
+    :else default-words))
+
 (defn create
   "Build a Discord `Reporter` posting to `webhook-url`."
-  [{:keys [webhook-url] :as config}]
+  [{:keys [webhook-url extra-words] :as config}]
   (when (str/blank? webhook-url)
     (throw (ex-info "Discord reporting requires a :webhook-url" {})))
-  (let [client (hc/build-http-client {:connect-timeout 10000})]
+  (let [client (hc/build-http-client {:connect-timeout 10000})
+        config (-> (update config :words build-words extra-words)
+                   (dissoc :extra-words))]
     (reify p/Reporter
       (report-label [_] "Send to Discord")
       (report! [_ view-model]

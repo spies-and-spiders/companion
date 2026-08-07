@@ -20,10 +20,10 @@ public final class Models {
      * loot: grouped separately in the UI and barred from the loot-table.
      * Conforms to {@code sns.sdk.schema/loot-spec}.
      */
-    public record LootSpec(String id, String label, boolean stateful, List<Field> inputs, boolean utility) {
-        public LootSpec(String id, String label) { this(id, label, false, null, false); }
-        public LootSpec(String id, String label, boolean stateful, List<Field> inputs) {
-            this(id, label, stateful, inputs, false);
+    public record LootSpec(String id, String label, List<Field> inputs, boolean utility) {
+        public LootSpec(String id, String label) { this(id, label, null, false); }
+        public LootSpec(String id, String label, List<Field> inputs) {
+            this(id, label, inputs, false);
         }
     }
 

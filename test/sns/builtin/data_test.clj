@@ -23,7 +23,7 @@
                 :sections [{:heading "Mods"
                             :each    :mods
                             :item    {:body "{{effect}}" :metadata :metadata}}]}
-          vm   (data/interpret spec ctx)]
+          vm   (data/generate spec ctx)]
       (is (schema/validate ::schema/view-model vm))
       (is (= "Only One" (:loot/title vm)))
       (is (= "Unique · armour" (:loot/subtitle vm)))
@@ -42,7 +42,7 @@
                 :title    "Two rings"
                 :sections [{:heading "Rings"                                :each :items
                             :item    {:title "{{name}}" :body "{{effect}}"}}]}
-          vm   (data/interpret spec ctx)
+          vm   (data/generate spec ctx)
           items (-> vm :loot/sections first :section/items)]
       (is (schema/validate ::schema/view-model vm))
       (is (= "Two rings" (:loot/title vm)))
@@ -62,7 +62,7 @@
                  :title    "Two rings"
                  :sections [{:each :items :item {:body "{{name}}"}}]}
           rng   (.create (RandomGeneratorFactory/of "L64X128MixRandom"))
-          items (-> (data/interpret spec (assoc ctx :rng rng))
+          items (-> (data/generate spec (assoc ctx :rng rng))
                     :loot/sections first :section/items)]
       (is (= 2 (count items)))
       (is (= 2 (count (set (map :item/body items))))))))
@@ -82,7 +82,7 @@
       (is (= :tags (-> spec :sections first :item :metadata)))
       (is (= [:who :text] (-> spec :inputs first ((juxt :id :type)))))
       (testing "and renders as an EDN spec would"
-        (let [vm (data/interpret spec (assoc ctx :inputs {:who "Thoros"}))]
+        (let [vm (data/generate spec (assoc ctx :inputs {:who "Thoros"}))]
           (is (schema/validate ::schema/view-model vm))
           (is (= "Only One for Thoros" (:loot/title vm)))
           (is (= [{:item/body "Effect A" :item/metadata ["accuracy"]}]
@@ -99,7 +99,7 @@
           rng  (reify randy.rng/RandomNumberGenerator
                  (next-int [_ _] 2)
                  (next-int [_ _ _] 2))
-          vm   (data/interpret spec (assoc ctx :rng rng))]
+          vm   (data/generate spec (assoc ctx :rng rng))]
       (is (= "C" (:loot/title vm))))))
 
 (deftest inputs-available-to-templates
@@ -107,5 +107,25 @@
     (let [spec {:label "Greeting"
                 :items [{:name "x"}]
                 :title "Hail, {{who}}"}
-          vm   (data/interpret spec (assoc ctx :inputs {:who "Thoros"}))]
+          vm   (data/generate spec (assoc ctx :inputs {:who "Thoros"}))]
       (is (= "Hail, Thoros" (:loot/title vm))))))
+
+(deftest file-generator-exposes-reload-input
+  (testing "the reload field is prepended to the spec's own inputs"
+    (let [f    (doto (java.io.File/createTempFile "data-test" ".edn") .deleteOnExit)
+          _    (spit f (pr-str {:label "Greeting" :items [{:name "x"}] :title "Hail"}))
+          gen  (data/file-generator :greeting (.getPath f))
+          spec (sns.sdk.protocols/loot-spec gen)]
+      (is (= [:__reload?] (map :id (:inputs spec)))))))
+
+(deftest file-generator-reloads-on-request
+  (testing "generating with :__reload? true re-reads the source file"
+    (let [f   (doto (java.io.File/createTempFile "data-test" ".edn") .deleteOnExit)
+          _   (spit f (pr-str {:label "Greeting" :items [{:name "x"}] :title "Before"}))
+          gen (data/file-generator :greeting (.getPath f))]
+      (is (= "Before" (:loot/title (sns.sdk.protocols/generate gen ctx))))
+      (spit f (pr-str {:label "Greeting" :items [{:name "x"}] :title "After"}))
+      (is (= "Before" (:loot/title (sns.sdk.protocols/generate gen ctx)))
+          "without the reload flag, the stale in-memory spec is used")
+      (is (= "After" (:loot/title (sns.sdk.protocols/generate gen (assoc ctx :inputs {:__reload? true}))))
+          "with the reload flag, the file is re-read"))))

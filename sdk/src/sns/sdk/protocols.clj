@@ -11,7 +11,7 @@
   (loot-spec [this]
     "Static, data-only description of this loot type. Conforms to
      `sns.sdk.schema/loot-spec`, e.g.
-     {:id :relics :label \"Relic\" :stateful? true
+     {:id :relics :label \"Relic\"
       :inputs [{:id :character :label \"Character\" :type :enum :options [...]}]}")
   (generate [this ctx]
     "Produce loot. Returns a view-model (`sns.sdk.schema/view-model`).
@@ -78,7 +78,6 @@
 (defn- loot-spec->clj [^Models$LootSpec ls]
   (cond-> {:id    (keyword (.id ls))
            :label (.label ls)}
-          (.stateful ls)     (assoc :stateful? true)
           (.utility ls)      (assoc :utility? true)
           (seq (.inputs ls)) (assoc :inputs (mapv field->clj (.inputs ls)))))
 

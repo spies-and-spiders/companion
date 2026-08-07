@@ -24,11 +24,21 @@
                            (fn [{:replicant/keys [dom-event]}]
                              (some-> dom-event .-key)))
 
+(nxr/register-placeholder! :event/raw
+                           (fn [{:replicant/keys [dom-event]}]
+                             dom-event))
+
 ;; --- effects (impure) --------------------------------------------------------
 
 (nxr/register-effect! :fx/assoc-in
                       (fn [_ctx system path v]
                         (swap! system assoc-in path v)))
+
+;; Drag-and-drop reordering needs dragover/drop to suppress the browser's
+;; default (open-as-link/navigate) handling to actually receive the drop.
+(nxr/register-effect! :fx/prevent-default
+                      (fn [_ctx _system dom-event]
+                        (.preventDefault dom-event)))
 
 (nxr/register-effect! :fx/load-loot-types
                       (fn [{:keys [dispatch]} _system]
@@ -127,12 +137,60 @@
                         [[:fx/assoc-in [:page] :loot]
                          [:fx/assoc-in [:selected] id]
                          [:fx/assoc-in [:inputs] {}]
+                         [:fx/assoc-in [:drag] nil]
                          [:fx/assoc-in [:result] nil]
                          [:fx/assoc-in [:editing?] false]]))
 
 (nxr/register-action! :ui/set-input
                       (fn [_state field value]
                         [[:fx/assoc-in [:inputs field] value]]))
+
+;; --- list (`:list?`) input fields ---------------------------------------------
+;; A list field's value is always a vector. `idx` beyond the current end
+;; appends (that's how the UI's trailing blank row, or a bool field's "+ Add",
+;; grows the list); any other `idx` overwrites in place.
+
+(nxr/register-action! :ui/set-list-input
+                      (fn [state field idx value]
+                        (let [current (vec (get-in state [:inputs field]))]
+                          [[:fx/assoc-in [:inputs field]
+                            (if (< idx (count current))
+                              (assoc current idx value)
+                              (conj current value))]])))
+
+(nxr/register-action! :ui/remove-list-input
+                      (fn [state field idx]
+                        (let [current (vec (get-in state [:inputs field]))]
+                          (when (< idx (count current))
+                            [[:fx/assoc-in [:inputs field]
+                              (into (subvec current 0 idx) (subvec current (inc idx)))]]))))
+
+(nxr/register-action! :ui/list-drag-start
+                      (fn [_state field idx]
+                        [[:fx/assoc-in [:drag] {:field field :from idx}]]))
+
+(nxr/register-action! :ui/list-drag-end
+                      (fn [_state]
+                        [[:fx/assoc-in [:drag] nil]]))
+
+(defn- move
+  "Move the element at `from` so it ends up at index `to` in the result.
+   Removing first shortens the vector by one, so inserting at `to` in that
+   shorter vector already lands the element at `to` in the final one — no
+   further index adjustment needed."
+  [v from to]
+  (let [item    (nth v from)
+        without (into (subvec v 0 from) (subvec v (inc from)))]
+    (into (conj (subvec without 0 to) item) (subvec without to))))
+
+(nxr/register-action! :ui/list-drag-drop
+                      (fn [{:keys [drag] :as state} field to-idx]
+                        (let [current (vec (get-in state [:inputs field]))
+                              from    (:from drag)]
+                          (when (and drag (= field (:field drag)) (not= from to-idx)
+                                     (< from (count current)) (< to-idx (count current)))
+                            [[:fx/assoc-in [:inputs field] (move current from to-idx)]
+                             [:fx/assoc-in [:drag] nil]]))))
 
 (nxr/register-action! :ui/set-type-filter
                       (fn [_state value]

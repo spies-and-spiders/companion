@@ -176,3 +176,30 @@
       (is (= "int" (:loot/title (engine/generate eng :echo {:bonus "3"})))))
     (testing "an unparseable value is passed through for the generator to reject"
       (is (= "str" (:loot/title (engine/generate eng :echo {:bonus "abc"})))))))
+
+(deftest list-inputs-reach-the-generator-as-a-vector
+  (let [echo-bonuses ["python3" "-c"
+                      (str "import sys,json; d=json.load(sys.stdin); "
+                           "print(json.dumps({'title': json.dumps(d['inputs']['bonuses'])}))")]
+        eng          (engine/create
+                       {:plugins [{:type    :cli
+                                   :id      :echo
+                                   :label   "Echo"
+                                   :inputs  [{:id :bonuses :label "Bonuses" :type :int :list? true}]
+                                   :command echo-bonuses}]})]
+    (testing "several entered values are coerced element-wise and sent as a JSON array"
+      (is (= "[1, 2, 3]" (:loot/title (engine/generate eng :echo {:bonuses ["1" "2" "3"]})))))
+    (testing "a single value still arrives as a one-element vector, not a bare scalar"
+      (is (= "[5]" (:loot/title (engine/generate eng :echo {:bonuses ["5"]})))))
+    (testing "nothing submitted defaults to an empty vector"
+      (is (= "[]" (:loot/title (engine/generate eng :echo {}))))))
+  (testing "a declared :default is used, coerced, when nothing is submitted"
+    (let [eng (engine/create
+                {:plugins [{:type    :cli
+                            :id      :echo
+                            :label   "Echo"
+                            :inputs  [{:id :bonuses :label "Bonuses" :type :int :list? true :default ["1" "2"]}]
+                            :command ["python3" "-c"
+                                      (str "import sys,json; d=json.load(sys.stdin); "
+                                           "print(json.dumps({'title': json.dumps(d['inputs']['bonuses'])}))")]}]})]
+      (is (= "[1, 2]" (:loot/title (engine/generate eng :echo {})))))))

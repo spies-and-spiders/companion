@@ -71,7 +71,7 @@
   (reify
     p/LootGenerator
     (loot-spec [_]
-      {:id collection :label "Relic" :stateful? true})
+      {:id collection :label "Relic"})
     (generate [_ {:keys [rng store progression]}]
       (let [template (r/sample rng templates)
             relic    (assoc template :id (str (random-uuid)) :path [])]

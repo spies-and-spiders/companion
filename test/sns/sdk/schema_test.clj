@@ -37,7 +37,7 @@
 (deftest loot-spec-schema
   (testing "a loot-spec may flag itself as a utility"
     (is (schema/validate ::schema/loot-spec
-                         {:id :social :label "Group Social" :stateful? true :utility? true})))
+                         {:id :social :label "Group Social" :utility? true})))
   (testing "a loot-spec may override the generate-button label"
     (is (schema/validate ::schema/loot-spec
                          {:id :social :label "Group Social" :generate-label "Add / update character"}))))

@@ -13,41 +13,92 @@
    come from config and can be long (every character, every damage type), where a
    select means scrolling. Free text is the trade — a value that isn't an option
    is flagged, not blocked, since only the plugin knows what it will accept.
-   Clearing the field is how you get back to `—` (blank falls back to :default)."
-  [id value options]
-  (let [list-id (str "field-options-" (name id))
-        known?  (contains? (into #{} (map str) options) (str value))]
+   Clearing the field is how you get back to `—` (blank falls back to :default).
+   `dom-id` must be unique on the page — a list field renders one per row."
+  [dom-id value options action]
+  (let [known? (contains? (into #{} (map str) options) (str value))]
     (list
       [:input.field__control
        {:type  "text"
-        :list  list-id
+        :list  dom-id
         :class (when-not (or (str/blank? (str value)) known?) "field__control--unknown")
         :value (str value)
-        :on    {:input [[:ui/set-input id [:event.target/value]]]}}]
-      [:datalist {:id list-id}
+        :on    {:input [action]}}]
+      [:datalist {:id dom-id}
        (for [opt options]
          [:option {:value (str opt)}])])))
 
-(defn- field [inputs {:keys [id label type options]}]
-  (let [value (get inputs id)]
-    [:label.field {:replicant/key id}
+(defn- control
+  "The bare input for one field value — shared between a scalar field and a
+   single row of a list field. `on-change` is the action's fixed leading args
+   (e.g. `[:ui/set-input id]`, or `[:ui/set-list-input id idx]` for a list row);
+   the DOM value placeholder is appended to complete the dispatch."
+  [dom-id value {:keys [type options]} on-change]
+  (case type
+    :enum (enum-field dom-id value options (conj on-change [:event.target/value]))
+    :bool [:input.field__control
+           {:type    "checkbox"
+            :checked (boolean value)
+            :on      {:change [(conj on-change [:event.target/checked])]}}]
+    (:int :decimal)
+    [:input.field__control
+     {:type  "number"
+      :step  (when (= :decimal type) "any") ; the default step of 1 rejects 1.3
+      :value (str value)
+      :on    {:input [(conj on-change [:event.target/value])]}}]
+    [:input.field__control
+     {:type  "text"
+      :value (str value)
+      :on    {:input [(conj on-change [:event.target/value])]}}]))
+
+;; --- list (`:list?`) fields ---------------------------------------------------
+;; A list field's value is a vector of entries. Non-boolean types get a
+;; trailing blank row that, once filled in, reveals another — the list grows as
+;; you type. A boolean has no "blank" state to fill in, so it grows via an
+;; explicit Add button instead. Either way, dropping a value below its default
+;; count still submits a vector.
+
+(defn- list-row
+  "One stored entry: its control, a remove button, and — for reorderable types —
+   a drag handle plus drop target covering the whole row."
+  [id idx value f draggable?]
+  [:div.list-row
+   {:replicant/key idx
+    :on            (when draggable?
+                     {:dragover [[:fx/prevent-default [:event/raw]]]
+                      :drop     [[:fx/prevent-default [:event/raw]] [:ui/list-drag-drop id idx]]})}
+   (when draggable?
+     [:span.list-row__handle {:draggable "true" :on {:dragstart [[:ui/list-drag-start id idx]]}} "⠿"])
+   (control (str "field-options-" (name id) "-" idx) value f [:ui/set-list-input id idx])
+   [:button.list-row__remove
+    {:type "button" :on {:click [[:ui/remove-list-input id idx]]}}
+    "✕"]])
+
+(defn- list-field [inputs {:keys [id type] :as f}]
+  (let [values (vec (get inputs id))
+        bool?  (= :bool type)]
+    [:div.list-field
+     (for [[idx v] (map-indexed vector values)]
+       (list-row id idx v f (not bool?)))
+     (if bool?
+       [:button.list-field__add
+        {:type "button" :on {:click [[:ui/set-list-input id (count values) false]]}}
+        "+ Add"]
+       ;; a fresh, unsaved row — typing into it appends rather than overwrites
+       (when (or (empty? values) (not (str/blank? (str (peek values)))))
+         [:div.list-row.list-row--extra {:replicant/key (count values)}
+          (control (str "field-options-" (name id) "-" (count values)) nil f
+                   [:ui/set-list-input id (count values)])]))]))
+
+(defn- field [inputs {:keys [id label type list?] :as f}]
+  (if list?
+    [:div.field {:replicant/key id}
      [:span.field__label label]
-     (case type
-       :enum (enum-field id value options)
-       :bool [:input.field__control
-              {:type    "checkbox"
-               :checked (boolean value)
-               :on      {:change [[:ui/set-input id [:event.target/checked]]]}}]
-       (:int :decimal)
-       [:input.field__control
-        {:type  "number"
-         :step  (when (= :decimal type) "any") ; the default step of 1 rejects 1.3
-         :value (str value)
-         :on    {:input [[:ui/set-input id [:event.target/value]]]}}]
-       [:input.field__control
-        {:type  "text"
-         :value (str value)
-         :on    {:input [[:ui/set-input id [:event.target/value]]]}}])]))
+     (list-field inputs f)]
+    [:label.field {:replicant/key id
+                   :class         (when (= :bool type) "field--bool")}
+     [:span.field__label label]
+     (control (str "field-options-" (name id)) (get inputs id) f [:ui/set-input id])]))
 
 (defn input-form
   "Render a spec's declared inputs, or nil when there are none."

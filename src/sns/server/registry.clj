@@ -37,8 +37,10 @@
       (throw (ex-info "Unknown builtin plugin" {:id id :known (vec (keys builtins))})))))
 
 (defmethod build-generator :data [{:keys [id source inline]}]
-  ;; An :inline spec takes precedence over loading one from a :source file.
-  (data/generator id (or inline (data/load-spec source))))
+  ;; An :inline spec takes precedence over a :source file
+  (if inline
+    (data/generator id inline)
+    (data/file-generator id source)))
 
 (defmethod build-generator :cli [plugin]
   (cli/generator plugin))

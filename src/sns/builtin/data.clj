@@ -55,7 +55,7 @@
     (cond-> {:section/items (mapv #(build-item render item %) coll)}
             heading (assoc :section/heading heading))))
 
-(defn interpret
+(defn generate
   "Evaluate `spec` against the request `ctx`, returning a view-model."
   [spec {:keys [render inputs rng]}]
   (let [rng       (or rng @r/default-rng)
@@ -71,7 +71,7 @@
                                   (mapv #(build-section render-in % entries single) sections)))))
 
 (defn generator
-  "Build a `LootGenerator` for a `:data` plugin from its loaded `spec`."
+  "Build a `LootGenerator` for a `:data` plugin from an inline `spec`."
   [id spec]
   (reify p/LootGenerator
     (loot-spec [_]
@@ -79,4 +79,26 @@
               (:utility? spec) (assoc :utility? true)
               (:inputs spec) (assoc :inputs (:inputs spec))))
     (generate [_ ctx]
-      (interpret spec ctx))))
+      (generate spec ctx))))
+
+(def ^:private reload-field
+  {:id      :__reload?
+   :label   "Reload data before generating?"
+   :type    :bool
+   :default false})
+
+(defn file-generator
+  "Build a `LootGenerator` for a `:data` plugin whose spec is loaded from
+   `source`. Holds the spec in an atom and exposes a `:__reload?` input that,
+   when set, re-reads `source` into that atom before generating."
+  [id source]
+  (let [spec-atom (atom (load-spec source))]
+    (reify p/LootGenerator
+      (loot-spec [_]
+        (let [spec @spec-atom]
+          (cond-> {:id id :label (:label spec) :inputs (into [reload-field] (:inputs spec))}
+                  (:utility? spec) (assoc :utility? true))))
+      (generate [_ ctx]
+        (when (get-in ctx [:inputs :__reload?])
+          (reset! spec-atom (load-spec source)))
+        (generate @spec-atom (update ctx :inputs dissoc :__reload?))))))

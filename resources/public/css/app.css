@@ -212,6 +212,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 
 .fields { display: flex; flex-wrap: wrap; gap: 1rem; }
 .field { display: flex; flex-direction: column; gap: 0.35rem; min-width: 12rem; }
+.field--bool { flex-direction: row; align-items: center; gap: 0.55rem; }
 .field__label {
   font-size: 0.68rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted);
 }
@@ -229,6 +230,36 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
    Outranks :focus — you are typing when you most need to see it. */
 .field__control--unknown,
 .field__control--unknown:focus { border-color: var(--ember); }
+
+.list-field { display: flex; flex-direction: column; gap: 0.4rem; }
+.list-row { display: flex; align-items: center; gap: 0.4rem; }
+.list-row .field__control { flex: 1; }
+.list-row--extra { opacity: 0.7; }
+.list-row__handle {
+  cursor: grab;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1;
+}
+.list-row__remove {
+  padding: 0.3rem 0.55rem;
+  background: transparent;
+  border: 1px solid var(--gilt-dim);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.list-row__remove:hover { border-color: var(--ember); color: var(--ember); }
+.list-field__add {
+  align-self: flex-start;
+  padding: 0.3rem 0.7rem;
+  background: transparent;
+  border: 1px solid var(--gilt-dim);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.list-field__add:hover { border-color: var(--arcane); color: var(--arcane); }
 
 .generate {
   align-self: flex-start;

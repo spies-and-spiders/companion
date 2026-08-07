@@ -113,11 +113,18 @@
    falls back to the field's `:default`, or nil when it declares none — so a
    template sees the default rather than an empty string. Either way the value is
    coerced, so a `:default` written as a string reaches the generator in the same
-   type an entered one does."
+   type an entered one does.
+
+   A `:list?` field always resolves to a vector (its `:default`, or `[]` when
+   unset and nothing was submitted), each element coerced individually — a
+   generator sees a vector regardless of how many values were entered."
   [loot-spec inputs]
-  (reduce (fn [acc {:keys [id default type]}]
+  (reduce (fn [acc {:keys [id default type list?]}]
             (let [v (get acc id)]
-              (assoc acc id (coerce type (if (or (nil? v) (= "" v)) default v)))))
+              (assoc acc id
+                     (if list?
+                       (mapv #(coerce type %) (if (seq v) v (or default [])))
+                       (coerce type (if (or (nil? v) (= "" v)) default v))))))
           inputs
           (:inputs loot-spec)))
 
