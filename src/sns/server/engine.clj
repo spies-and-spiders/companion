@@ -92,7 +92,7 @@
   "BigDecimal rather than a double, so a value like 1.3 stays exact."
   [v]
   (cond
-    (string? v) (try (bigdec (str/trim v)) (catch NumberFormatException _ v))
+    (string? v) (try (BigDecimal. ^String (str/trim v)) (catch NumberFormatException _ v))
     (number? v) (bigdec v)
     :else v))
 
