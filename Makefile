@@ -69,6 +69,12 @@ graalvm: prep frontend ## Build GraalVM Native Image
 	    --no-fallback \
 	    --features=clj_easy.graal_build_time.InitClojureClasses
 
+BIN ?= $(NATIVE_IMAGE)
+
+.PHONY: smoke
+smoke: ## Boot a native image binary and drive its HTTP API (BIN=path, default: $(NATIVE_IMAGE))
+	clojure -M:smoke $(BIN)
+
 # --- test --------------------------------------------------------------------
 
 .PHONY: test

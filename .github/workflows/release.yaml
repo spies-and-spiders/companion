@@ -166,6 +166,14 @@ jobs:
         with:
           node-version: '22'
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
       - name: Install make (Windows)
         if: matrix.os == 'windows'
         run: choco install make --no-progress
@@ -187,6 +195,17 @@ jobs:
       - name: Build native image
         shell: bash
         run: make graalvm
+
+      # Boots the actual built binary and drives its HTTP API across every
+      # plugin type and storage backend, catching native-image-only failures
+      # (e.g. reflection that only fires for certain runtime types, invisible
+      # to both the JVM test suite and the `make reflection` static guard)
+      # before the binary is ever uploaded as a release asset.
+      - name: Smoke-test native image
+        shell: bash
+        run: |
+          version="${{ github.ref_name }}"
+          make smoke BIN="target/companion-${version}-standalone${{ matrix.ext }}"
 
       # Release assets carry no permissions, so the executable bit cannot survive
       # the download regardless; the install scripts restore it. Gzip is purely
