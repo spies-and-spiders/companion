@@ -39,6 +39,7 @@
                       :exec-fn     cognitect.test-runner.api/test}
 
            :reflect {:extra-paths ["test"]
+                     :extra-deps  {org.clojure/tools.namespace {:mvn/version "1.5.1"}}
                      :main-opts   ["-m" "sns.server.reflection-check"]}
 
            :build {:deps       {io.github.clojure/tools.build {:mvn/version "0.10.14"}
