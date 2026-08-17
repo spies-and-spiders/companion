@@ -2,7 +2,7 @@
  :deps  {org.clojure/clojure         {:mvn/version "1.12.5"}
          metosin/malli               {:mvn/version "0.20.1"}
          com.github.dekelpilli/randy {:mvn/version "0.0.43"}
-         selmer/selmer               {:mvn/version "1.13.4"}}
+         selmer/selmer               {:mvn/version "1.13.5"}}
 
  ;; The Java interfaces under sdk/src must be compiled before `sns.sdk.protocols`
  ;; loads (it extends them with the protocols). tools.deps runs this automatically
