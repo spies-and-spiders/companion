@@ -137,9 +137,6 @@ jobs:
           - runner: ubuntu-26.04-arm
             os: linux
             arch: arm64
-          - runner: macos-26-intel
-            os: macos
-            arch: x64
           - runner: macos-26
             os: macos
             arch: arm64
