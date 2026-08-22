@@ -64,11 +64,22 @@ The UI renders this shape generically — a new loot type needs **no** UI code, 
  :loot/sections [{:section/heading "Mods"        ; heading optional
                   :section/items [{:item/title nil      ; optional
                                    :item/body  "+1 AB…" ; required
-                                   :item/metadata  ["accuracy"]}]}]  ; optional
+                                   :item/metadata  ["accuracy"]   ; optional
+                                   :item/vars  [{:id :x :value "fire"       ; optional
+                                                 :options ["fire" "cold"]}]}]}]
  :loot/actions  [{:action/label "Level up"
                   :action/event [:loot/action {:id :relics :action :level-up
                                                :params {:relic-id "…"}}]}]}
 ```
+
+`:item/vars` (`:builtin`/`:jar` only — a `:data` spec has no Clojure to build one)
+is a randomised value bound to a variable (see the Randoms section below),
+surfaced separately from the prose it's baked into so a DM can edit *the value*
+in the UI without editing — or your plugin having to parse — the string it's
+rendered into. `:options`, when given, is the preset's vocabulary
+(`sns.sdk.randoms/preset-values`), so the UI offers it as a combobox rather than
+free text. What (if anything) an edited value round-trips back into is the
+concern of #8, not this shape.
 
 or
 
@@ -250,7 +261,7 @@ typo'd op name is an error rather than a silent no-op.
 
 ---
 
-## Randoms (`{{ ""|random:… }}`)
+## Randoms (`{{ x|random:… }}`)
 
 Templates can draw a random value *at render time* — for effect text like "you gain
 the Alert feat" where the feat is rolled per item. Declare the vocabulary in config:
@@ -260,14 +271,31 @@ the Alert feat" where the feat is rolled per item. Declare the vocabulary in con
           :skills ["Athletics" "Deception" "Insight" "Stealth"]}
 ```
 
-and draw from it in any plugin's template (the piped value is ignored — `""` is
-the conventional placeholder):
+and draw from it in any plugin's template. The piped value is the variable's
+current value — `x` is the conventional name, but it's an ordinary template
+variable, not special syntax. A **nil** value (it was never bound — the common
+case, since `x` isn't otherwise defined) draws a fresh one; a **non-nil** value is
+echoed back unchanged rather than redrawn, so the draw is reusable instead of
+being re-rolled at each use site:
 
 ```clojure
-"You gain the {{ \"\"|random:feats }} feat."
-"You head {{ \"\"|random:literal:north:south:east:west }}."
+"You gain the {{x|random:feats}} feat."
+"You head {{x|random:literal:north:south:east:west}}."
+;; bind once and reference the same draw wherever it's needed:
+"{% with x=x|random:feats %}You gain the {{x}} feat, and proficiency with it.{% endwith %}"
 ;; a multi-draw returns a collection, so bind it and index the values:
-"{% with x=v|random:without-replacement:2:skills %}Proficiency in {{x.0}} and {{x.1}}.{% endwith %}"
+"{% with x=x|random:without-replacement:2:skills %}Proficiency in {{x.0}} and {{x.1}}.{% endwith %}"
+```
+
+The same nil-check lets a stateful plugin persist a draw and get it echoed back on
+every later render (e.g. rendering current state after an action) instead of
+re-rolling — pass the previously-drawn value back in on the render context under
+the same variable name, and the filter reuses it:
+
+```clojure
+(render "{{x|random:damage-types}}" {:x (:x mod)})   ; :x nil the first time, drawing
+                                                       ; a value; non-nil thereafter,
+                                                       ; echoing what was drawn/stored
 ```
 
 Two presets are always available: **`:literal`** (values written inline in the

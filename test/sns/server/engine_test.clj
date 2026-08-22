@@ -126,8 +126,8 @@
                  :plugins [{:type   :data
                             :id     :portents
                             :inline {:label "Portent"
-                                     :items [{:x 1}]
-                                     :title "You see {{ \"\"|random:omens }}."}}]})]
+                                     :items [{:kind :portent}]
+                                     :title "You see {{x|random:omens}}."}}]})]
       (is (contains? #{"You see a crow lands." "You see the lanterns gutter."}
                      (:loot/title (engine/generate eng :portents)))))))
 

@@ -296,6 +296,10 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 
 .sigil--edit .sigil__frame { display: flex; flex-direction: column; gap: 0.9rem; }
 .entry--edit { display: flex; flex-direction: column; gap: 0.5rem; }
+.entry__vars {
+  display: flex; flex-direction: column; gap: 0.5rem;
+  padding-top: 0.4rem; border-top: var(--rule);
+}
 .edit { display: flex; flex-direction: column; gap: 0.25rem; }
 .edit__label {
   font-size: 0.64rem;

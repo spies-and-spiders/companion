@@ -166,11 +166,29 @@
      :value (str/join ", " metadata)
      :on    {:input [[:ui/edit-result-metadata path [:event.target/value]]]}}]])
 
-(defn- edit-item [si ii {:item/keys [title body metadata]}]
+;; A randomised value's own control, separate from the body/title text it's
+;; baked into — so editing it doesn't mean retyping the surrounding prose (and a
+;; plugin round-tripping the edit later reads a value, not parsed prose). Reuses
+;; `enum-field`/plain-text `control` from the input-form renderer above, so a
+;; preset's `:options` become the same combobox a loot-spec enum input uses.
+(defn- edit-var [path {:keys [id label value options]}]
+  (let [dom-id (str "item-var-" (str/join "-" (map #(if (keyword? %) (name %) %) path)))]
+    [:label.edit {:replicant/key (str path)}
+     [:span.edit__label (or label (name id))]
+     (control dom-id value
+              {:type (if (seq options) :enum :text) :options options}
+              [:ui/edit-result (conj path :value)])]))
+
+(defn- edit-item [si ii {:item/keys [title body metadata vars]}]
   [:li.entry.entry--edit {:replicant/key ii}
    (edit-field "Item title" [:loot/sections si :section/items ii :item/title] title false)
    (edit-field "Body" [:loot/sections si :section/items ii :item/body] body true)
-   (edit-metadata [:loot/sections si :section/items ii :item/metadata] metadata)])
+   (edit-metadata [:loot/sections si :section/items ii :item/metadata] metadata)
+   (when (seq vars)
+     [:div.entry__vars
+      (map-indexed
+        (fn [vi v] (edit-var [:loot/sections si :section/items ii :item/vars vi] v))
+        vars)])])
 
 (defn- edit-block [si {:section/keys [heading items]}]
   [:section.block {:replicant/key si}

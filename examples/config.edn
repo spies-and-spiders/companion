@@ -119,9 +119,14 @@
  ;; Optional. Named lists any plugin's templates can draw a value from while an
  ;; item is being rendered, with the `random` filter:
  ;;
- ;;   "You gain the {{ \"\"|random:feats }} feat."
- ;;   "Resistance to {{ \"\"|random:damage-types }} damage."
- ;;   "Proficiency in {{ \"\"|random:without-replacement:2:skills }}."
+ ;;   "You gain the {{x|random:feats}} feat."
+ ;;   "Resistance to {{x|random:damage-types}} damage."
+ ;;   "Proficiency in {{x|random:without-replacement:2:skills}}."
+ ;;
+ ;; The piped value (`x` by convention) is drawn fresh only when it's nil —
+ ;; already-bound (`{% with x=x|random:feats %}`) or context-supplied values are
+ ;; echoed back rather than re-rolled, so a draw is reusable across a template
+ ;; instead of re-sampled at every use site.
  ;;
  ;; The app ships no vocabulary of its own — these lists are your campaign's
  ;; content. Two presets are always available regardless: :literal (values

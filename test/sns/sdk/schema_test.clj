@@ -16,7 +16,16 @@
   (testing "title must be a string"
     (is (not (schema/validate ::schema/view-model {:loot/title 42}))))
   (testing "a minimal view-model needs only a title"
-    (is (schema/validate ::schema/view-model {:loot/title "Divine Dust"}))))
+    (is (schema/validate ::schema/view-model {:loot/title "Divine Dust"})))
+  (testing "an item may carry its randomised value(s) as editable vars, separate
+            from the rendered text they're baked into"
+    (is (schema/validate ::schema/view-model
+                         {:loot/title    "Reliquary"
+                          :loot/sections [{:section/items
+                                           [{:item/body "+1 fire absorption"
+                                             :item/vars [{:id      :x
+                                                          :value   "fire"
+                                                          :options ["fire" "cold" "acid"]}]}]}]}))))
 
 (deftest upgrade-graph-schema
   (testing "the mutually-recursive upgrade graph validates to arbitrary depth"

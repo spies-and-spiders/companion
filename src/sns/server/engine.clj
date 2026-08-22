@@ -65,7 +65,7 @@
      (when (seq table)
        (validate-table! registry table))
      ;; Config-declared random presets, usable from any plugin's templates as
-     ;; `{{ ""|random:<preset> }}`.
+     ;; `{{ x|random:<preset> }}`.
      (install-randoms! (:randoms config))
      {:config          config
       :registry        registry

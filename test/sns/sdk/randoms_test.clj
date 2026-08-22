@@ -58,6 +58,14 @@
       (is (= 2 (count (set parts))))
       (is (every? (set feats) parts)))))
 
+(deftest preset-values-exposes-the-vocabulary
+  (testing "a plain preset's full vocabulary, for pairing a draw with editable options"
+    (is (= feats (randoms/preset-values :feats))))
+  (testing "a literal preset's vocabulary is the args written in the template"
+    (is (= ["a" "b" "c"] (randoms/preset-values :literal "a" "b" "c"))))
+  (testing "a self-sampling preset has no fixed vocabulary to offer"
+    (is (nil? (randoms/preset-values :without-replacement "2" "feats")))))
+
 (deftest defmethod-extends-the-vocabulary
   (testing "a plugin adds a preset in code the same way the built-ins are defined"
     (defmethod randoms/preset ::colours [_ _] ["red" "blue"])
@@ -68,13 +76,33 @@
   (testing "the filter is registered by requiring the SDK, and draws from *rng*"
     (randoms/with-rng (fixed-rng 2)
       (is (= "Gain the Brawler feat."
-             (render/render "Gain the {{ \"\"|random:feats }} feat." {})))))
+             (render/render "Gain the {{x|random:feats}} feat." {})))))
   (testing "the piped value may just be a missing variable"
     (randoms/with-rng (fixed-rng 0)
       (is (= "Alert" (render/render "{{x|random:feats}}" {})))))
   (testing "filter args are passed through to the preset"
     (randoms/with-rng (fixed-rng 2)
       (is (= "c" (render/render "{{x|random:literal:a:b:c}}" {}))))))
+
+(deftest random-filter-reuses-a-non-nil-variable-instead-of-redrawing
+  (testing "a `{% with %}`-bound variable is reused at every later use site in the template"
+    (randoms/with-rng (fixed-rng 2)
+      (is (= "Brawler and Brawler"
+             (render/render
+               "{% with x=x|random:feats %}{{x}} and {{x|random:feats}}{% endwith %}"
+               {})))))
+  (testing "a value already supplied via the render context (e.g. persisted from a prior
+            draw, or edited by a DM) is echoed rather than redrawn"
+    (randoms/with-rng (fixed-rng 0)
+      (is (= "Durable" (render/render "{{x|random:feats}}" {:x "Durable"})))))
+  (testing "a nested `{% with %}` sees the outer binding as already non-nil, so it cascades
+            through rather than re-rolling"
+    (randoms/with-rng (fixed-rng 2)
+      (is (= "Brawler / Brawler"
+             (render/render
+               (str "{% with x=x|random:feats %}{{x}} / "
+                    "{% with x=x|random:feats %}{{x}}{% endwith %}{% endwith %}")
+               {}))))))
 
 (deftest rendering-uses-the-bound-rng
   (testing "the same bound rng renders the same text"
