@@ -40,10 +40,11 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/setup-java@v5
+      - uses: graalvm/setup-graalvm@v1
         with:
-          distribution: temurin
-          java-version: '25'
+          distribution: graalvm
+          version: '25.2'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install clojure tools
         uses: DeLaGuardo/setup-clojure@13.6.1
@@ -154,7 +155,7 @@ jobs:
       - uses: graalvm/setup-graalvm@v1
         with:
           distribution: graalvm
-          java-version: '25'
+          version: '25.2'
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install clojure tools
