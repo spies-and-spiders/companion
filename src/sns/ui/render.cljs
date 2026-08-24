@@ -3,7 +3,8 @@
    stylesheet does the rest. A new loot type renders with zero UI code as long
    as its spec/view-model conform to the schema."
   (:require
-    [clojure.string :as str]))
+    [clojure.string :as str]
+    [sns.ui.template :as template]))
 
 ;; --- input-form (from a loot-spec's :inputs) ---------------------------------
 
@@ -111,17 +112,24 @@
 
 ;; --- view-model renderer (the signature surface) -----------------------------
 
-(defn- entry [{:item/keys [title body metadata]}]
-  [:li.entry
-   (when title [:h4.entry__title title])
-   [:p.entry__body body]
-   (when (seq metadata)
-     [:ul.tags (for [t metadata] [:li.tag t])])])
+;; `:item/title`/`:item/body` are templates; the values they interpolate travel
+;; beside them as `:item/vars`, so a var edited in the browser re-renders here
+;; with no round trip to the server. `:loot/vars` are ambient — every template
+;; in the view-model can read them, which is how one drawn value is *shared*
+;; between items rather than copied into each (copies desynchronise the moment
+;; the DM edits one). An item's own vars shadow them.
+(defn- entry [loot-vars {:item/keys [title body metadata vars]}]
+  (let [vars (merge loot-vars vars)]
+    [:li.entry
+     (when title [:h4.entry__title (template/render title vars)])
+     [:p.entry__body (template/render body vars)]
+     (when (seq metadata)
+       [:ul.tags (for [t metadata] [:li.tag t])])]))
 
-(defn- block [{:section/keys [heading items]}]
+(defn- block [loot-vars {:section/keys [heading items]}]
   [:section.block
    (when heading [:h3.block__heading heading])
-   [:ul.entries (map entry items)]])
+   [:ul.entries (map (partial entry loot-vars) items)]])
 
 (defn- action [{:action/keys [label event]}]
   [:button.action {:on {:click [event]}} label])
@@ -134,10 +142,10 @@
     [:article.sigil {:replicant/key (:loot/title vm)}
      [:div.sigil__frame
       (when (:loot/subtitle vm)
-        [:p.sigil__eyebrow (:loot/subtitle vm)])
-      [:h2.sigil__title (:loot/title vm)]
+        [:p.sigil__eyebrow (template/render (:loot/subtitle vm) (:loot/vars vm))])
+      [:h2.sigil__title (template/render (:loot/title vm) (:loot/vars vm))]
       [:div.sigil__body
-       (map block (:loot/sections vm))]
+       (map (partial block (:loot/vars vm)) (:loot/sections vm))]
       (when (seq (:loot/actions vm))
         [:div.sigil__actions
          (map action (:loot/actions vm))])]]))
@@ -166,29 +174,45 @@
      :value (str/join ", " metadata)
      :on    {:input [[:ui/edit-result-metadata path [:event.target/value]]]}}]])
 
-;; A randomised value's own control, separate from the body/title text it's
-;; baked into — so editing it doesn't mean retyping the surrounding prose (and a
-;; plugin round-tripping the edit later reads a value, not parsed prose). Reuses
-;; `enum-field`/plain-text `control` from the input-form renderer above, so a
-;; preset's `:options` become the same combobox a loot-spec enum input uses.
-(defn- edit-var [path {:keys [id label value options]}]
+;; A var's own control, separate from the template that interpolates it — so
+;; changing a value doesn't mean retyping the prose, and a plugin reads a value
+;; back rather than parsing text. Reuses `enum-field`/plain-text `control` from
+;; the input-form renderer above, so a preset's `:options` become the same
+;; combobox a loot-spec enum input uses.
+(defn- var-label
+  "A var's field label. Derived here rather than sent: the id is already on the
+   wire as the key, so a server-computed label would be a second copy of it —
+   and how a name is *displayed* is this layer's business anyway. A plugin that
+   wants something other than the id sets `:label`."
+  [id label]
+  (or label (-> (name id) (str/replace #"[-_]" " ") str/capitalize)))
+
+(defn- edit-var [path id {:keys [label value options]}]
   (let [dom-id (str "item-var-" (str/join "-" (map #(if (keyword? %) (name %) %) path)))]
     [:label.edit {:replicant/key (str path)}
-     [:span.edit__label (or label (name id))]
+     [:span.edit__label (var-label id label)]
      (control dom-id value
               {:type (if (seq options) :enum :text) :options options}
               [:ui/edit-result (conj path :value)])]))
 
+(defn- editable-vars
+  "The vars a DM may change: what the plugin *declared*, not the entry fields
+   its templates happen to read (`:context?`)."
+  [vars]
+  (remove (comp :context? val) vars))
+
+;; The body field holds the template itself — `{{ x }}` where a value sits — so
+;; the sentence and the values are edited independently and neither forces
+;; retyping the other. What the DM types is what the plugin gets back.
 (defn- edit-item [si ii {:item/keys [title body metadata vars]}]
   [:li.entry.entry--edit {:replicant/key ii}
    (edit-field "Item title" [:loot/sections si :section/items ii :item/title] title false)
    (edit-field "Body" [:loot/sections si :section/items ii :item/body] body true)
    (edit-metadata [:loot/sections si :section/items ii :item/metadata] metadata)
-   (when (seq vars)
+   (when-let [editable (seq (editable-vars vars))]
      [:div.entry__vars
-      (map-indexed
-        (fn [vi v] (edit-var [:loot/sections si :section/items ii :item/vars vi] v))
-        vars)])])
+      (for [[id v] editable]
+        (edit-var [:loot/sections si :section/items ii :item/vars id] id v))])])
 
 (defn- edit-block [si {:section/keys [heading items]}]
   [:section.block {:replicant/key si}
@@ -204,6 +228,12 @@
      [:div.sigil__frame
       (edit-field "Subtitle" [:loot/subtitle] (:loot/subtitle vm) false)
       (edit-field "Title" [:loot/title] (:loot/title vm) false)
+      ;; Shared values, edited once: these are ambient to every template in the
+      ;; view-model, so changing one here updates every item that reads it.
+      (when-let [editable (seq (editable-vars (:loot/vars vm)))]
+        [:div.entry__vars.entry__vars--shared
+         (for [[id v] editable]
+           (edit-var [:loot/vars id] id v))])
       [:div.sigil__body
        (map-indexed edit-block (:loot/sections vm))]]]))
 

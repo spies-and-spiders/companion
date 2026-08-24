@@ -300,6 +300,8 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   display: flex; flex-direction: column; gap: 0.5rem;
   padding-top: 0.4rem; border-top: var(--rule);
 }
+/* shared across every item, so it sits with the title rather than inside one */
+.entry__vars--shared { padding-bottom: 0.6rem; }
 .edit { display: flex; flex-direction: column; gap: 0.25rem; }
 .edit__label {
   font-size: 0.64rem;

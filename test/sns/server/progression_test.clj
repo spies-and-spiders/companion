@@ -1,11 +1,10 @@
 (ns sns.server.progression-test
   (:require
     [clojure.test :refer [deftest is testing]]
-    [sns.server.progression :as progression]
-    [sns.server.render :as render]))
+    [sns.server.progression :as progression]))
 
 (def ^:private base
-  {:state    {:ab 1}
+  {:vars     {:ab 1}
    :template "+{{ab}} AB with effects that cannot deal damage."
    :upgrades {:select  :choice
               :options [{:id :precise :inc {:ab 1}}
@@ -17,27 +16,32 @@
                          :repeatable     false
                          :assoc-template "Deal 6 extra fire damage."}]}})
 
-(defn- effect [path]
-  (:effect (progression/derive-mod render/render base path)))
+(defn- derived
+  "The mod at `path`, as `[template {var-id value}]` — the two halves the
+   browser renders. Nothing here produces text."
+  ([path] (derived base path))
+  ([mod path]
+   (let [{:keys [template vars]} (progression/derive-mod nil mod path)]
+     [template (update-vals vars :value)])))
 
-(deftest base-renders
-  (is (= "+1 AB with effects that cannot deal damage." (effect []))))
+(deftest base-declares-its-starting-vars
+  (is (= ["+{{ab}} AB with effects that cannot deal damage." {:ab 1}] (derived []))))
 
 (deftest repeated-inc-accumulates
-  (testing "a repeatable option chosen N times accumulates onto state"
-    (is (= "+4 AB with effects that cannot deal damage."
-           (effect [{:id :precise} {:id :precise} {:id :precise}])))))
+  (testing "a repeatable option chosen N times accumulates onto the var"
+    (is (= ["+{{ab}} AB with effects that cannot deal damage." {:ab 4}]
+           (derived [{:id :precise} {:id :precise} {:id :precise}])))))
 
 (deftest template-swap-then-bump-composes
-  (testing "an option can rewrite the template; later ops render against it"
-    (is (= "+3 AB; ignore half cover."
-           (effect [{:id :wide} {:id :keen}])))))
+  (testing "an option can rewrite the template; later ops still land on the vars"
+    (is (= ["+{{ab}} AB; ignore half cover." {:ab 3}]
+           (derived [{:id :wide} {:id :keen}])))))
 
 (deftest path-re-derives-deterministically
-  (testing "a path reproduces the same effect every time"
+  (testing "a path reproduces the same mod every time"
     (let [path [{:id :elemental}]]
-      (is (= "Deal 6 extra fire damage." (effect path)))
-      (is (= (effect path) (effect path))))))
+      (is (= ["Deal 6 extra fire damage." {:ab 1}] (derived path)))
+      (is (= (derived path) (derived path))))))
 
 (deftest options-repeat-by-default
   (testing "an option with no :repeatable keeps being offered"
@@ -55,7 +59,7 @@
     (is (nil? (progression/options-at base [{:id :wide} {:id :keen}])))))
 
 (def ^:private single-shot
-  {:state    {}
+  {:vars     {}
    :template "x"
    :upgrades {:select :choice :options [{:id :only :repeatable false}]}})
 
@@ -69,15 +73,12 @@
                                  base [{:id :elemental} {:id :precise}])))))
     ;; regression: this path used to throw, since the one-shot made the node
     ;; terminal and the following :precise was then rejected as "unknown"
-    (is (= {:ab 2}
-           (:state (progression/derive-mod render/render base
-                                           [{:id :elemental}
-                                            {:id :precise}])))))
+    (is (= {:ab 2} (second (derived [{:id :elemental} {:id :precise}])))))
   (testing "the node only goes terminal once every option there is consumed"
     (is (nil? (progression/options-at single-shot [{:id :only}])))))
 
 (def ^:private capped
-  {:state    {:lvl 0}
+  {:vars     {:lvl 0}
    :template "{{lvl}}"
    :upgrades {:select  :choice
               :options [{:id :bump :repeatable 3 :inc {:lvl 1}}
@@ -95,10 +96,10 @@
       (is (some? (progression/options-at capped [{:id :bump} {:id :bump} {:id :bump}]))))))
 
 (deftest unknown-option-is-rejected
-  (is (thrown? Exception (effect [{:id :nope}]))))
+  (is (thrown? Exception (derived [{:id :nope}]))))
 
 (def ^:private ordering
-  {:state    {:ab 0 :log ""}
+  {:vars     {:ab 0 :log ""}
    :template "{{ab}}/{{log}}"
    :upgrades {:select  :choice
               :options [{:id     :everything
@@ -108,11 +109,8 @@
 
 (deftest ops-apply-in-a-fixed-order
   (testing "every op on an option applies, independent of map ordering"
-    (is (= "3/x"
-           (:effect (progression/derive-mod render/render ordering
-                                            [{:id :everything}]))))))
+    (is (= {:ab 3 :log "x"} (second (derived ordering [{:id :everything}]))))))
 
 (deftest option-keys-that-are-not-ops-are-ignored
   (testing "graph keys never dispatch as mutations"
-    (is (= {} (:state (progression/derive-mod render/render single-shot
-                                              [{:id :only}]))))))
+    (is (= {} (second (derived single-shot [{:id :only}]))))))

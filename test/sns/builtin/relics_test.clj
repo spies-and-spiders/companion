@@ -30,13 +30,13 @@
       (is (seq (:loot/actions vm))))
     (testing "levelling up with a choice persists a path step and re-derives"
       (let [choice (-> vm :loot/actions first :action/event second :params :choice)
-            vm'    (engine/handle-action eng :relics :level-up {:relic-id id :choice choice})]
+            vm'    (engine/handle-action eng :relics :level-up {:relic-id id :choice choice} nil)]
         (is (re-find #"level 2" (:loot/subtitle vm')))
         (is (= 1 (count (:path (p/fetch s :relics id))))
             "one step recorded in the persisted path")))
     (testing "the persisted effect is reproducible from state across a fresh engine"
       (let [eng2 (engine/create config {:store s})
-            again (engine/handle-action eng2 :relics :level-up {:relic-id id})]
+            again (engine/handle-action eng2 :relics :level-up {:relic-id id} nil)]
         ;; no choice supplied -> re-shows current state without advancing
         (is (= 1 (count (:path (p/fetch s :relics id)))))
         (is (re-find #"level 2" (:loot/subtitle again)))))))
@@ -53,7 +53,7 @@
             vm  (engine/generate eng :relics)
             id  (relic-id vm)
             choice (-> vm :loot/actions first :action/event second :params :choice)
-            vm' (engine/handle-action eng :relics :level-up {:relic-id id :choice choice})]
+            vm' (engine/handle-action eng :relics :level-up {:relic-id id :choice choice} nil)]
         (testing "the choice options survive persistence (still a :choice node)"
           (is (some? choice) "generated relic offers a named choice"))
         (testing "levelling up actually advances after a store round-trip"
@@ -74,7 +74,8 @@
                           (when opts
                             (engine/handle-action eng :relics :level-up
                                                   {:relic-id id
-                                                   :choice   (-> opts :options first :id)}))))
+                                                   :choice   (-> opts :options first :id)}
+                                                  nil))))
                       nil
                       (range 3))]
     (testing "three upgrades produce a level-4 relic"

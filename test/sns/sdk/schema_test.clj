@@ -17,20 +17,32 @@
     (is (not (schema/validate ::schema/view-model {:loot/title 42}))))
   (testing "a minimal view-model needs only a title"
     (is (schema/validate ::schema/view-model {:loot/title "Divine Dust"})))
-  (testing "an item may carry its randomised value(s) as editable vars, separate
-            from the rendered text they're baked into"
+  (testing "an item carries its template plus the vars it interpolates, keyed by
+            the name the template refers to them by"
     (is (schema/validate ::schema/view-model
                          {:loot/title    "Reliquary"
                           :loot/sections [{:section/items
-                                           [{:item/body "+1 fire absorption"
-                                             :item/vars [{:id      :x
-                                                          :value   "fire"
-                                                          :options ["fire" "cold" "acid"]}]}]}]}))))
+                                           [{:item/body "+1 {{ x }} absorption"
+                                             :item/vars {:x {:value   "fire"
+                                                             :label   "Damage types"
+                                                             :random  :damage-types
+                                                             :options ["fire" "cold" "acid"]}}}]}]})))
+  (testing "a var needs a value, and vars are keyed by keyword"
+    (is (not (schema/validate ::schema/item-vars {:x {}})))
+    (is (not (schema/validate ::schema/item-vars {"x" {:value 1}}))))
+  (testing "title/subtitle interpolate :loot/vars the same way"
+    (is (schema/validate ::schema/view-model
+                         {:loot/title "{{ name }}"
+                          :loot/vars  {:name {:value "Reliquary"}}})))
+  (testing "opaque plugin state round-trips with the view-model"
+    (is (schema/validate ::schema/view-model
+                         {:loot/title "Soul"
+                          :loot/state {:passive {:path [{:id :precise}]}}}))))
 
 (deftest upgrade-graph-schema
   (testing "the mutually-recursive upgrade graph validates to arbitrary depth"
     (is (schema/validate ::schema/mod
-                         {:state    {:ab 1}
+                         {:vars     {:ab 1}
                           :template "+{{ab}} AB"
                           :upgrades {:select  :choice
                                      :options [{:id :precise :repeatable true :inc {:ab 1}}

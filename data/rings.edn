@@ -15,4 +15,4 @@
  :title    "Two rings"
  :sections [{:heading "Rings"
              :each    :items
-             :item    {:title "{{name}}" :body "{{effect}}"}}]}
+             :item    {:title :name :body :effect}}]}

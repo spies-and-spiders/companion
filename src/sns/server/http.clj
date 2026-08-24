@@ -61,8 +61,8 @@
     (ok (engine/roll eng (or inputs {}) n))))
 
 (defn- action-handler [eng]
-  (fn [{{:keys [id action params]} :body-params}]
-    (ok (engine/handle-action eng id action params))))
+  (fn [{{:keys [id action params view-model]} :body-params}]
+    (ok (engine/handle-action eng id action params view-model))))
 
 (defn- capabilities-handler [eng]
   (fn [_req]

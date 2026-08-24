@@ -1,23 +1,26 @@
 (ns sns.sdk.randoms
-  "Randomness available to templates: `{{ x|random:<preset>:<args…> }}` samples a
-   named preset while an effect is being rendered, and binds the draw to a
-   variable (`x` by convention) rather than inlining it. The filter only draws
-   when the piped variable is nil — a template can `{% with %}`-bind it once and
-   reuse the same draw at every later use site, and a caller that persists the
-   drawn value back onto its state (e.g. so a DM can edit it) gets that same
-   value echoed back on every subsequent render instead of a fresh roll.
+  "Named random vocabularies a loot type can draw a value from.
 
    Only the *mechanism* lives here — preset values are content, added with
    `defmethod preset`, whether by a plugin or by the app on the DM's behalf (it
-   installs a method per `:randoms` entry in config.edn). Two generic presets are
-   built in: `:literal` (values written inline in the template) and
+   installs a method per `:randoms` entry in config.edn). Two generic presets
+   are built in: `:literal` (values written inline, under `:options`) and
    `:without-replacement` (draw N distinct values from another preset).
 
-   Requiring this namespace registers the Selmer `random` filter, so a plugin
-   rendering its own templates gets it by depending on the SDK alone."
+   Presets take *named* arguments — the map the var spec was written as, minus
+   its `:random` key — so a preset reads what it needs by name:
+
+   ```clojure
+   {:random :without-replacement :amount 2 :preset :skills}
+   {:random :defences :type \"non-armour\"}
+   ```
+
+   Drawing happens here, on the server, because it needs the request's seeded
+   rng and the presets registered against it. Rendering does not happen here at
+   all: a drawn value travels to the UI as an `sns.sdk.schema/item-var` and is
+   interpolated into the template there. See `sns.sdk.vars`."
   (:require
-    [randy.core :as r]
-    [selmer.parser :as selmer]))
+    [randy.core :as r]))
 
 (def ^:dynamic *rng* r/default-rng)
 
@@ -28,11 +31,10 @@
      ~@body))
 
 (defmulti preset
-  "The values behind named `preset`, given the remaining template `args` (always
-   strings when they come from a template). Returns either a collection to
-   sample one value from, or a 0-arity fn producing the sampled value itself —
-   the latter for presets that decide their own draw (see
-   `:without-replacement`)."
+  "The values behind named `preset`, given the var spec's remaining keys as
+   `args`. Returns either a collection to sample one value from, or a 0-arity
+   fn producing the sampled value itself — the latter for presets that decide
+   their own draw (see `:without-replacement`)."
   (fn [preset _args] preset))
 
 (defn known-presets
@@ -46,21 +48,23 @@
 (defmethod preset :default [k _]
   (throw (ex-info "Unknown random preset" {:preset k :known (known-presets)})))
 
-(defmethod preset :literal [_ values]
-  (vec values))
+;; Values written inline where the var is declared, rather than registered as a
+;; named vocabulary: `{:random :literal :options ["harm" "damage"]}`.
+(defmethod preset :literal [_ {:keys [options]}]
+  (vec options))
 
 (defn- ->long [n]
   (if (string? n) (parse-long n) (long n)))
 
-;; Returns the drawn values as a vector rather than one string, so a template
-;; can bind and index them: `{% with x=x|random:without-replacement:2:skills %}
-;; {{x.0}} and {{x.1}}{% endwith %}`. Rendered on its own it prints as a vector.
-(defmethod preset :without-replacement [_ [amount preset-name & args]]
-  (let [values (preset (keyword preset-name) args)
+;; Draws a *collection*, so a template indexes it. Handlebars needs brackets
+;; around a numeric segment: `{{ x.[0] }}` and `{{ x.[1] }}`.
+(defmethod preset :without-replacement [_ {:keys [amount] inner :preset :as args}]
+  (let [inner  (keyword inner)
+        values (preset inner (dissoc args :amount :preset))
         amount (->long amount)]
     (when (fn? values)
       (throw (ex-info "Cannot draw without replacement from a self-sampling preset"
-                      {:preset (keyword preset-name)})))
+                      {:preset inner})))
     #(r/sample-without-replacement (force *rng*) amount values)))
 
 (defn- sample-values
@@ -72,36 +76,27 @@
       (r/sample (force *rng*) values))))
 
 (defn sample-preset
-  "Sample one value from the preset named `preset-name`, using `rng`. The
-   programmatic entry point — templates use the `random` filter instead."
-  [rng preset-name & args]
-  (with-rng rng
-    (sample-values (keyword preset-name) args)))
+  "Sample one value from the preset named `preset-name` with named `args`,
+   using `rng`."
+  ([rng preset-name] (sample-preset rng preset-name {}))
+  ([rng preset-name args]
+   (with-rng rng
+     (sample-values (keyword preset-name) args))))
 
 (defn preset-values
   "The full vocabulary behind `preset-name`, or nil for a self-sampling preset
-   (e.g. `:without-replacement`) that has none to offer. For a plugin (typically
-   `:builtin`/`:jar`, which builds its own view-model) pairing a draw with the
-   `:options` of an `sns.sdk.schema/item-var`, so the DM can edit the value
-   in the UI as a combobox over the same vocabulary the draw came from —
-   `{:id :x :value (sample-preset rng :feats) :options (preset-values :feats)}`."
-  [preset-name & args]
+   (e.g. `:without-replacement`) that has none to offer. Becomes an
+   `sns.sdk.schema/item-var`'s `:options`, so the UI can offer the same
+   vocabulary the draw came from as a combobox."
+  ([preset-name] (preset-values preset-name {}))
+  ([preset-name args]
+   (let [values (preset (keyword preset-name) args)]
+     (when-not (fn? values) values))))
+
+(defn draw [rng preset-name args]
   (let [values (preset (keyword preset-name) args)]
-    (when-not (fn? values) values)))
-
-(defn- random-filter
-  "`{{ x|random:preset-name:arg1:arg2 }}` — the piped value is the variable's
-   current value (`x` by convention, but any name), and the first filter argument
-   names the preset; the rest are passed to it. A nil piped value (the variable
-   was never bound, e.g. this is its first draw) samples a fresh value; a non-nil
-   one — already bound by an enclosing `{% with %}`, or supplied via the render
-   context by a caller reusing a previously-persisted draw — is returned
-   unchanged, so the same value is echoed rather than re-rolled. The drawn value
-   is returned as-is (Selmer stringifies it on output), so a `{% with %}` binding
-   can still index into a preset that draws a collection."
-  [v preset-name & args]
-  (if (some? v)
-    v
-    (sample-values (keyword preset-name) args)))
-
-(selmer/add-filter! :random random-filter)
+    (with-rng rng
+      (if (fn? values)
+        {:value (values)}
+        {:value   (r/sample (force *rng*) values)
+         :options values}))))

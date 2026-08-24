@@ -1,8 +1,9 @@
 (ns sns.builtin.relics
   "A stateful built-in loot type: relics that are generated, persisted, and
    levelled up over time. Each relic carries an upgrade-graph mod and a persisted
-   path of choices/rolls; its effect text is always derived from that path. This
-   exercises the full Store + Progression + LootAction loop."
+   path of choices/rolls; its variables are always derived from that path, and
+   its template is rendered in the browser against them. This exercises the full
+   Store + Progression + LootAction loop."
   (:require
     [randy.core :as r]
     [sns.sdk.protocols :as p]))
@@ -13,7 +14,7 @@
   "Starting relics. Each `:mod` is an upgrade-graph (see the schema)."
   [{:name "Aegis of the Vow"
     :base "armour"
-    :mod  {:state    {:ab 1}
+    :mod  {:vars     {:ab 1}
            :template "+{{ab}} AB with effects that cannot deal damage."
            :upgrades {:select  :choice
                       :options [{:id :precise :inc {:ab 1}}
@@ -22,7 +23,7 @@
                                  :assoc-template "+{{ab}} AB; deal 6 fire damage on hit."}]}}}
    {:name "Wanderer's Compass"
     :base "trinket"
-    :mod  {:state    {:range 30}
+    :mod  {:vars     {:range 30}
            :template "Teleport up to {{range}} feet as a bonus action."
            :upgrades {:select  :choice
                       :options [{:id :far :inc {:range 15}}
@@ -37,7 +38,7 @@
                                 :params {:relic-id relic-id :choice id}}]})
 
 (defn- view-model [progression {:keys [id name base mod path]}]
-  (let [{:keys [effect]} (p/current-state progression mod path)
+  (let [{:keys [template vars]} (p/current-state progression mod path)
         options (p/level-options progression mod path)
         actions (when options
                   (if (= :choice (:select options))
@@ -49,7 +50,8 @@
     (cond-> {:loot/title    name
              :loot/subtitle (str "Relic · " base " · level " (inc (count path)))
              :loot/sections [{:section/heading "Effect"
-                              :section/items   [{:item/body effect}]}]}
+                              :section/items   [(cond-> {:item/body template}
+                                                        (seq vars) (assoc :item/vars vars))]}]}
             (seq actions) (assoc :loot/actions actions))))
 
 (defn- take-step

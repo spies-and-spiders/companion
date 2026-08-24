@@ -1,4 +1,8 @@
 ;; Example :data loot type — a single drawn entry rendered with its sub-mods.
+;; `:item/vars` on an entry declares values its templates interpolate; they are
+;; drawn once per entry, so every mod below shares the same one (and editing it
+;; in the UI updates them together). `:body :effect` is a *field reference*:
+;; the mod's own `:effect` string is the template, handed to the browser intact.
 {:label    "Unique"
  :items    [{:name "Pacifist's Vow"
              :base "armour"
@@ -8,11 +12,13 @@
                      :metadata ["accuracy"]}
                     {:effect   "Your weapons gain the 'non-lethal' trait."
                      :metadata ["utility"]}]}
-            {:name "Researcher's Power"
-             :base "armour"
-             :mods [{:effect   "+4 Intelligence."
-                     :metadata ["utility"]}
-                    {:effect "You cannot use Intelligence to cast spells; use another mental ability score instead."}]}
+            {:name      "Researcher's Power"
+             :base      "armour"
+             :item/vars {:ability {:random  :literal
+                                   :options ["Intelligence" "Wisdom"]}}
+             :mods      [{:effect   "+4 {{ ability }}."
+                          :metadata ["utility"]}
+                         {:effect "You cannot use {{ ability }} to cast spells; use another mental ability score instead."}]}
             {:name "Gambler's Gambit"
              :base "trinket"
              :mods [{:effect   "Once per turn, reroll a d20; you must keep the new result."
@@ -23,4 +29,5 @@
  :subtitle "Unique · {{base}}"
  :sections [{:heading "Mods"
              :each    :mods
-             :item    {:body "{{effect}}" :metadata :metadata}}]}
+             :item    {:body     :effect
+                       :metadata :metadata}}]}

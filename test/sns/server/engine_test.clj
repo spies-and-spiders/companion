@@ -1,6 +1,7 @@
 (ns sns.server.engine-test
   (:require
     [clojure.test :refer [deftest is testing]]
+    [sns.sdk.protocols :as p]
     [sns.server.config :as config]
     [sns.server.engine :as engine]
     [sns.server.store.memory :as memory]))
@@ -107,38 +108,48 @@
       (is (= "Divine Dust" (:loot/title (engine/generate eng :divine-dust))))
       (is (re-find #"Relic" (:loot/subtitle (engine/generate eng :relics)))))))
 
+(defn- title-var
+  "The value the title template would interpolate — templates are rendered in
+   the browser, so the backend asserts on the var, not on text."
+  [vm k]
+  (get-in vm [:loot/vars k :value]))
+
 (deftest data-inline-spec
   (let [spec {:label "Omen" :items [{:text "a crow lands"}] :title "{{text}}"}]
     (testing "an :inline spec is used in place of a file"
       (let [eng (engine/create {:plugins [{:type :data :id :omens :inline spec}]})]
-        (is (= "a crow lands" (:loot/title (engine/generate eng :omens))))))
+        (is (= "a crow lands" (title-var (engine/generate eng :omens) :text)))))
     (testing ":inline takes precedence over :source, which is not read"
       (let [eng (engine/create {:plugins [{:type   :data
                                            :id     :omens
                                            :inline spec
                                            :source "test/resources/does-not-exist.edn"}]})]
-        (is (= "a crow lands" (:loot/title (engine/generate eng :omens))))))))
+        (is (= "a crow lands" (title-var (engine/generate eng :omens) :text)))))))
 
-(deftest config-randoms-are-available-to-templates
-  (testing "a config-declared preset is drawn from inside a plugin's template"
+(deftest config-randoms-are-available-to-vars
+  (testing "a config-declared preset is drawn from by a plugin's declared var"
     (let [eng (engine/create
                 {:randoms {:omens ["a crow lands" "the lanterns gutter"]}
                  :plugins [{:type   :data
                             :id     :portents
                             :inline {:label "Portent"
-                                     :items [{:kind :portent}]
-                                     :title "You see {{x|random:omens}}."}}]})]
-      (is (contains? #{"You see a crow lands." "You see the lanterns gutter."}
-                     (:loot/title (engine/generate eng :portents)))))))
+                                     :items [{:kind      :portent
+                                              :item/vars {:x {:random :omens}}}]
+                                     :title "You see {{x}}."}}]})
+          vm  (engine/generate eng :portents)]
+      (is (= "You see {{x}}." (:loot/title vm)))
+      (is (contains? #{"a crow lands" "the lanterns gutter"} (title-var vm :x)))
+      (testing "and the UI is offered the same vocabulary to edit it against"
+        (is (= ["a crow lands" "the lanterns gutter"] (get-in vm [:loot/vars :x :options])))))))
 
 (deftest input-defaults-fill-blank-values
   (let [eng (engine/create
               {:plugins [{:type :data :id :potion :source "test/resources/enum-default.edn"}]})]
     (testing "a blank enum input falls back to its declared :default"
-      (is (= "common potion" (:loot/title (engine/generate eng :potion {}))))
-      (is (= "common potion" (:loot/title (engine/generate eng :potion {:rarity ""})))))
+      (is (= "common" (title-var (engine/generate eng :potion {}) :rarity)))
+      (is (= "common" (title-var (engine/generate eng :potion {:rarity ""}) :rarity))))
     (testing "a provided value overrides the default"
-      (is (= "rare potion" (:loot/title (engine/generate eng :potion {:rarity "rare"})))))))
+      (is (= "rare" (title-var (engine/generate eng :potion {:rarity "rare"}) :rarity))))))
 
 (deftest decimal-inputs-reach-the-generator-as-exact-numbers
   ;; The plugin echoes the raw request back as its title, so these assert on the
@@ -203,3 +214,32 @@
                                       (str "import sys,json; d=json.load(sys.stdin); "
                                            "print(json.dumps({'title': json.dumps(d['inputs']['bonuses'])}))")]}]})]
       (is (= "[1, 2]" (:loot/title (engine/generate eng :echo {})))))))
+
+;; --- issue #8: the current view-model reaches the action -----------------------
+
+(defrecord ^:private EchoStateGenerator []
+  p/LootGenerator
+  (loot-spec [_] {:id :echo-state :label "Echo State"})
+  (generate [_ _ctx] {:loot/title "Echo State" :loot/state {:count 0}})
+  p/LootAction
+  ;; Reads its own state back off the view-model it was handed, rather than
+  ;; from :params — the campaign5 pattern.
+  (handle-action [_ {:keys [view-model]} _action _params]
+    {:loot/title (str "count=" (inc (:count (:loot/state view-model) 0)))
+     :loot/state (update (:loot/state view-model {:count 0}) :count inc)}))
+
+(defn echo-state-generator [_plugin-config] (->EchoStateGenerator))
+
+(deftest action-receives-the-current-view-model
+  (let [eng (engine/create {:plugins [{:type :builtin :id :echo-state :entrypoint 'sns.server.engine-test/echo-state-generator}]})]
+    (testing "a generator reads the displayed (possibly DM-edited) view-model, so
+              state round-trips without being copied into every action's params"
+      (let [vm (engine/generate eng :echo-state)]
+        (is (= {:count 0} (:loot/state vm)))
+        (let [vm' (engine/handle-action eng :echo-state :bump {} vm)]
+          (is (= "count=1" (:loot/title vm')))
+          (testing "a DM edit to the round-tripped state is what the next action sees"
+            (is (= "count=6" (:loot/title (engine/handle-action eng :echo-state :bump {}
+                                                                (assoc vm' :loot/state {:count 5})))))))))
+    (testing "an action invoked without a view-model still works (nil :loot/state)"
+      (is (= "count=1" (:loot/title (engine/handle-action eng :echo-state :bump {} nil)))))))

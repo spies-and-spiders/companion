@@ -4,12 +4,11 @@
     [randy.rng]
     [sns.builtin.data :as data]
     [sns.sdk.protocols]
-    [sns.sdk.schema :as schema]
-    [sns.server.render :as render])
+    [sns.sdk.schema :as schema])
   (:import
     (java.util.random RandomGeneratorFactory)))
 
-(def ^:private ctx {:render render/render :inputs {}})
+(def ^:private ctx {:inputs {}})
 
 (deftest single-draw-with-submods
   (testing "a single drawn entry renders title/subtitle and iterates its mods"
@@ -22,11 +21,14 @@
                 :subtitle "Unique · {{base}}"
                 :sections [{:heading "Mods"
                             :each    :mods
-                            :item    {:body "{{effect}}" :metadata :metadata}}]}
+                            :item    {:body :effect :metadata :metadata}}]}
           vm   (data/generate spec ctx)]
       (is (schema/validate ::schema/view-model vm))
-      (is (= "Only One" (:loot/title vm)))
-      (is (= "Unique · armour" (:loot/subtitle vm)))
+      (testing "title/subtitle travel as templates, with their context in :loot/vars"
+        (is (= "{{name}}" (:loot/title vm)))
+        (is (= "Unique · {{base}}" (:loot/subtitle vm)))
+        (is (= "Only One" (-> vm :loot/vars :name :value)))
+        (is (= "armour" (-> vm :loot/vars :base :value))))
       (is (= ["Effect A" "Effect B"]
              (map :item/body (-> vm :loot/sections first :section/items))))
       (testing "metadata only present when the entry declares them"
@@ -40,8 +42,8 @@
                            {:name "C" :effect "ec"}]
                 :take     2
                 :title    "Two rings"
-                :sections [{:heading "Rings"                                :each :items
-                            :item    {:title "{{name}}" :body "{{effect}}"}}]}
+                :sections [{:heading "Rings"                      :each :items
+                            :item    {:title :name :body :effect}}]}
           vm   (data/generate spec ctx)
           items (-> vm :loot/sections first :section/items)]
       (is (schema/validate ::schema/view-model vm))
@@ -60,7 +62,7 @@
                  :items    [{:name "A"} {:name "B"} {:name "C"}]
                  :take     2
                  :title    "Two rings"
-                 :sections [{:each :items :item {:body "{{name}}"}}]}
+                 :sections [{:each :items :item {:body :name}}]}
           rng   (.create (RandomGeneratorFactory/of "L64X128MixRandom"))
           items (-> (data/generate spec (assoc ctx :rng rng))
                     :loot/sections first :section/items)]
@@ -81,12 +83,15 @@
       (is (= :mods (-> spec :sections first :each)))
       (is (= :tags (-> spec :sections first :item :metadata)))
       (is (= [:who :text] (-> spec :inputs first ((juxt :id :type)))))
-      (testing "and renders as an EDN spec would"
+      (testing "and produces the same template + vars an EDN spec would"
         (let [vm (data/generate spec (assoc ctx :inputs {:who "Thoros"}))]
           (is (schema/validate ::schema/view-model vm))
-          (is (= "Only One for Thoros" (:loot/title vm)))
-          (is (= [{:item/body "Effect A" :item/metadata ["accuracy"]}]
-                 (-> vm :loot/sections first :section/items))))))))
+          (is (= "{{name}} for {{who}}" (:loot/title vm)))
+          (is (= {:name "Only One" :who "Thoros"}
+                 (update-vals (select-keys (:loot/vars vm) [:name :who]) :value)))
+          (let [item (-> vm :loot/sections first :section/items first)]
+            (is (= "Effect A" (:item/body item)))
+            (is (= ["accuracy"] (:item/metadata item)))))))))
 
 (deftest utility-flag-surfaces-in-loot-spec
   (let [gen (data/generator :tools {:label "Tools" :utility? true :items [{:name "x"}] :title "t"})]
@@ -100,7 +105,7 @@
                  (next-int [_ _] 2)
                  (next-int [_ _ _] 2))
           vm   (data/generate spec (assoc ctx :rng rng))]
-      (is (= "C" (:loot/title vm))))))
+      (is (= "C" (-> vm :loot/vars :name :value))))))
 
 (deftest inputs-available-to-templates
   (testing "input values are interpolable in templates"
@@ -108,7 +113,8 @@
                 :items [{:name "x"}]
                 :title "Hail, {{who}}"}
           vm   (data/generate spec (assoc ctx :inputs {:who "Thoros"}))]
-      (is (= "Hail, Thoros" (:loot/title vm))))))
+      (is (= "Hail, {{who}}" (:loot/title vm)))
+      (is (= "Thoros" (-> vm :loot/vars :who :value))))))
 
 (deftest file-generator-exposes-reload-input
   (testing "the reload field is prepended to the spec's own inputs"
