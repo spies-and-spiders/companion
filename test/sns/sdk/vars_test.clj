@@ -63,8 +63,22 @@
     (let [resolved (vars/resolve-var (fixed-rng 2) :x {:random :feats})]
       (is (= resolved (vars/resolve-var (fixed-rng 0) :x resolved))))))
 
+(deftest a-var-records-the-type-it-resolved-as
+  (testing "so an edited value comes back as what the plugin sent, rather than
+            the string a browser input hands over"
+    (is (= :int (:type (vars/resolve-var (fixed-rng 0) :ab 1))))
+    (is (= :decimal (:type (vars/resolve-var (fixed-rng 0) :mult 1.5))))
+    (is (= :bool (:type (vars/resolve-var (fixed-rng 0) :fire false)))))
+  (testing "text is what an untagged var is, so it carries no tag"
+    (is (nil? (:type (vars/resolve-var (fixed-rng 0) :ability "Wisdom"))))
+    (is (nil? (:type (vars/resolve-var (fixed-rng 0) :x {:random :feats})))))
+  (testing "a round-tripped var keeps its type rather than restamping from a
+            half-typed value"
+    (let [blanked {:value nil :type :int}]
+      (is (= blanked (vars/resolve-var (fixed-rng 0) :ab blanked))))))
+
 (deftest resolve-vars-keys-by-id
-  (is (= {:a {:value 1} :b {:value 2}}
+  (is (= {:a {:value 1 :type :int} :b {:value 2 :type :int}}
          (vars/resolve-vars (fixed-rng 0) {:a 1 :b 2})))
   (testing "nothing declared, nothing resolved"
     (is (nil? (vars/resolve-vars (fixed-rng 0) nil)))

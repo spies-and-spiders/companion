@@ -34,9 +34,9 @@
   "How a single mod evolves. The default implementation interprets the
    upgrade-graph DSL (`sns.sdk.schema/mod`); plugins may supply bespoke logic."
   (current-state [this mod path]
-    "Derive `mod` at the progression described by `path` (a vector of
-     `{:id ...}` steps). Returns the mod with its final `:vars` and active
-     `:template`; nothing is rendered.")
+    "Derive `mod`'s variables at the progression described by `path` (a vector
+     of `{:id ...}` steps). Returns the resolved `sns.sdk.schema/item-vars`,
+     which the browser renders the mod's template against.")
   (level-options [this mod path]
     "Return the upgrade options available as the next step from `path`."))
 

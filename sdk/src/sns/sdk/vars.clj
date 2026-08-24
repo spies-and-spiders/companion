@@ -19,13 +19,14 @@
    Resolving turns declarations into `sns.sdk.schema/item-var`s, keyed by id:
 
    ```clojure
-   {:damage {:value \"fire\" :label \"Damage types\" :options [\"fire\" \"cold\"]}}
+   {:damage {:value \"fire\" :random :damage-types :options [\"fire\" \"cold\"]}
+    :dice   {:value 2 :type :int}}
    ```
 
    `:options` is the preset's vocabulary, so the UI edits the value as a
-   combobox over the same words it was drawn from. Flattening the map back to
-   `{:damage \"fire\"}` — the shape a template renders against — is the
-   browser's job; nothing here renders."
+   combobox over the same words it was drawn from; `:type` is what it must
+   still be after that edit. Flattening the map back to `{:damage \"fire\"}` —
+   the shape a template renders against — is the browser's job."
   (:require
     [clojure.string :as str]
     [sns.sdk.randoms :as randoms]))
@@ -40,29 +41,44 @@
       (str/replace #"[-_]" " ")
       str/capitalize))
 
-(defn- resolve-map-var [rng spec]
+(defn- resolved? [spec]
+  (and (map? spec) (contains? spec :value)))
+
+(defn- typed
+  "Record the type the value resolved as, so an edited var can come back as the
+   number or boolean the plugin sent rather than the string an input hands over."
+  [v]
+  (if-let [t (let [value (:value v)]
+               (cond (boolean? value) :bool
+                     (int? value)     :int
+                     (number? value)  :decimal))]
+    (assoc v :type t)
+    v))
+
+(defn- fresh [rng spec]
   (cond
-    (contains? spec :value) spec
+    (not (map? spec))         {:value spec}
     (contains? spec :literal) {:value (:literal spec)}
-    (contains? spec :random) (let [{preset-name :random :as args} spec
-                                   args (dissoc args :random)]
-                               (cond-> (assoc (randoms/draw rng preset-name args)
-                                              :random preset-name)
-                                       (seq args) (assoc :args args)))
-    :else {:value spec}))
+    (contains? spec :random)  (let [{preset-name :random :as args} spec
+                                    args (dissoc args :random)]
+                                (cond-> (assoc (randoms/draw rng preset-name args)
+                                               :random preset-name)
+                                        (seq args) (assoc :args args)))
+    :else                     {:value spec}))
 
 (defn resolve-var
   "Resolve one declared var into an `sns.sdk.schema/item-var`. Idempotent:
    resolving an already-resolved var returns it unchanged, so a view-model can
-   round-trip without redrawing.
+   round-trip without redrawing, or restamping its `:type` from a half-typed
+   value.
 
    `id` is unused beyond documenting the call site — a var carries no label
    unless a plugin sets one, since the UI derives the default from the key it
    is stored under."
   [rng _id spec]
-  (if (map? spec)
-    (resolve-map-var rng spec)
-    {:value spec}))
+  (if (resolved? spec)
+    spec
+    (typed (fresh rng spec))))
 
 (defn resolve-vars
   "Resolve a map of declared vars, keyed by id. Nil in, nil out."

@@ -16,9 +16,7 @@
    `:map` admits."
   [[:inc {:optional true} [:map-of keyword? number?]]
    [:dec {:optional true} [:map-of keyword? number?]]
-   [:append {:optional true} [:map-of keyword? string?]]
    [:conj {:optional true} [:map-of keyword? any?]]
-   [:assoc-template {:optional true} string?]
    [:enable {:optional true} [:sequential keyword?]]
    [:disable {:optional true} [:sequential keyword?]]])
 
@@ -66,6 +64,11 @@
    ;; under, so a plugin sets this only to override that.
    ::item-var [:map
                [:value any?]
+               ;; The type the value resolved as: the browser picks its control
+               ;; from this and parses the string an input hands back into it.
+               ;; Declared rather than inferred, since mid-edit the value may be
+               ;; blank. Absent means text.
+               [:type {:optional true} [:enum :int :decimal :bool]]
                [:label {:optional true} string?]
                [:random {:optional true} keyword?]
                [:args {:optional true} [:map-of keyword? any?]]

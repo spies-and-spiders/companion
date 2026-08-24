@@ -3,15 +3,16 @@
 
    An upgrade option carries *mutation ops* that transform a mod's variables —
    the same `sns.sdk.schema/item-vars` its template interpolates, so levelling
-   up and drawing a random touch one map rather than two. Ops address a var by
-   id and change its `:value`; nothing here renders text.
+   up and drawing a random touch one map rather than two. Ops take vars and
+   return vars; text that varies with an upgrade is a `{{#if flag}}` in the
+   template, switched by `:enable`/`:disable`.
 
    The built-in ops are `defmethod`s of `apply-op`, so a plugin adds to the
    vocabulary the same way the app defines it:
 
    ```clojure
-   (defmethod sp/apply-op :multiply [acc _ m]
-     (sp/update-values acc m *))
+   (defmethod sp/apply-op :multiply [vars _ m]
+     (sp/update-values vars m *))
    ```
 
    Op names are unqualified, because they are written by hand in the upgrade
@@ -30,9 +31,9 @@
     [sns.sdk.protocols :as p]))
 
 (defmulti apply-op
-  "Apply mutation `op` with value `v` to the progression accumulator
-   `{:vars … :template …}`, returning the updated accumulator."
-  (fn [_acc op _v] op))
+  "Apply mutation `op` with value `v` to `vars` (`sns.sdk.schema/item-vars`),
+   returning the updated vars."
+  (fn [_vars op _v] op))
 
 (defn known-ops
   "Every op currently resolvable, for error messages and tooling."
@@ -46,42 +47,32 @@
   (throw (ex-info "Unknown upgrade op" {:op op :value v :known (known-ops)})))
 
 (defn update-values
-  "Combine each `{id v}` in `m` into the matching var's `:value` with `f`. The
-   building block for the arithmetic ops, and for a plugin's own — a var the
-   mod never declared is created, so an upgrade may introduce one."
-  [acc m f]
-  (update acc :vars
-          (fn [vars]
-            (reduce-kv (fn [vars id v]
-                         (update-in vars [id :value] f v))
-                       vars
-                       m))))
+  "Combine each `{id v}` in `m` into the matching var's `:value` with `f`. A var
+   the mod never declared is created, so an upgrade may introduce one."
+  [vars m f]
+  (reduce-kv (fn [vars id v] (update-in vars [id :value] f v))
+             vars
+             m))
 
 (defn set-values
   "Set each `{id v}` in `m` as the matching var's `:value`."
-  [acc m]
-  (update-values acc m (fn [_old v] v)))
+  [vars m]
+  (update-values vars m (fn [_old v] v)))
 
-(defmethod apply-op :assoc-template [acc _ template]
-  (assoc acc :template template))
+(defmethod apply-op :inc [vars _ m]
+  (update-values vars m (fnil + 0)))
 
-(defmethod apply-op :inc [acc _ m]
-  (update-values acc m (fnil + 0)))
+(defmethod apply-op :dec [vars _ m]
+  (update-values vars m (fnil - 0)))
 
-(defmethod apply-op :dec [acc _ m]
-  (update-values acc m (fnil - 0)))
+(defmethod apply-op :conj [vars _ m]
+  (update-values vars m (fnil conj [])))
 
-(defmethod apply-op :append [acc _ m]
-  (update-values acc m (fnil str "")))
+(defmethod apply-op :enable [vars _ ks]
+  (set-values vars (zipmap ks (repeat true))))
 
-(defmethod apply-op :conj [acc _ m]
-  (update-values acc m (fnil conj [])))
-
-(defmethod apply-op :enable [acc _ ks]
-  (set-values acc (zipmap ks (repeat true))))
-
-(defmethod apply-op :disable [acc _ ks]
-  (set-values acc (zipmap ks (repeat false))))
+(defmethod apply-op :disable [vars _ ks]
+  (set-values vars (zipmap ks (repeat false))))
 
 ;; --- mod -> view-model ---------------------------------------------------
 ;; A mod's `:path` defaults to `[]`, so a freshly drawn mod needs no special
@@ -94,10 +85,10 @@
   (:options (p/level-options progression mod (:path mod []))))
 
 (defn mod-item
-  "`mod` as an `sns.sdk.schema/item`: its active template as `:item/body`, and
-   the vars progression derived for it as `:item/vars`. The browser renders one
-   against the other, so nothing here produces text."
+  "`mod` as an `sns.sdk.schema/item`: its template as `:item/body`, and the vars
+   progression derived for it as `:item/vars`, for the browser to render one
+   against the other."
   [progression mod]
-  (let [{:keys [template vars]} (p/current-state progression mod (:path mod []))]
-    (cond-> {:item/body template}
+  (let [vars (p/current-state progression mod (:path mod []))]
+    (cond-> {:item/body (:template mod)}
             (seq vars) (assoc :item/vars vars))))

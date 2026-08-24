@@ -201,7 +201,7 @@ the DM's edits cannot reach.
 
 ### `Progression` (optional — custom upgrade systems)
 ```clojure
-(current-state [this mod path]) ; derive a mod at a progression path
+(current-state [this mod path]) ; derive a mod's vars at a progression path
 (level-options [this mod path]) ; next options
 ```
 The default implementation interprets the upgrade-graph DSL; implement this only
@@ -258,18 +258,17 @@ should say so itself. Clearing the field falls back to the field's `:default`.
 
 ## The upgrade-graph DSL (mod state & progression)
 
-A mod carries structured `:state`, a `:template` referencing it, and an
-`:upgrades` graph. **Upgrades mutate state, never the rendered string** — the text
-is derived from accumulated state, so choosing the same option N times is
-well-defined.
+A mod carries `:vars`, a `:template` interpolating them, and an `:upgrades`
+graph. **Upgrades mutate vars, never the text** — the template is fixed, so
+choosing the same option N times is well-defined. Text that appears only after
+an upgrade is a `{{#if}}` the graph switches on with `:enable`.
 
 ```clojure
-{:state    {:ab 1}
- :template "+{{ab}} AB with effects that cannot deal damage."
+{:vars     {:ab 1 :fire false}
+ :template "+{{ab}} AB with effects that cannot deal damage.{{#if fire}} Deals 6 fire damage on hit.{{/if}}"
  :upgrades {:select  :choice            ; :choice | :random | :all
             :options [{:id :precise :inc {:ab 1}}
-                      {:id :elemental :repeatable false
-                       :assoc-template "+{{ab}} AB; deal 6 fire damage on hit."}]}}
+                      {:id :elemental :repeatable false :enable [:fire]}]}}
 ```
 
 An option can be taken again and again; add `:repeatable false` for a one-shot,
@@ -277,9 +276,9 @@ or `:repeatable N` to cap it at N picks. A consumed option is dropped from the
 node (its siblings stay reachable, and the node only goes terminal when every
 option in it is consumed).
 
-Op vocabulary on an option: `:inc` `:dec` `:append` `:conj` `:assoc-template`
-`:enable` `:disable`. A persisted progression is a `path` of `{:id …}` steps; the
-effect re-derives deterministically from it.
+Op vocabulary on an option: `:inc` `:dec` `:conj` `:enable` `:disable`. A
+persisted progression is a `path` of `{:id …}` steps; the vars re-derive
+deterministically from it.
 
 The vocabulary is **open**: each op is a method of `sns.sdk.progression/apply-op`,
 so a plugin can add one without replacing the graph interpreter.
@@ -288,16 +287,16 @@ so a plugin can add one without replacing the graph interpreter.
 (ns my.plugin
   (:require [sns.sdk.progression :as sp]))
 
-(defmethod sp/apply-op :multiply [acc _ m]
-  (update acc :state #(merge-with * % m)))
+(defmethod sp/apply-op :multiply [vars _ m]
+  (sp/update-values vars m *))
 
 ;; …now usable in any upgrade graph: {:id :doubled :multiply {:ab 2}}
 ```
 
 Only the vocabulary is shared — the interpreter that folds ops over a path is the
-`Progression` handed to you on the context. It applies ops in a fixed order (a
-template swap first, then the accumulating ops), with plugin ops last in name
-order, so a mod derives identically every time. Anything on an option that isn't
+`Progression` handed to you on the context. It applies ops in a fixed order,
+with plugin ops last in name order, so a mod derives identically every time.
+Anything on an option that isn't
 a structural key (`:id` `:repeatable` `:upgrades`) is treated as an op, so a
 typo'd op name is an error rather than a silent no-op.
 
@@ -380,7 +379,7 @@ A `:jar` plugin can add presets in code by depending on the SDK alone:
 
 ### Progression and vars are the same map
 
-An upgrade's ops (`:inc`, `:dec`, `:append`, …) address vars by the same ids the
+An upgrade's ops (`:inc`, `:dec`, `:enable`, …) address vars by the same ids the
 template interpolates, so levelling a mod up and drawing its randoms touch one
 map rather than two:
 
@@ -393,6 +392,13 @@ map rather than two:
 Taking `:precise` twice gives `:ab` 3; `:x` is untouched. Vars are re-derived by
 replaying the path from the mod's declared starting values, so the same path
 always yields the same result.
+
+A resolved var records the `:type` it was declared as (`:int`, `:decimal`,
+`:bool` — anything else is text). The editor picks its control from that — a
+number field, a checkbox for the flags `:enable` switches — and puts the value
+back in that type, so a DM can retype `:ab` and the next `:inc` still adds to a
+number. A numeric field left blank comes back as nil: it renders as nothing and
+an op still accumulates onto it.
 
 ---
 

@@ -309,9 +309,19 @@
                         [[:fx/assoc-in [:editing?] (not (:editing? state))]
                          [:fx/assoc-in [:report-status] nil]]))
 
+(defn- retype
+  "Put an edited value back into the type the plugin declared (`:type` on
+   `sns.sdk.schema/item-var`), since every input hands back a string. Blank or
+   mid-typing (`-`, `1e`) becomes nil: it renders as nothing, and an op still
+   accumulates onto it."
+  [type value]
+  (if (and (string? value) (#{:int :decimal} type))
+    (parse-double value)
+    value))
+
 (nxr/register-action! :ui/edit-result
-                      (fn [_state path value]
-                        [[:fx/assoc-in (into [:result] path) value]
+                      (fn [_state path type value]
+                        [[:fx/assoc-in (into [:result] path) (retype type value)]
                          [:fx/assoc-in [:report-status] nil]]))
 
 (nxr/register-action! :ui/edit-result-metadata

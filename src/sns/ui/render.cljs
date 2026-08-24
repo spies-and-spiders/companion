@@ -159,12 +159,12 @@
    [:span.edit__label label]
    (if area?
      [:textarea.edit__control
-      {:on {:input [[:ui/edit-result path [:event.target/value]]]}}
+      {:on {:input [[:ui/edit-result path :text [:event.target/value]]]}}
       (str v)]
      [:input.edit__control
       {:type  "text"
        :value (str v)
-       :on    {:input [[:ui/edit-result path [:event.target/value]]]}}])])
+       :on    {:input [[:ui/edit-result path :text [:event.target/value]]]}}])])
 
 (defn- edit-metadata [path metadata]
   [:label.edit {:replicant/key (str path)}
@@ -187,13 +187,25 @@
   [id label]
   (or label (-> (name id) (str/replace #"[-_]" " ") str/capitalize)))
 
-(defn- edit-var [path id {:keys [label value options]}]
+(defn- var-type
+  "The control a var edits with. Driven by the declared `:type` rather than the
+   value in hand, which says nothing once the field is blank. Numbers all edit
+   as `:decimal`: a var holding 2 may want 2.5 typed into it, and `:int`'s step
+   of 1 rejects that."
+  [type options]
+  (cond
+    (seq options)           :enum
+    (= :bool type)          :bool
+    (#{:int :decimal} type) :decimal
+    :else                   :text))
+
+(defn- edit-var [path id {:keys [label value options type]}]
   (let [dom-id (str "item-var-" (str/join "-" (map #(if (keyword? %) (name %) %) path)))]
     [:label.edit {:replicant/key (str path)}
      [:span.edit__label (var-label id label)]
      (control dom-id value
-              {:type (if (seq options) :enum :text) :options options}
-              [:ui/edit-result (conj path :value)])]))
+              {:type (var-type type options) :options options}
+              [:ui/edit-result (conj path :value) type])]))
 
 (defn- editable-vars
   "The vars a DM may change: what the plugin *declared*, not the entry fields

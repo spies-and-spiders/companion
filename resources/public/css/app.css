@@ -303,6 +303,9 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 /* shared across every item, so it sits with the title rather than inside one */
 .entry__vars--shared { padding-bottom: 0.6rem; }
 .edit { display: flex; flex-direction: column; gap: 0.25rem; }
+/* a boolean var edits as a checkbox: label beside it, not above */
+.edit:has(> [type="checkbox"]) { flex-direction: row-reverse; align-items: center; justify-content: flex-end; gap: 0.5rem; }
+.edit [type="checkbox"] { padding: 0; width: 1rem; height: 1rem; accent-color: var(--arcane); }
 .edit__label {
   font-size: 0.64rem;
   letter-spacing: 0.22em;

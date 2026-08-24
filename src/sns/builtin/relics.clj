@@ -1,9 +1,10 @@
 (ns sns.builtin.relics
   "A stateful built-in loot type: relics that are generated, persisted, and
    levelled up over time. Each relic carries an upgrade-graph mod and a persisted
-   path of choices/rolls; its variables are always derived from that path, and
-   its template is rendered in the browser against them. This exercises the full
-   Store + Progression + LootAction loop."
+   path of choices; its variables are always derived from that path, and its
+   template, with `{{#if}}` for the parts an upgrade switches on, is rendered in
+   the browser against them. This exercises the full Store + Progression +
+   LootAction loop."
   (:require
     [randy.core :as r]
     [sns.sdk.protocols :as p]))
@@ -14,22 +15,18 @@
   "Starting relics. Each `:mod` is an upgrade-graph (see the schema)."
   [{:name "Aegis of the Vow"
     :base "armour"
-    :mod  {:vars     {:ab 1}
-           :template "+{{ab}} AB with effects that cannot deal damage."
+    :mod  {:vars     {:ab 1 :fire false}
+           :template "+{{ab}} AB with effects that cannot deal damage.{{#if fire}} Deals 6 fire damage on hit.{{/if}}"
            :upgrades {:select  :choice
                       :options [{:id :precise :inc {:ab 1}}
-                                {:id             :elemental
-                                 :repeatable     false
-                                 :assoc-template "+{{ab}} AB; deal 6 fire damage on hit."}]}}}
+                                {:id :elemental :repeatable false :enable [:fire]}]}}}
    {:name "Wanderer's Compass"
     :base "trinket"
-    :mod  {:vars     {:range 30}
-           :template "Teleport up to {{range}} feet as a bonus action."
+    :mod  {:vars     {:range 30 :swift false}
+           :template "Teleport up to {{range}} feet as a {{#if swift}}free{{else}}bonus{{/if}} action."
            :upgrades {:select  :choice
                       :options [{:id :far :inc {:range 15}}
-                                {:id             :swift
-                                 :repeatable     false
-                                 :assoc-template "Teleport up to {{range}} feet as a free action."}]}}}])
+                                {:id :swift :repeatable false :enable [:swift]}]}}}])
 
 (defn- option->action [relic-id {:keys [id]}]
   {:action/label (str "Upgrade: " (name id))
@@ -38,7 +35,7 @@
                                 :params {:relic-id relic-id :choice id}}]})
 
 (defn- view-model [progression {:keys [id name base mod path]}]
-  (let [{:keys [template vars]} (p/current-state progression mod path)
+  (let [vars    (p/current-state progression mod path)
         options (p/level-options progression mod path)
         actions (when options
                   (if (= :choice (:select options))
@@ -50,7 +47,7 @@
     (cond-> {:loot/title    name
              :loot/subtitle (str "Relic · " base " · level " (inc (count path)))
              :loot/sections [{:section/heading "Effect"
-                              :section/items   [(cond-> {:item/body template}
+                              :section/items   [(cond-> {:item/body (:template mod)}
                                                         (seq vars) (assoc :item/vars vars))]}]}
             (seq actions) (assoc :loot/actions actions))))
 

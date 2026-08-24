@@ -1,7 +1,8 @@
 (ns sns.server.progression
   "Default `Progression`: interprets the upgrade-graph DSL. Upgrades transform a
-   mod's *variables*; the effect text is never edited in place — it stays the
-   mod's template, rendered in the browser against those variables. This is what
+   mod's *variables*: the effect text stays the mod's template, rendered in the
+   browser against those variables, so text that varies with an upgrade is a
+   `{{#if flag}}` the graph switches with `:enable`/`:disable`. This is what
    makes choosing the same option N times well-defined: the vars are re-derived
    by replaying the path from the mod's declared starting values.
 
@@ -20,11 +21,10 @@
   #{:id :repeatable :upgrades})
 
 (def ^:private op-order
-  "The built-in ops in application order: a template swap establishes the base,
-   then the accumulating ops apply. Ops outside this list (a plugin's own) are
-   applied afterwards in name order, so an option's ops resolve identically on
-   every derivation regardless of map ordering."
-  [:assoc-template :inc :dec :append :conj :enable :disable])
+  "The built-in ops in application order. Ops outside this list (a plugin's own)
+   are applied afterwards in name order, so an option's ops resolve identically
+   on every derivation regardless of map ordering."
+  [:inc :dec :conj :enable :disable])
 
 (defn- ordered
   "The keys of `ops`, sorted into `op-order` with unknown (plugin) ops last."
@@ -33,12 +33,10 @@
     (sort-by (fn [op] [(get order op (count op-order)) (name op)])
              (keys ops))))
 
-(defn- apply-ops
-  "Apply every op on `option` to the accumulator `acc`."
-  [acc option]
+(defn- apply-ops [vars option]
   (let [ops (apply dissoc option structural-keys)]
-    (reduce (fn [acc op] (sp/apply-op acc op (get ops op)))
-            acc
+    (reduce (fn [vars op] (sp/apply-op vars op (get ops op)))
+            vars
             (ordered ops))))
 
 (defn- find-option [upgrades id]
@@ -55,27 +53,24 @@
   [current option]
   (or (:upgrades option) current))
 
-(defn derive-mod
-  "Fold the chosen `path` over `base` mod. Returns `base` with its final
-   `:vars` (resolved `sns.sdk.schema/item-vars`) and active `:template`.
+(defn derive-vars
+  "Fold the chosen `path` over `base` mod's variables. Returns the final
+   resolved `sns.sdk.schema/item-vars`.
 
    `base`'s vars may be *declared* (a literal, or a `{:random …}` spec) or
    already resolved; either way they are resolved once, with `rng`, before the
    path is folded — so an upgrade's `:inc` lands on the drawn value."
   [rng base path]
-  (let [{:keys [vars template]}
-        (reduce (fn [{:keys [upgrades] :as acc} {:keys [id]}]
-                  (let [option (or (find-option upgrades id)
-                                   (throw (ex-info "Unknown upgrade option"
-                                                   {:id id :available (mapv :id (:options upgrades))})))]
-                    (-> (apply-ops acc option)
-                        (assoc :upgrades (next-upgrades upgrades option)))))
-                {:vars     (vars/resolve-vars rng (:vars base))
-                 :template (:template base)
-                 :upgrades (:upgrades base)}
-                path)]
-    (-> (dissoc base :upgrades)
-        (assoc :vars vars :template template))))
+  (loop [vars     (vars/resolve-vars rng (:vars base))
+         upgrades (:upgrades base)
+         [step & more] path]
+    (if step
+      (let [option (or (find-option upgrades (:id step))
+                       (throw (ex-info "Unknown upgrade option"
+                                       {:id        (:id step)
+                                        :available (mapv :id (:options upgrades))})))]
+        (recur (apply-ops vars option) (next-upgrades upgrades option) more))
+      vars)))
 
 (defn- cap
   "Max times an option may be taken at its node: a number is its own cap,
@@ -124,5 +119,5 @@
    resolve a mod's declared `{:random …}` vars on first derivation)."
   [rng]
   (reify p/Progression
-    (current-state [_ mod path] (derive-mod rng mod path))
+    (current-state [_ mod path] (derive-vars rng mod path))
     (level-options [_ mod path] (options-at mod path))))
