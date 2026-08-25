@@ -16,9 +16,7 @@
    `:map` admits."
   [[:inc {:optional true} [:map-of keyword? number?]]
    [:dec {:optional true} [:map-of keyword? number?]]
-   [:append {:optional true} [:map-of keyword? string?]]
    [:conj {:optional true} [:map-of keyword? any?]]
-   [:assoc-template {:optional true} string?]
    [:enable {:optional true} [:sequential keyword?]]
    [:disable {:optional true} [:sequential keyword?]]])
 
@@ -55,11 +53,43 @@
              [:action/label string?]
              [:action/event vector?]]
 
+   ;; One resolved variable a template interpolates (see `sns.sdk.vars`).
+   ;; Templates are rendered in the browser, so this is how a value reaches it:
+   ;; separately from the text, which is what lets a DM edit *the value* without
+   ;; touching the prose (and the plugin read a value back, never parsing prose).
+   ;; `:options`, when given, is the preset's vocabulary — the UI offers it as a
+   ;; combobox, matching `::field`'s `:enum` type. `:random`/`:args` record what
+   ;; it was drawn from, so an action can reroll it (`sns.sdk.vars/redraw`).
+   ;; `:label` is opt-in: with none, the UI derives one from the id it is keyed
+   ;; under, so a plugin sets this only to override that.
+   ::item-var [:map
+               [:value any?]
+               ;; The type the value resolved as: the browser picks its control
+               ;; from this and parses the string an input hands back into it.
+               ;; Stamped once at resolution, since mid-edit the value may be
+               ;; blank and say nothing. Absent means text.
+               [:type {:optional true} [:enum :int :decimal :bool]]
+               [:label {:optional true} string?]
+               [:random {:optional true} keyword?]
+               [:args {:optional true} [:map-of keyword? any?]]
+               [:options {:optional true} [:sequential any?]]
+               ;; Available to templates but not offered for editing: an entry's
+               ;; own fields, as opposed to what it declared as a var.
+               [:context? {:optional true} boolean?]]
+
+   ;; Vars keyed by the name the template refers to them by: `{{ damage }}`
+   ;; reads `:damage`. A map (not a list) because that is both the render
+   ;; context's shape and the shape progression ops address by id.
+   ::item-vars [:map-of keyword? ::item-var]
+
+   ;; `:item/title` and `:item/body` are *templates*, rendered in the browser
+   ;; against `:item/vars`. A plugin with nothing to interpolate just sends
+   ;; finished text — a template with no tags renders as itself.
    ::item [:map
            [:item/title {:optional true} [:maybe string?]]
            [:item/body string?]
            [:item/metadata {:optional true} [:sequential string?]]
-           [:item/change {:optional true} any?]]
+           [:item/vars {:optional true} ::item-vars]]
 
    ::section [:map
               [:section/heading {:optional true} [:maybe string?]]
@@ -68,8 +98,18 @@
    ::view-model [:map
                  [:loot/title string?]
                  [:loot/subtitle {:optional true} [:maybe string?]]
+                 ;; Context for the title/subtitle templates, as `:item/vars` is
+                 ;; for an item's.
+                 [:loot/vars {:optional true} ::item-vars]
                  [:loot/sections {:optional true} [:sequential ::section]]
-                 [:loot/actions {:optional true} [:sequential ::action]]]
+                 [:loot/actions {:optional true} [:sequential ::action]]
+                 ;; Opaque, plugin-owned state the engine and UI carry untouched
+                 ;; and hand back with the next action — progression bookkeeping
+                 ;; (an upgrade `:path`, a stored id) that has no place in the
+                 ;; rendered item. The *displayed* values live in `:item/vars`
+                 ;; and are the source of truth for everything else, so keep
+                 ;; this to what genuinely cannot be read back off the item.
+                 [:loot/state {:optional true} any?]]
 
    ;; --- external plugin I/O contract (:cli over stdio, :ffi over a C ABI) ---
    ;; The "friendly", un-namespaced JSON an external plugin exchanges, mapped
@@ -125,9 +165,18 @@
                [:select [:enum :choice :random :all]]
                [:options [:sequential [:ref ::option]]]]
 
+   ;; `:vars` are declared (see `sns.sdk.vars`) — a raw literal, or a
+   ;; `{:random …}`/`{:literal …}` behaviour — and resolve to the `::item-vars`
+   ;; the item carries. Progression's ops address them by the same ids the
+   ;; template interpolates, so levelling a mod up and drawing its randoms
+   ;; touch one map, not two.
+   ;;
+   ;; Progression reads `:vars` and `:upgrades`. `:template` records the shape
+   ;; the built-ins use for their text; a plugin turns its own mod into an item
+   ;; and may key that however it likes.
    ::mod [:map
-          [:state {:optional true} [:map-of keyword? any?]]
-          [:template string?]
+          [:vars {:optional true} [:map-of keyword? any?]]
+          [:template {:optional true} string?]
           [:upgrades {:optional true} [:ref ::upgrades]]]
 
    ;; --- a persisted progression step ---
@@ -136,9 +185,21 @@
    ::path      [:sequential ::path-step]
 
    ;; --- the :data plugin DSL ---
+   ;; `:title`/`:body` are either a *field reference* (a keyword, naming a field
+   ;; on the drawn element — as `:metadata` always was) or a *template* string,
+   ;; rendered in the browser against the item's vars. A field reference is the
+   ;; way to reach data that is itself a template: `:body :effect` hands the
+   ;; browser the entry's own `"+4 {{ ability }}."` to render, rather than
+   ;; rendering `"{{ effect }}"` here and losing the inner tag.
+   ;;
+   ;; `string?` leads the `:or`, and must: the JSON transformer decodes a string
+   ;; into whichever branch matches first, so a keyword branch in front turns
+   ;; every JSON template into a keyword — `"{{result}}"` becomes `:{{result}}`,
+   ;; a reference to a field no entry has. JSON keeps its strings, and a bare
+   ;; one naming a field on the entry is read as a reference there.
    ::data-item [:map
-                [:title {:optional true} string?]
-                [:body string?]
+                [:title {:optional true} [:or string? keyword?]]
+                [:body [:or string? keyword?]]
                 [:metadata {:optional true} keyword?]]
 
    ::data-section [:map
@@ -232,9 +293,9 @@
    ::loot-entry [:map [:id keyword?] [:weight {:optional true} number?]]
 
    ;; --- random presets (content for `sns.sdk.randoms`) ---
-   ;; Named value lists any plugin's templates can draw from with
-   ;; `{{ ""|random:<preset> }}`. The library ships the mechanism only; these
-   ;; are the DM's vocabulary.
+   ;; Named value lists any plugin's vars can draw from with
+   ;; `{:random :<preset>}`. The library ships the mechanism only; these are
+   ;; the DM's vocabulary.
    ::randoms [:map-of keyword? [:sequential any?]]
 
    ;; --- reporting (send a generated item to an external destination) ---

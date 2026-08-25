@@ -8,6 +8,6 @@
   ],
   "title": "{{name}} for {{who}}",
   "sections": [
-    {"heading": "Mods", "each": "mods", "item": {"body": "{{effect}}", "metadata": "tags"}}
+    {"heading": "Mods", "each": "mods", "item": {"body": "effect", "metadata": "tags"}}
   ]
 }

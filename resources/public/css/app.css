@@ -295,8 +295,65 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 /* --- result editor (manual edit mode) -------------------------------------- */
 
 .sigil--edit .sigil__frame { display: flex; flex-direction: column; gap: 0.9rem; }
-.entry--edit { display: flex; flex-direction: column; gap: 0.5rem; }
+.sigil--edit .sigil__title { margin: 0; }
+.sigil--edit .sigil__body { display: flex; flex-direction: column; gap: 1.4rem; }
+.entry--edit { display: flex; flex-direction: column; gap: 0.45rem; }
+/* Values are short and are the common edit, so they tile: several to a row, in
+   their own shape, ahead of the prose. */
+.entry__vars {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  align-items: start;
+  gap: 0.5rem 0.8rem;
+}
+/* shared across every item, so it sits with the title rather than inside one */
+.entry__vars--shared { padding-bottom: 0.2rem; }
+
+/* A fold holds an item's prose: closed, it previews the rendered text; open, it
+   is the title/body/metadata templates behind that text. */
+.fold { border-left: var(--rule); padding-left: 0.7rem; }
+.fold__summary {
+  display: flex; align-items: baseline; gap: 0.6rem;
+  cursor: pointer; list-style: none; padding: 0.15rem 0;
+}
+.fold__summary::-webkit-details-marker { display: none; }
+.fold__summary::before {
+  content: "▸"; color: var(--gilt); font-size: 0.6rem; transition: transform 0.15s ease;
+}
+.fold[open] > .fold__summary::before { transform: rotate(90deg); }
+.fold__preview {
+  flex: 1; min-width: 0; color: var(--vellum); font-size: 0.9rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fold__hint {
+  font-size: 0.6rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted);
+}
+.fold__summary:hover .fold__hint { color: var(--gilt); }
+.fold__body { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem 0 0.2rem; }
+
+.block--edit { margin-top: 0; }
+.block__heading--edit {
+  display: block; width: 100%;
+  background: transparent; border: none; border-bottom: var(--rule);
+  border-radius: 0; font-family: inherit;
+}
+.block__heading--edit:focus-visible { outline: none; color: var(--arcane); border-bottom-color: var(--arcane); }
 .edit { display: flex; flex-direction: column; gap: 0.25rem; }
+/* a drawn var picks from a select; give it the chevron the dark field hides */
+select.field__control {
+  appearance: none;
+  padding-right: 1.6rem;
+  background-image: linear-gradient(45deg, transparent 50%, var(--gilt) 50%),
+                    linear-gradient(135deg, var(--gilt) 50%, transparent 50%);
+  background-position: calc(100% - 0.85rem) 55%, calc(100% - 0.55rem) 55%;
+  background-size: 0.3rem 0.3rem, 0.3rem 0.3rem;
+  background-repeat: no-repeat;
+}
+/* a boolean var edits as a checkbox: its own size, under the label */
+.edit [type="checkbox"] {
+  align-self: start; padding: 0; margin: 0.45rem 0;
+  width: 1.1rem; height: 1.1rem; accent-color: var(--arcane);
+}
 .edit__label {
   font-size: 0.64rem;
   letter-spacing: 0.22em;

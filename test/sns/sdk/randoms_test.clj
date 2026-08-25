@@ -1,11 +1,9 @@
 (ns sns.sdk.randoms-test
   (:require
-    [clojure.string :as str]
     [clojure.test :refer [deftest is testing use-fixtures]]
     [randy.core :as r]
     [randy.rng :as rng]
-    [sns.sdk.randoms :as randoms]
-    [sns.server.render :as render])
+    [sns.sdk.randoms :as randoms])
   (:import
     (java.util.random RandomGeneratorFactory)))
 
@@ -31,14 +29,19 @@
     (is (= "Athlete" (randoms/sample-preset (fixed-rng 1) :feats)))))
 
 (deftest unknown-preset-is-rejected
-  (is (thrown? Exception (randoms/sample-preset (fixed-rng 0) :not-a-preset))))
+  (is (thrown? Exception (randoms/sample-preset (fixed-rng 0) :not-a-preset)))
+  (testing "the error names what is available"
+    (is (contains? (set (-> (try (randoms/sample-preset (fixed-rng 0) :nope)
+                                 (catch Exception e (ex-data e)))
+                            :known))
+                   :feats))))
 
-(deftest literal-preset-samples-inline-values
-  (testing "values written in the template need no registration"
-    (is (= "b" (randoms/sample-preset (fixed-rng 1) :literal "a" "b" "c")))))
+(deftest literal-preset-samples-values-written-inline
+  (testing "values given where the var is declared need no registration"
+    (is (= "b" (randoms/sample-preset (fixed-rng 1) :literal {:options ["a" "b" "c"]})))))
 
 (deftest without-replacement-draws-distinct-values
-  (let [drawn (randoms/sample-preset @r/default-rng :without-replacement "2" "feats")]
+  (let [drawn (randoms/sample-preset @r/default-rng :without-replacement {:amount 2 :preset :feats})]
     (is (= 2 (count drawn)))
     (is (= 2 (count (set drawn))))
     (is (every? (set feats) drawn)))
@@ -46,17 +49,32 @@
     ;; regression: randy's shuffle strategy proxies onto java.util.Random and
     ;; throws for the engine's rng, so the draw must avoid that path
     (let [drawn (randoms/sample-preset (.create (RandomGeneratorFactory/of "L64X128MixRandom"))
-                                       :without-replacement "2" "feats")]
+                                       :without-replacement {:amount 2 :preset :feats})]
       (is (= 2 (count (set drawn))))
       (is (every? (set feats) drawn))))
-  (testing "the drawn values stay a collection, so a template can index them"
-    (let [parts (-> (randoms/with-rng (java.util.Random. 7)
-                      (render/render
-                        "{% with x=v|random:without-replacement:2:feats %}{{x.0}} & {{x.1}}{% endwith %}"
-                        {}))
-                    (str/split #" & "))]
-      (is (= 2 (count (set parts))))
-      (is (every? (set feats) parts)))))
+  (testing "`amount` may arrive as a string (a JSON spec, a submitted input)"
+    (is (= 2 (count (randoms/sample-preset @r/default-rng :without-replacement
+                                           {:amount "2" :preset :feats})))))
+  (testing "drawing without replacement from a self-sampling preset is rejected"
+    (is (thrown? Exception (randoms/sample-preset @r/default-rng :without-replacement
+                                                  {:amount 2 :preset :without-replacement})))))
+
+(deftest preset-args-are-named
+  (testing "a preset reads the var spec's other keys by name"
+    (defmethod randoms/preset ::defences [_ {:keys [type]}]
+      (cond-> ["Fortitude" "Reflexes" "Will"]
+              (not= "non-armour" type) (conj "Armour")))
+    (is (= 4 (count (randoms/preset-values ::defences))))
+    (is (= 3 (count (randoms/preset-values ::defences {:type "non-armour"}))))
+    (remove-method randoms/preset ::defences)))
+
+(deftest preset-values-exposes-the-vocabulary
+  (testing "a plain preset's full vocabulary, for editing the draw as a combobox"
+    (is (= feats (randoms/preset-values :feats))))
+  (testing "a literal preset's vocabulary is the options written alongside it"
+    (is (= ["a" "b" "c"] (randoms/preset-values :literal {:options ["a" "b" "c"]}))))
+  (testing "a self-sampling preset has no fixed vocabulary to offer"
+    (is (nil? (randoms/preset-values :without-replacement {:amount 2 :preset :feats})))))
 
 (deftest defmethod-extends-the-vocabulary
   (testing "a plugin adds a preset in code the same way the built-ins are defined"
@@ -64,20 +82,24 @@
     (is (= "blue" (randoms/sample-preset (fixed-rng 1) ::colours)))
     (remove-method randoms/preset ::colours)))
 
-(deftest random-filter-renders-in-templates
-  (testing "the filter is registered by requiring the SDK, and draws from *rng*"
-    (randoms/with-rng (fixed-rng 2)
-      (is (= "Gain the Brawler feat."
-             (render/render "Gain the {{ \"\"|random:feats }} feat." {})))))
-  (testing "the piped value may just be a missing variable"
-    (randoms/with-rng (fixed-rng 0)
-      (is (= "Alert" (render/render "{{x|random:feats}}" {})))))
-  (testing "filter args are passed through to the preset"
-    (randoms/with-rng (fixed-rng 2)
-      (is (= "c" (render/render "{{x|random:literal:a:b:c}}" {}))))))
+(deftest draw-resolves-the-preset-exactly-once
+  (testing "`preset` is an open extension point, so a plugin's defmethod must not
+            run twice to produce one var's value and its options"
+    (let [calls (atom 0)]
+      (defmethod randoms/preset ::counted [_ _] (swap! calls inc) ["a" "b"])
+      (try
+        (let [{:keys [value options]} (randoms/draw (fixed-rng 1) ::counted {})]
+          (is (= "b" value))
+          (is (= ["a" "b"] options))
+          (is (= 1 @calls)))
+        (finally (remove-method randoms/preset ::counted)))))
+  (testing "a self-sampling preset draws its own value and offers no options"
+    (let [{:keys [value options]} (randoms/draw @r/default-rng :without-replacement
+                                                {:amount 2 :preset :feats})]
+      (is (= 2 (count (set value))))
+      (is (nil? options)))))
 
-(deftest rendering-uses-the-bound-rng
-  (testing "the same bound rng renders the same text"
-    (let [render-once #(randoms/with-rng (java.util.Random. 7)
-                         (render/render "{{x|random:feats}}" {}))]
-      (is (= (render-once) (render-once))))))
+(deftest drawing-uses-the-supplied-rng
+  (testing "the same seeded rng draws the same value"
+    (let [draw-once #(randoms/sample-preset (java.util.Random. 7) :feats)]
+      (is (= (draw-once) (draw-once))))))

@@ -3,7 +3,8 @@
    stylesheet does the rest. A new loot type renders with zero UI code as long
    as its spec/view-model conform to the schema."
   (:require
-    [clojure.string :as str]))
+    [clojure.string :as str]
+    [sns.ui.template :as template]))
 
 ;; --- input-form (from a loot-spec's :inputs) ---------------------------------
 
@@ -111,17 +112,24 @@
 
 ;; --- view-model renderer (the signature surface) -----------------------------
 
-(defn- entry [{:item/keys [title body metadata]}]
-  [:li.entry
-   (when title [:h4.entry__title title])
-   [:p.entry__body body]
-   (when (seq metadata)
-     [:ul.tags (for [t metadata] [:li.tag t])])])
+;; `:item/title`/`:item/body` are templates; the values they interpolate travel
+;; beside them as `:item/vars`, so a var edited in the browser re-renders here
+;; with no round trip to the server. `:loot/vars` are ambient — every template
+;; in the view-model can read them, which is how one drawn value is *shared*
+;; between items rather than copied into each (copies desynchronise the moment
+;; the DM edits one). An item's own vars shadow them.
+(defn- entry [loot-vars {:item/keys [title body metadata vars]}]
+  (let [vars (merge loot-vars vars)]
+    [:li.entry
+     (when title [:h4.entry__title (template/render title vars)])
+     [:p.entry__body (template/render body vars)]
+     (when (seq metadata)
+       [:ul.tags (for [t metadata] [:li.tag t])])]))
 
-(defn- block [{:section/keys [heading items]}]
+(defn- block [loot-vars {:section/keys [heading items]}]
   [:section.block
    (when heading [:h3.block__heading heading])
-   [:ul.entries (map entry items)]])
+   [:ul.entries (map (partial entry loot-vars) items)]])
 
 (defn- action [{:action/keys [label event]}]
   [:button.action {:on {:click [event]}} label])
@@ -134,10 +142,10 @@
     [:article.sigil {:replicant/key (:loot/title vm)}
      [:div.sigil__frame
       (when (:loot/subtitle vm)
-        [:p.sigil__eyebrow (:loot/subtitle vm)])
-      [:h2.sigil__title (:loot/title vm)]
+        [:p.sigil__eyebrow (template/render (:loot/subtitle vm) (:loot/vars vm))])
+      [:h2.sigil__title (template/render (:loot/title vm) (:loot/vars vm))]
       [:div.sigil__body
-       (map block (:loot/sections vm))]
+       (map (partial block (:loot/vars vm)) (:loot/sections vm))]
       (when (seq (:loot/actions vm))
         [:div.sigil__actions
          (map action (:loot/actions vm))])]]))
@@ -151,12 +159,12 @@
    [:span.edit__label label]
    (if area?
      [:textarea.edit__control
-      {:on {:input [[:ui/edit-result path [:event.target/value]]]}}
+      {:on {:input [[:ui/edit-result path :text [:event.target/value]]]}}
       (str v)]
      [:input.edit__control
       {:type  "text"
        :value (str v)
-       :on    {:input [[:ui/edit-result path [:event.target/value]]]}}])])
+       :on    {:input [[:ui/edit-result path :text [:event.target/value]]]}}])])
 
 (defn- edit-metadata [path metadata]
   [:label.edit {:replicant/key (str path)}
@@ -166,28 +174,130 @@
      :value (str/join ", " metadata)
      :on    {:input [[:ui/edit-result-metadata path [:event.target/value]]]}}]])
 
-(defn- edit-item [si ii {:item/keys [title body metadata]}]
-  [:li.entry.entry--edit {:replicant/key ii}
-   (edit-field "Item title" [:loot/sections si :section/items ii :item/title] title false)
-   (edit-field "Body" [:loot/sections si :section/items ii :item/body] body true)
-   (edit-metadata [:loot/sections si :section/items ii :item/metadata] metadata)])
+;; A var's own control, separate from the template that interpolates it — so
+;; changing a value doesn't mean retyping the prose, and a plugin reads a value
+;; back rather than parsing text. Reuses `enum-field`/plain-text `control` from
+;; the input-form renderer above, so a preset's `:options` become the same
+;; combobox a loot-spec enum input uses.
+(defn- var-label
+  "A var's field label. Derived here rather than sent: the id is already on the
+   wire as the key, so a server-computed label would be a second copy of it —
+   and how a name is *displayed* is this layer's business anyway. A plugin that
+   wants something other than the id sets `:label`."
+  [id label]
+  (or label (-> (name id) (str/replace #"[-_]" " ") str/capitalize)))
 
-(defn- edit-block [si {:section/keys [heading items]}]
-  [:section.block {:replicant/key si}
-   (edit-field "Section heading" [:loot/sections si :section/heading] heading false)
-   [:ul.entries (map-indexed (fn [ii item] (edit-item si ii item)) items)]])
+(defn- var-type
+  "The control a var edits with, driven by the declared `:type` — which holds
+   still while the field is blank mid-edit. Numbers all edit as `:decimal`: a
+   var holding 2 may want 2.5 typed into it, and `:int`'s step of 1 rejects
+   that."
+  [type]
+  (cond
+    (= :bool type)          :bool
+    (#{:int :decimal} type) :decimal
+    :else                   :text))
+
+(defn- select-field
+  "A drawn var edits as a `<select>` over the vocabulary it came from, where a
+   loot-spec's enum input uses a combobox: an input field starts empty, so a
+   datalist's suggestions narrow helpfully as the DM types, but a var arrives
+   with its value already in the box and the same filtering leaves only the
+   value it already has. A value outside the vocabulary — hand-set by a plugin —
+   joins the list so that picking again is possible without losing it."
+  [value options action]
+  (let [v      (str value)
+        values (map str options)
+        values (if (some #{v} values) values (cons v values))]
+    [:select.field__control
+     {:value v
+      :on    {:change [(conj action [:event.target/value])]}}
+     (for [opt values]
+       [:option (cond-> {:value opt} (= opt v) (assoc :selected true)) opt])]))
+
+(defn- edit-var [path id {:keys [label value options type]}]
+  (let [action [:ui/edit-result (conj path :value) type]]
+    [:label.edit {:replicant/key (str path)}
+     [:span.edit__label (var-label id label)]
+     (if (seq options)
+       (select-field value options action)
+       (control nil value {:type (var-type type)} action))]))
+
+(defn- editable-vars
+  "The vars a DM may change: what the plugin *declared*, not the entry fields
+   its templates happen to read (`:context?`)."
+  [vars]
+  (remove (comp :context? val) vars))
+
+(defn- var-grid
+  "The editable vars under `base-path`, several to a row. Values are what a DM
+   changes mid-session, so they lead — the prose that interpolates them is the
+   rarer edit and sits behind a disclosure."
+  [class base-path vars]
+  (when-let [editable (seq (editable-vars vars))]
+    [:div {:class class}
+     (for [[id v] editable]
+       (edit-var (conj base-path id) id v))]))
+
+;; The body field holds the template itself — `{{ x }}` where a value sits — so
+;; the sentence and the values are edited independently and neither forces
+;; retyping the other. What the DM types is what the plugin gets back.
+(defn- edit-text
+  "An item's prose, folded away behind a summary that previews it as rendered —
+   which is what a DM reads to find the item, and the edit they seldom want."
+  [si ii {:item/keys [title body metadata]} preview]
+  [:details.fold {:replicant/key (str "text-" si "-" ii)}
+   [:summary.fold__summary
+    [:span.fold__preview preview]
+    [:span.fold__hint "text"]]
+   [:div.fold__body
+    (edit-field "Item title" [:loot/sections si :section/items ii :item/title] title false)
+    (edit-field "Body" [:loot/sections si :section/items ii :item/body] body true)
+    (edit-metadata [:loot/sections si :section/items ii :item/metadata] metadata)]])
+
+(defn- edit-item [loot-vars si ii {:item/keys [title body vars] :as item}]
+  (let [all     (merge loot-vars vars)
+        rendered #(some-> % (template/render all) str str/trim not-empty)
+        preview (str (some-> (rendered title) (str ": ")) (rendered body))]
+    [:li.entry.entry--edit {:replicant/key ii}
+     (var-grid "entry__vars" [:loot/sections si :section/items ii :item/vars] vars)
+     (edit-text si ii item preview)]))
+
+(defn- edit-block [loot-vars si {:section/keys [heading items]}]
+  [:section.block.block--edit {:replicant/key si}
+   ;; Styled as the heading it is, so the sections stay legible as structure
+   ;; while still editing in place.
+   [:input.block__heading.block__heading--edit
+    {:type  "text"
+     :value (str heading)
+     :on    {:input [[:ui/edit-result [:loot/sections si :section/heading] :text
+                      [:event.target/value]]]}}]
+   [:ul.entries (map-indexed (fn [ii item] (edit-item loot-vars si ii item)) items)]])
 
 (defn result-editor
   "Render the result view-model as an editable form. Behavioural `:loot/actions`
    are intentionally not editable (and preserved untouched in state)."
   [vm]
   (when vm
-    [:article.sigil.sigil--edit {:replicant/key "result-editor"}
-     [:div.sigil__frame
-      (edit-field "Subtitle" [:loot/subtitle] (:loot/subtitle vm) false)
-      (edit-field "Title" [:loot/title] (:loot/title vm) false)
-      [:div.sigil__body
-       (map-indexed edit-block (:loot/sections vm))]]]))
+    (let [loot-vars (:loot/vars vm)]
+      [:article.sigil.sigil--edit {:replicant/key "result-editor"}
+       [:div.sigil__frame
+        ;; The rendered title, so the editor says which item is on the bench.
+        [:h2.sigil__title (template/render (:loot/title vm) loot-vars)]
+        [:details.fold {:replicant/key "text-loot"}
+         [:summary.fold__summary
+          ;; the *template*, since the heading above already shows it rendered
+          [:span.fold__preview (:loot/title vm)]
+          [:span.fold__hint "title & subtitle"]]
+         [:div.fold__body
+          (edit-field "Title" [:loot/title] (:loot/title vm) false)
+          (edit-field "Subtitle" [:loot/subtitle] (:loot/subtitle vm) false)]]
+        ;; Shared values, edited once: these are ambient to every template in the
+        ;; view-model, so changing one here updates every item that reads it.
+        (when-let [grid (var-grid "entry__vars entry__vars--shared" [:loot/vars] loot-vars)]
+          (list [:h3.block__heading "Shared values"] grid))
+        [:div.sigil__body
+         (map-indexed (partial edit-block loot-vars) (:loot/sections vm))]]])))
 
 ;; --- the Group Deception & Persuasion tracker (always-on, bespoke) -----------
 

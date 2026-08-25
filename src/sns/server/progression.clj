@@ -1,43 +1,21 @@
 (ns sns.server.progression
-  "Default `Progression`: interprets the upgrade-graph DSL. Upgrades transform
-   structured *state*; the effect text is derived (rendered once) from the
-   accumulated state. This is what makes choosing the same option N times
-   well-defined — see the architecture plan.
+  "Default `Progression`: interprets the upgrade-graph DSL. Upgrades transform a
+   mod's *variables*: the effect text stays the mod's template, rendered in the
+   browser against those variables, so text that varies with an upgrade is a
+   `{{#if flag}}` the graph switches with `:enable`/`:disable`. This is what
+   makes choosing the same option N times well-defined: the vars are re-derived
+   by replaying the path from the mod's **declared** starting values. Replaying
+   it over vars that already reflect it counts every upgrade twice, so a plugin
+   carrying resolved vars forward steps them with
+   `sns.sdk.progression/apply-ops` as each option is chosen.
 
    The graph walk lives here; the *ops* an option may carry are the open
    vocabulary in `sns.sdk.progression`, so a plugin extends what an upgrade can
    do without replacing this interpreter."
   (:require
     [sns.sdk.progression :as sp]
-    [sns.sdk.protocols :as p]))
-
-(def ^:private structural-keys
-  "Keys on an option that describe the graph rather than mutate state, so they
-   are never dispatched as ops. Everything else on an option is an op — which is
-   what makes a typo'd op an error rather than a silent no-op."
-  #{:id :repeatable :upgrades})
-
-(def ^:private op-order
-  "The built-in ops in application order: a template swap establishes the base,
-   then the accumulating ops apply. Ops outside this list (a plugin's own) are
-   applied afterwards in name order, so an option's ops resolve identically on
-   every derivation regardless of map ordering."
-  [:assoc-template :inc :dec :append :conj :enable :disable])
-
-(defn- ordered
-  "The keys of `ops`, sorted into `op-order` with unknown (plugin) ops last."
-  [ops]
-  (let [order (zipmap op-order (range))]
-    (sort-by (fn [op] [(get order op (count op-order)) (name op)])
-             (keys ops))))
-
-(defn- apply-ops
-  "Apply every op on `option` to the accumulator `acc`."
-  [acc option]
-  (let [ops (apply dissoc option structural-keys)]
-    (reduce (fn [acc op] (sp/apply-op acc op (get ops op)))
-            acc
-            (ordered ops))))
+    [sns.sdk.protocols :as p]
+    [sns.sdk.vars :as vars]))
 
 (defn- find-option [upgrades id]
   (->> (:options upgrades)
@@ -53,25 +31,24 @@
   [current option]
   (or (:upgrades option) current))
 
-(defn derive-mod
-  "Fold the chosen `path` over `base` mod and render. Returns `base` with its
-   final `:state`, active `:template`, and the rendered `:effect`. `render` is
-   the swappable `(fn [template state] -> string)`."
-  [render base path]
-  (let [{:keys [state template]}
-        (reduce (fn [{:keys [upgrades] :as acc} {:keys [id]}]
-                  (let [option (or (find-option upgrades id)
-                                   (throw (ex-info "Unknown upgrade option"
-                                                   {:id id :available (mapv :id (:options upgrades))})))]
-                    (-> (apply-ops acc option)
-                        (assoc :upgrades (next-upgrades upgrades option)))))
-                (-> (select-keys base [:state :template])
-                    (assoc :upgrades (:upgrades base)))
-                path)]
-    (-> (dissoc base :upgrades)
-        (assoc :state state
-               :template template
-               :effect (render template state)))))
+(defn derive-vars
+  "Fold the chosen `path` over `base` mod's variables. Returns the final
+   resolved `sns.sdk.schema/item-vars`.
+
+   `base`'s vars may be *declared* (a literal, or a `{:random …}` spec) or
+   already resolved; either way they are resolved once, with `rng`, before the
+   path is folded — so an upgrade's `:inc` lands on the drawn value."
+  [rng base path]
+  (loop [vars     (vars/resolve-vars rng (:vars base))
+         upgrades (:upgrades base)
+         [step & more] path]
+    (if step
+      (let [option (or (find-option upgrades (:id step))
+                       (throw (ex-info "Unknown upgrade option"
+                                       {:id        (:id step)
+                                        :available (mapv :id (:options upgrades))})))]
+        (recur (sp/apply-ops rng vars option) (next-upgrades upgrades option) more))
+      vars)))
 
 (defn- cap
   "Max times an option may be taken at its node: a number is its own cap,
@@ -116,8 +93,9 @@
             available))))))
 
 (defn progression
-  "Construct the default Progression, injecting the swappable `render` fn."
-  [render]
+  "Construct the default Progression, bound to the request's `rng` (needed to
+   resolve a mod's declared `{:random …}` vars on first derivation)."
+  [rng]
   (reify p/Progression
-    (current-state [_ mod path] (derive-mod render mod path))
+    (current-state [_ mod path] (derive-vars rng mod path))
     (level-options [_ mod path] (options-at mod path))))

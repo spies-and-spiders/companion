@@ -15,21 +15,28 @@
       :inputs [{:id :character :label \"Character\" :type :enum :options [...]}]}")
   (generate [this ctx]
     "Produce loot. Returns a view-model (`sns.sdk.schema/view-model`).
-     `ctx` is `{:rng :store :render :inputs :config}` — see the engine.
+     `ctx` is `{:rng :store :progression :inputs :config}` — see the engine.
      Stateful types read/write via `(:store ctx)`."))
 
 (defprotocol LootAction
   "Optional. Stateful follow-up operations on previously generated loot
    (e.g. levelling a relic up). Surfaced to the UI via view-model `:loot/actions`."
   (handle-action [this ctx action params]
-    "Apply `action` (a keyword) with `params`. Returns an updated view-model."))
+    "Apply `action` (a keyword) with `params`. Returns an updated view-model.
+     `ctx` additionally carries `:view-model` — the current, possibly
+     DM-edited view-model the UI had on screen (nil if the caller didn't send
+     one). Reconstruct your item from it rather than trusting a copy frozen
+     into `params`, so the DM's edits are what the action operates on: the
+     displayed values are the source of truth, and `:loot/state` carries only
+     what the view-model cannot express (an upgrade `:path`, a stored id)."))
 
 (defprotocol Progression
   "How a single mod evolves. The default implementation interprets the
    upgrade-graph DSL (`sns.sdk.schema/mod`); plugins may supply bespoke logic."
   (current-state [this mod path]
-    "Derive `mod` at the progression described by `path`
-     (a vector of `{:id ...}` steps). Returns the final, rendered mod.")
+    "Derive `mod`'s variables at the progression described by `path` (a vector
+     of `{:id ...}` steps). Returns the resolved `sns.sdk.schema/item-vars`,
+     which the browser renders the mod's template against.")
   (level-options [this mod path]
     "Return the upgrade options available as the next step from `path`."))
 

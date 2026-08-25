@@ -116,17 +116,28 @@
               :class "my.homebrew.JavaLoot"}]
 
  ;; --- randoms ---------------------------------------------------------------
- ;; Optional. Named lists any plugin's templates can draw a value from while an
- ;; item is being rendered, with the `random` filter:
+ ;; Optional. Named lists any plugin can draw a value from. A plugin *declares*
+ ;; a variable — in a mod's :vars, or a :data entry's :item/vars — and its
+ ;; template refers to it by name:
  ;;
- ;;   "You gain the {{ \"\"|random:feats }} feat."
- ;;   "Resistance to {{ \"\"|random:damage-types }} damage."
- ;;   "Proficiency in {{ \"\"|random:without-replacement:2:skills }}."
+ ;;   {:vars     {:feat {:random :feats}}
+ ;;    :template "You gain the {{ feat }} feat."}
+ ;;
+ ;;   {:vars     {:skills {:random :without-replacement :amount 2 :preset :skills}}
+ ;;    :template "Proficiency in {{ skills.[0] }} and {{ skills.[1] }}."}
+ ;;
+ ;; Name a var for what it holds: the editor labels it from the id, so :feat
+ ;; shows as "Feat" with nothing further to declare. (A numeric segment needs
+ ;; brackets — {{ skills.0 }} is a Handlebars parse error.)
+ ;;
+ ;; The draw happens once, server-side, with the request's seeded rng; the value
+ ;; then travels to the browser with the preset's vocabulary attached, so a DM
+ ;; can edit it as a combobox without retyping the prose around it.
  ;;
  ;; The app ships no vocabulary of its own — these lists are your campaign's
  ;; content. Two presets are always available regardless: :literal (values
- ;; written in the template, e.g. random:literal:north:south) and
- ;; :without-replacement (draw N distinct values from another preset).
+ ;; written where the var is declared, under :options) and :without-replacement
+ ;; (draw N distinct values from another preset).
  :randoms {:feats        ["Alert" "Athlete" "Brawler" "Charger" "Durable"]
            :skills       ["Athletics" "Deception" "Insight" "Stealth"]
            :damage-types ["acid" "cold" "fire" "lightning" "necrotic" "radiant"]}

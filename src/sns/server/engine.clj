@@ -1,6 +1,7 @@
 (ns sns.server.engine
-  "The single generation pipeline: owns the registry, randomness, and (in later
-   milestones) state and template rendering, and emits validated view-models."
+  "The single generation pipeline: owns the registry, randomness, and
+   progression, and emits validated view-models. Templates travel to the
+   browser unrendered, alongside the variables they interpolate."
   (:require
     [clojure.string :as str]
     [randy.core :as r]
@@ -9,7 +10,6 @@
     [sns.sdk.schema :as schema]
     [sns.server.progression :as progression]
     [sns.server.registry :as registry]
-    [sns.server.render :as render]
     [sns.server.reporter :as reporter]
     [sns.server.store :as store])
   (:import
@@ -52,28 +52,26 @@
 
 (defn create
   "Build a loot engine from validated `config`. `deps` supplies overridable
-   collaborators: `:store`, `:reporter`, `:render`, `:rng`. `:render`,
-   the derived `:progression`, `:store`, and `:reporter` default to the built-in
-   (swappable) impls."
+   collaborators: `:store`, `:reporter`, `:rng`. The derived `:progression`,
+   `:store`, and `:reporter` default to the built-in (swappable) impls."
   ([config] (create config {}))
-  ([config {:keys [store reporter render rng]}]
+  ([config {:keys [store reporter rng]}]
    (let [table (:loot-table config)
          registry (registry/build config)
-         render (or render render/render)
+         rng (or rng (.create (RandomGeneratorFactory/of "L64X128MixRandom")))
          store (or store (store/from-config (:storage config)))]
      (p/setup! store)
      (when (seq table)
        (validate-table! registry table))
-     ;; Config-declared random presets, usable from any plugin's templates as
-     ;; `{{ ""|random:<preset> }}`.
+     ;; Config-declared random presets, usable from any plugin's vars as
+     ;; `{:random :<preset>}`.
      (install-randoms! (:randoms config))
      {:config          config
       :registry        registry
       :store           store
       :reporter        (or reporter (reporter/from-config (:reporting config)))
-      :render          render
-      :progression     (progression/progression render)
-      :rng             (or rng (.create (RandomGeneratorFactory/of "L64X128MixRandom")))
+      :progression     (progression/progression rng)
+      :rng             rng
       ;; Missing weights default to 1, so a table without weights is sampled
       ;; uniformly (and partial weights mix evenly-weighted entries in).
       :loot-sampler    (when (seq table)
@@ -85,7 +83,7 @@
 (defn- ctx
   "Assemble the per-request context handed to a generator."
   [engine inputs]
-  (-> (select-keys engine [:rng :store :render :progression :config])
+  (-> (select-keys engine [:rng :store :progression :config])
       (assoc :inputs inputs)))
 
 (defn- ->decimal
@@ -150,8 +148,7 @@
    (let [generator (or (get registry id)
                        (throw (ex-info "Unknown loot type" {:id id :known (keys registry)})))
          inputs    (apply-input-defaults (p/loot-spec generator) inputs)]
-     ;; `random` template filters draw from the request's rng, wherever
-     ;; downstream the rendering happens.
+     ;; Vars draw from the request's rng, wherever downstream the draw happens.
      (randoms/with-rng rng
        (->> (ctx engine inputs)
             (p/generate generator)
@@ -196,12 +193,17 @@
 
 (defn handle-action
   "Dispatch a stateful follow-up `action` (with `params`) to loot type `id`,
-   returning an updated, validated view-model."
-  [{:keys [registry rng] :as engine} id action params]
+   returning an updated, validated view-model. `view-model` is the current
+   (possibly DM-edited) view-model the UI had on screen when the action was
+   triggered — not re-validated, since it may be mid-edit — so a generator can
+   react to what's currently displayed (e.g. an edited `:item/vars` value)
+   rather than only the `params` it declared for itself. Pass nil when there is
+   nothing on screen to react to."
+  [{:keys [registry rng] :as engine} id action params view-model]
   (let [generator (or (get registry id)
                       (throw (ex-info "Unknown loot type" {:id id})))]
     (when-not (satisfies? p/LootAction generator)
       (throw (ex-info "Loot type does not support actions" {:id id})))
     (randoms/with-rng rng
-      (->> (p/handle-action generator (ctx engine nil) action params)
+      (->> (p/handle-action generator (assoc (ctx engine nil) :view-model view-model) action params)
            (schema/assert! ::schema/view-model)))))

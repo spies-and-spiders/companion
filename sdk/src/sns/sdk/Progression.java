@@ -9,8 +9,9 @@ package sns.sdk;
 public interface Progression {
 
     /**
-     * Derive {@code mod} at the progression described by {@code path} (a vector of
-     * {@code {:id ... :rolled {...}}}). Returns the final, rendered mod.
+     * Derive {@code mod}'s variables at the progression described by {@code path}
+     * (a vector of {@code {:id ...}} steps). Returns the resolved
+     * {@code sns.sdk.schema/item-vars}, which the browser renders the template against.
      */
     Object currentState(Object mod, Object path);
 

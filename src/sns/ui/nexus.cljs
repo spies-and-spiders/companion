@@ -6,7 +6,8 @@
     [clojure.string :as str]
     [nexus.registry :as nxr]
     [sns.social :as social]
-    [sns.ui.api :as api]))
+    [sns.ui.api :as api]
+    [sns.ui.template :as template]))
 
 (nxr/register-system->state! deref)
 
@@ -68,7 +69,8 @@
 
 (nxr/register-effect! :fx/report
                       (fn [{:keys [dispatch]} system]
-                        (when-let [vm (:result @system)]
+                        ;; finished text, not templates — the backend has no renderer
+                        (when-let [vm (some-> (:result @system) template/render-view-model)]
                           (dispatch [[:fx/assoc-in [:report-status] :sending]
                                      [:fx/assoc-in [:error] nil]])
                           (api/request {:method :post :url "/api/report" :body {:view-model vm}}
@@ -99,8 +101,10 @@
                                                           [:fx/assoc-in [:loading?] false]])))))
 
 (nxr/register-effect! :fx/action
-                      (fn [ctx _system id action params]
-                        (result-effect ctx {:method :post :url "/api/action" :body {:id id :action action :params params}})))
+                      (fn [ctx _system id action params view-model]
+                        (result-effect ctx {:method :post
+                                            :url    "/api/action"
+                                            :body   {:id id :action action :params params :view-model view-model}})))
 
 ;; The Group Deception & Persuasion tracker: every request returns the full
 ;; tracker snapshot, so one effect covers load/add/toggle/remove/roll.
@@ -305,9 +309,19 @@
                         [[:fx/assoc-in [:editing?] (not (:editing? state))]
                          [:fx/assoc-in [:report-status] nil]]))
 
+(defn- retype
+  "Put an edited value back into the type the plugin declared (`:type` on
+   `sns.sdk.schema/item-var`), since every input hands back a string. Blank or
+   mid-typing (`-`, `1e`) becomes nil: it renders as nothing, and an op still
+   accumulates onto it."
+  [type value]
+  (if (and (string? value) (#{:int :decimal} type))
+    (parse-double value)
+    value))
+
 (nxr/register-action! :ui/edit-result
-                      (fn [_state path value]
-                        [[:fx/assoc-in (into [:result] path) value]
+                      (fn [_state path type value]
+                        [[:fx/assoc-in (into [:result] path) (retype type value)]
                          [:fx/assoc-in [:report-status] nil]]))
 
 (nxr/register-action! :ui/edit-result-metadata
@@ -319,7 +333,9 @@
                                vec)]
                          [:fx/assoc-in [:report-status] nil]]))
 
-;; Dispatched directly from a view-model's :action/event vector.
+;; Dispatched directly from a view-model's :action/event vector. Sends the
+;; current (possibly DM-edited) :result alongside the action's own static
+;; params, so the plugin can see edits made since generation (issue #8).
 (nxr/register-action! :loot/action
-                      (fn [_state {:keys [id action params]}]
-                        [[:fx/action id action params]]))
+                      (fn [{:keys [result]} {:keys [id action params]}]
+                        [[:fx/action id action params result]]))

@@ -59,16 +59,51 @@ You may provide **`config.json`** instead of `config.edn`; simply replace all ke
 The UI renders this shape generically — a new loot type needs **no** UI code, but it must return this shape of data.
 
 ```clojure
-{:loot/title    "Pacifist's Vow"                 ; required
- :loot/subtitle "Unique · armour"                ; optional
+{:loot/title    "{{ name }}"                     ; required — a template
+ :loot/subtitle "Unique · {{ base }}"            ; optional
+ :loot/vars     {:name {:value "Pacifist's Vow"} ; context for the two above
+                 :base {:value "armour"}}
  :loot/sections [{:section/heading "Mods"        ; heading optional
-                  :section/items [{:item/title nil      ; optional
-                                   :item/body  "+1 AB…" ; required
-                                   :item/metadata  ["accuracy"]}]}]  ; optional
+                  :section/items [{:item/title nil               ; optional
+                                   :item/body  "+{{ ab }} {{ x }} damage" ; required
+                                   :item/metadata ["accuracy"]   ; optional
+                                   :item/vars  {:ab {:value 1}
+                                                :x  {:value   "fire"
+                                                     :label   "Damage types"
+                                                     :random  :damage-types
+                                                     :options ["fire" "cold"]}}}]}]
  :loot/actions  [{:action/label "Level up"
-                  :action/event [:loot/action {:id :relics :action :level-up
-                                               :params {:relic-id "…"}}]}]}
+                  :action/event [:loot/action {:id :relics :action :level-up}]}]
+ :loot/state    {…}}                             ; optional, opaque
 ```
+
+**Titles and bodies are templates, not finished text.** Nothing is rendered on
+the server — a template travels to the browser beside the variables it
+interpolates, and [Handlebars](https://handlebarsjs.com) renders it there:
+`{{ name }}`, `{{ x.[0] }}` to index a drawn collection, `{{#if flag}}…{{/if}}`.
+A plugin with nothing to interpolate just sends finished text; a template with
+no tags renders as itself.
+
+That split is the point. A DM edits the **value** in its own control without
+retyping the prose, and edits the **prose** without disturbing the value —
+each re-renders live, with no round trip. Your plugin reads a value back, and
+never parses a rendered string.
+
+`:item/vars` are keyed by the name the template refers to them by, so
+`{{ damage }}` reads `:damage`. `:options`, when present, is the preset's
+vocabulary, and the UI offers it as a combobox rather than free text.
+`:label` is optional: with none, the UI derives one from the id
+(`:damage-type` -> "Damage type"), so name a var for what it holds and the
+editor reads well with no extra work. Set it only to override that.
+
+A var marked `:context?` is available to templates but not offered for editing — that is how a `:data` entry's own fields reach
+its templates. `:loot/vars` does the same job for the title and subtitle.
+
+`:loot/state` is opaque, plugin-owned state the engine and UI carry untouched
+and hand back with the next action (as `ctx`'s `:view-model`). Keep it to
+progression bookkeeping that has no place in the rendered item — an upgrade
+`:path`, a stored id. Everything the DM can *see* should be read back off the
+view-model itself.
 
 or
 
@@ -132,23 +167,41 @@ and extend without depending on the app.
 (generate  [this ctx]) ; => a view-model
 ```
 
-`ctx` is `{:rng :store :render :progression :config :inputs}`:
+`ctx` is `{:rng :store :progression :config :inputs}`:
 - `:rng` — a randy RNG (or use randy's default-rng functions).
 - `:store` — the `Store` (see below) for stateful loot.
-- `:render` — `(fn [template state] -> string)`, Selmer with cosmetic filters
-  (`times`, `dice`, `ordinal`, `percentage`) plus `random` (see below). It is
-  already bound to `:rng` for the duration of the call.
-- `:progression` — the default `Progression` (upgrade-graph interpreter).
+- `:progression` — the default `Progression` (upgrade-graph interpreter). It
+  resolves a mod's declared vars and folds its upgrade path over them; it does
+  no rendering.
 - `:inputs` — values collected from the loot-spec's declared `:inputs`.
+
+There is no renderer on the context, because there is no rendering on the
+server: return templates plus their vars, and the browser renders them.
 
 ### `LootAction` (optional — stateful follow-ups)
 ```clojure
 (handle-action [this ctx action params]) ; => an updated view-model
 ```
 
+`ctx` additionally carries **`:view-model`** — the view-model the UI had on
+screen, DM edits included. Reconstruct your item from it rather than trusting a
+copy frozen into `params`, so an action operates on what is actually displayed:
+
+```clojure
+(handle-action [_ ctx action params]
+  (-> (view-model->relic (:view-model ctx))   ; your own inverse of the below
+      (level-up)
+      (relic->view-model ctx)))
+```
+
+Write that pair as inverses over everything the UI can change. Whatever the
+view-model cannot express — an upgrade `:path`, a stored id — travels in
+`:loot/state`; keep it small, since anything read back from there is a value
+the DM's edits cannot reach.
+
 ### `Progression` (optional — custom upgrade systems)
 ```clojure
-(current-state [this mod path]) ; derive a mod at a progression path
+(current-state [this mod path]) ; derive a mod's vars at a progression path
 (level-options [this mod path]) ; next options
 ```
 The default implementation interprets the upgrade-graph DSL; implement this only
@@ -205,18 +258,17 @@ should say so itself. Clearing the field falls back to the field's `:default`.
 
 ## The upgrade-graph DSL (mod state & progression)
 
-A mod carries structured `:state`, a `:template` referencing it, and an
-`:upgrades` graph. **Upgrades mutate state, never the rendered string** — the text
-is derived from accumulated state, so choosing the same option N times is
-well-defined.
+A mod carries `:vars`, a `:template` interpolating them, and an `:upgrades`
+graph. **Upgrades mutate vars, never the text** — the template is fixed, so
+choosing the same option N times is well-defined. Text that appears only after
+an upgrade is a `{{#if}}` the graph switches on with `:enable`.
 
 ```clojure
-{:state    {:ab 1}
- :template "+{{ab}} AB with effects that cannot deal damage."
+{:vars     {:ab 1 :fire false}
+ :template "+{{ab}} AB with effects that cannot deal damage.{{#if fire}} Deals 6 fire damage on hit.{{/if}}"
  :upgrades {:select  :choice            ; :choice | :random | :all
             :options [{:id :precise :inc {:ab 1}}
-                      {:id :elemental :repeatable false
-                       :assoc-template "+{{ab}} AB; deal 6 fire damage on hit."}]}}
+                      {:id :elemental :repeatable false :enable [:fire]}]}}
 ```
 
 An option can be taken again and again; add `:repeatable false` for a one-shot,
@@ -224,9 +276,9 @@ or `:repeatable N` to cap it at N picks. A consumed option is dropped from the
 node (its siblings stay reachable, and the node only goes terminal when every
 option in it is consumed).
 
-Op vocabulary on an option: `:inc` `:dec` `:append` `:conj` `:assoc-template`
-`:enable` `:disable`. A persisted progression is a `path` of `{:id …}` steps; the
-effect re-derives deterministically from it.
+Op vocabulary on an option: `:inc` `:dec` `:conj` `:enable` `:disable`. A
+persisted progression is a `path` of `{:id …}` steps; the vars re-derive
+deterministically from it.
 
 The vocabulary is **open**: each op is a method of `sns.sdk.progression/apply-op`,
 so a plugin can add one without replacing the graph interpreter.
@@ -235,58 +287,134 @@ so a plugin can add one without replacing the graph interpreter.
 (ns my.plugin
   (:require [sns.sdk.progression :as sp]))
 
-(defmethod sp/apply-op :multiply [acc _ m]
-  (update acc :state #(merge-with * % m)))
+(defmethod sp/apply-op :multiply [vars _ m]
+  (sp/update-values vars m *))
 
 ;; …now usable in any upgrade graph: {:id :doubled :multiply {:ab 2}}
 ```
 
 Only the vocabulary is shared — the interpreter that folds ops over a path is the
-`Progression` handed to you on the context. It applies ops in a fixed order (a
-template swap first, then the accumulating ops), with plugin ops last in name
-order, so a mod derives identically every time. Anything on an option that isn't
+`Progression` handed to you on the context. It applies ops in a fixed order,
+with plugin ops last in name order, so a mod derives identically every time.
+Anything on an option that isn't
 a structural key (`:id` `:repeatable` `:upgrades`) is treated as an op, so a
 typo'd op name is an error rather than a silent no-op.
 
 ---
 
-## Randoms (`{{ ""|random:… }}`)
+## Randoms (`{:random :preset}`)
 
-Templates can draw a random value *at render time* — for effect text like "you gain
-the Alert feat" where the feat is rolled per item. Declare the vocabulary in config:
+A loot type can draw a random value per item — an effect like "you gain the
+Alert feat" where the feat is rolled each time. Declare the vocabulary in
+config:
 
 ```clojure
 :randoms {:feats  ["Alert" "Athlete" "Brawler"]
           :skills ["Athletics" "Deception" "Insight" "Stealth"]}
 ```
 
-and draw from it in any plugin's template (the piped value is ignored — `""` is
-the conventional placeholder):
+Then **declare a variable** wherever your loot type keeps its data — a mod's
+`:vars`, or a `:data` entry's `:item/vars` — and refer to it from the template
+by name:
 
 ```clojure
-"You gain the {{ \"\"|random:feats }} feat."
-"You head {{ \"\"|random:literal:north:south:east:west }}."
-;; a multi-draw returns a collection, so bind it and index the values:
-"{% with x=v|random:without-replacement:2:skills %}Proficiency in {{x.0}} and {{x.1}}.{% endwith %}"
+{:vars     {:damage 1
+            :x      {:random :damage-types}}
+ :template "+{{ damage }} {{ x }} damage with attacks"}
 ```
 
-Two presets are always available: **`:literal`** (values written inline in the
-template) and **`:without-replacement`** (N distinct values from another preset).
-Everything else is your campaign's content — the app ships no vocabulary of its own.
+A declared var is one of three things:
 
-Draws use the rng of the request being served, so a generated item is reproducible
-from its seed. A `:jar` plugin can add presets in code, and use the filter in its
-own rendering by depending on the SDK alone:
+```clojure
+{:ability "Wisdom"                            ; a raw literal — number, string,
+                                              ; boolean, vector, or map
+ :damage  {:random :damage-types}             ; drawn from a preset
+ :awkward {:literal {:random :not-a-preset}}} ; escaped: kept verbatim
+```
+
+A map is read as a *behaviour* when it carries `:random` or `:literal` at the
+top level. `:literal` exists so data that happens to look like a behaviour can
+say so; everything else is itself.
+
+Drawing happens on the server, with the request's seeded rng, so an item is
+reproducible from its seed. The drawn value then travels to the browser as an
+`:item/vars` entry — with the preset's vocabulary as its `:options`, so the DM
+can edit it as a combobox over the same words it was drawn from.
+
+**Presets take named arguments** — the var spec's other keys:
+
+```clojure
+{:x {:random :literal :options ["harm" "damage"]}}          ; values written inline
+{:x {:random :defences :type "non-armour"}}                 ; a preset's own argument
+{:x {:random :without-replacement :amount 2 :preset :skills}} ; draws a collection…
+;; …which the template then indexes: "Proficiency in {{ x.[0] }} and {{ x.[1] }}."
+```
+
+Two presets are always available: **`:literal`** (values written inline, under
+`:options`) and **`:without-replacement`** (N distinct values from another
+preset). Everything else is your campaign's content — the app ships no
+vocabulary of its own.
+
+A `:jar` plugin can add presets in code by depending on the SDK alone:
 
 ```clojure
 (ns my.plugin
-  (:require [sns.sdk.randoms :as randoms]))
+  (:require [sns.sdk.randoms :as randoms]
+            [sns.sdk.vars :as vars]))
 
 (defmethod randoms/preset :monster-types [_ _]
   ["aberration" "beast" "celestial" "construct"])
 
-;; or, outside a render: (randoms/sample-preset rng :monster-types)
+;; a preset may read its own named arguments
+(defmethod randoms/preset :defences [_ {:keys [type]}]
+  (cond-> ["Fortitude" "Reflexes" "Will"]
+          (not= "non-armour" type) (conj "Armour")))
+
+;; resolve declarations into `:item/vars`; drawing once, up front
+(vars/resolve-vars rng {:x {:random :monster-types}})
+
+;; and reroll one later, for an action that deliberately changes it
+(vars/redraw-distinct rng item-vars :x)
 ```
+
+### Progression and vars are the same map
+
+An upgrade's ops (`:inc`, `:dec`, `:enable`, …) address vars by the same ids the
+template interpolates, so levelling a mod up and drawing its randoms touch one
+map rather than two:
+
+```clojure
+{:vars     {:ab 1 :x {:random :damage-types}}
+ :template "+{{ ab }} AB, {{ x }} damage"
+ :upgrades {:select :choice :options [{:id :precise :inc {:ab 1}}]}}
+```
+
+Taking `:precise` twice gives `:ab` 3; `:x` is untouched. Vars are re-derived by
+replaying the path from the mod's declared starting values, so the same path
+always yields the same result.
+
+There are two ways to keep a mod levelling, and mixing them counts every
+upgrade twice:
+
+- **the path is the state** — persist the *declared* vars plus the path, and
+  re-derive with `current-state` on each render. Reproducible from what was
+  stored; a DM's edit to a value lasts until the next derivation. This is what
+  the built-in `:relics` type does.
+- **the vars are the state** — keep the *resolved* vars and move them one
+  upgrade at a time with `(sns.sdk.progression/apply-ops rng vars option)` as
+  each option is chosen. This is what a plugin that reads its item back off the
+  view-model wants, since the displayed (possibly edited) value is what the
+  next upgrade builds on.
+
+The SDK deals in vars. Your mod's shape, where its path rides, and the step from
+a mod to a view-model item are yours to decide.
+
+A resolved var records the `:type` it was declared as (`:int`, `:decimal`,
+`:bool` — anything else is text). The editor picks its control from that — a
+number field, a checkbox for the flags `:enable` switches — and puts the value
+back in that type, so a DM can retype `:ab` and the next `:inc` still adds to a
+number. A numeric field left blank comes back as nil: it renders as nothing and
+an op still accumulates onto it.
 
 ---
 
@@ -303,19 +431,42 @@ takes precedence over `:source` when both are given:
              :mods [{:effect "+1 AB…" :metadata ["accuracy"]}]}]
  :take     1                               ; how many to draw (default 1)
  :weighted false                           ; draw with replacement by :weight (default false)
- :title    "{{name}}"                      ; Selmer, against the drawn entry
+ :title    "{{name}}"                      ; a template, against the drawn entry
  :subtitle "Unique · {{base}}"
  :sections [{:heading "Mods" :each :mods   ; iterate a field on the entry…
-             :item {:body "{{effect}}" :metadata :metadata}}]}
+             :item {:body :effect          ; …a field *reference* (see below)
+                    :metadata :metadata}}]}
 ```
 
 `:take`>1 draws without replacement (unless `:weighted`, which draws with
 replacement by each item's `:weight`). Use `:each :items` to iterate the drawn
 entries themselves (e.g. drawing 2 rings), or `:each :<field>` to iterate a field
 on the single drawn entry. Items support `:enabled? false` to disable. Input values
-are available to all templates. (The data DSL renders mods at base state;
-upgrade-graph progression for data loot is not yet wired — use `:builtin`/`:jar`
-for stateful loot.)
+are available to all templates.
+
+An item's **`:title`/`:body` may be a template string or a field reference** (a
+keyword, as `:metadata` always was). A field reference is how to reach entry data
+that is *itself* a template: `:body :effect` hands the browser the entry's own
+`"+4 {{ ability }}."` to render, whereas `:body "{{ effect }}"` would resolve one
+level and leave the inner tag stranded.
+
+An entry may declare its own variables under **`:item/vars`** (`"item/vars"` in
+JSON), which is how a `:data` plugin gets a randomised value the DM can edit:
+
+```clojure
+{:name      "Researcher's Power"
+ :item/vars {:ability {:random :literal :options ["Intelligence" "Wisdom"]}}
+ :mods      [{:effect "+4 {{ ability }}."}
+             {:effect "You cannot use {{ ability }} to cast spells."}]}
+```
+
+The draw happens once per entry, so every item that entry produces shares it —
+edit it in the UI and both mods above update together. The entry's other fields
+are available to its templates too (as `:context?` vars, so they render but are
+not offered for editing).
+
+(The data DSL renders mods at base state; upgrade-graph progression for data
+loot is not yet wired — use `:builtin`/`:jar` for stateful loot.)
 
 ---
 
