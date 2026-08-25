@@ -192,20 +192,36 @@
    still while the field is blank mid-edit. Numbers all edit as `:decimal`: a
    var holding 2 may want 2.5 typed into it, and `:int`'s step of 1 rejects
    that."
-  [type options]
+  [type]
   (cond
-    (seq options)           :enum
     (= :bool type)          :bool
     (#{:int :decimal} type) :decimal
     :else                   :text))
 
+(defn- select-field
+  "A drawn var edits as a `<select>` over the vocabulary it came from, where a
+   loot-spec's enum input uses a combobox: an input field starts empty, so a
+   datalist's suggestions narrow helpfully as the DM types, but a var arrives
+   with its value already in the box and the same filtering leaves only the
+   value it already has. A value outside the vocabulary — hand-set by a plugin —
+   joins the list so that picking again is possible without losing it."
+  [value options action]
+  (let [v      (str value)
+        values (map str options)
+        values (if (some #{v} values) values (cons v values))]
+    [:select.field__control
+     {:value v
+      :on    {:change [(conj action [:event.target/value])]}}
+     (for [opt values]
+       [:option (cond-> {:value opt} (= opt v) (assoc :selected true)) opt])]))
+
 (defn- edit-var [path id {:keys [label value options type]}]
-  (let [dom-id (str "item-var-" (str/join "-" (map #(if (keyword? %) (name %) %) path)))]
+  (let [action [:ui/edit-result (conj path :value) type]]
     [:label.edit {:replicant/key (str path)}
      [:span.edit__label (var-label id label)]
-     (control dom-id value
-              {:type (var-type type options) :options options}
-              [:ui/edit-result (conj path :value) type])]))
+     (if (seq options)
+       (select-field value options action)
+       (control nil value {:type (var-type type)} action))]))
 
 (defn- editable-vars
   "The vars a DM may change: what the plugin *declared*, not the entry fields

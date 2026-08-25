@@ -339,6 +339,16 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 }
 .block__heading--edit:focus-visible { outline: none; color: var(--arcane); border-bottom-color: var(--arcane); }
 .edit { display: flex; flex-direction: column; gap: 0.25rem; }
+/* a drawn var picks from a select; give it the chevron the dark field hides */
+select.field__control {
+  appearance: none;
+  padding-right: 1.6rem;
+  background-image: linear-gradient(45deg, transparent 50%, var(--gilt) 50%),
+                    linear-gradient(135deg, var(--gilt) 50%, transparent 50%);
+  background-position: calc(100% - 0.85rem) 55%, calc(100% - 0.55rem) 55%;
+  background-size: 0.3rem 0.3rem, 0.3rem 0.3rem;
+  background-repeat: no-repeat;
+}
 /* a boolean var edits as a checkbox: its own size, under the label */
 .edit [type="checkbox"] {
   align-self: start; padding: 0; margin: 0.45rem 0;
