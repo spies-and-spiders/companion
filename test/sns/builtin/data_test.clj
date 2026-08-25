@@ -93,6 +93,19 @@
             (is (= "Effect A" (:item/body item)))
             (is (= ["accuracy"] (:item/metadata item)))))))))
 
+(deftest json-body-that-is-a-template-stays-one
+  (testing "a JSON body naming no field on the entry is the template itself —
+            regression: `{{result}}` decoded to the keyword `:{{result}}`, read
+            as a field reference, and every such item rendered blank"
+    (let [spec {:label    "Cards"
+                :items    [{:result "Draw 2 tarot cards."}]
+                :title    "Tarot"
+                :sections [{:each :items :item {:body "{{result}}"}}]}
+          vm   (data/generate (assoc spec :items [{:result "Draw 2 tarot cards."}]) ctx)
+          item (-> vm :loot/sections first :section/items first)]
+      (is (= "{{result}}" (:item/body item)) "handed to the browser to render")
+      (is (= "Draw 2 tarot cards." (-> item :item/vars :result :value))))))
+
 (deftest utility-flag-surfaces-in-loot-spec
   (let [gen (data/generator :tools {:label "Tools" :utility? true :items [{:name "x"}] :title "t"})]
     (is (true? (:utility? (sns.sdk.protocols/loot-spec gen))))))

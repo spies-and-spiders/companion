@@ -191,9 +191,15 @@
    ;; way to reach data that is itself a template: `:body :effect` hands the
    ;; browser the entry's own `"+4 {{ ability }}."` to render, rather than
    ;; rendering `"{{ effect }}"` here and losing the inner tag.
+   ;;
+   ;; `string?` leads the `:or`, and must: the JSON transformer decodes a string
+   ;; into whichever branch matches first, so a keyword branch in front turns
+   ;; every JSON template into a keyword — `"{{result}}"` becomes `:{{result}}`,
+   ;; a reference to a field no entry has. JSON keeps its strings, and a bare
+   ;; one naming a field on the entry is read as a reference there.
    ::data-item [:map
-                [:title {:optional true} [:or keyword? string?]]
-                [:body [:or keyword? string?]]
+                [:title {:optional true} [:or string? keyword?]]
+                [:body [:or string? keyword?]]
                 [:metadata {:optional true} keyword?]]
 
    ::data-section [:map

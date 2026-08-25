@@ -93,13 +93,20 @@
          (vars/resolve-vars rng (apply dissoc (get element declared-vars-key) (keys entry-vars)))))
 
 (defn- template-or-field
-  "An item's `:title`/`:body`: a keyword reads that field off `element` (so
-   entry data that is itself a template reaches the browser intact); a string is
-   already the template."
+  "An item's `:title`/`:body`: a *field reference* reads that field off
+   `element` (so entry data that is itself a template reaches the browser
+   intact), and anything else is already the template.
+
+   A reference is written as a keyword in EDN. JSON has no keyword literal, so
+   there a bare string naming a field on the entry counts as one — which is why
+   the two are distinguished by what the entry holds rather than by type."
   [spec element]
-  (if (keyword? spec)
-    (get element spec)
-    spec))
+  (cond
+    (keyword? spec)              (get element spec)
+    (contains? element spec)     (get element spec)
+    (and (string? spec)
+         (contains? element (keyword spec))) (get element (keyword spec))
+    :else                        spec))
 
 (defn- build-item [rng entry-vars {:keys [title body metadata]} element]
   (let [item-vars (element-vars rng entry-vars element)]

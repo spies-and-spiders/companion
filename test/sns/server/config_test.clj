@@ -28,6 +28,19 @@
       (is (= [:dust :uniques] (mapv :id (:plugins cfg))))
       (is (= [40 nil] (mapv :weight (:loot-table cfg)))))))
 
+(deftest json-data-plugin-keeps-its-templates
+  (testing "a JSON :data item's title/body stay strings — regression: they
+            decoded to keywords, and `{{result}}` read as a field reference to
+            `:{{result}}`, which no entry has, so every such item rendered blank"
+    (let [f   (write-temp-json
+                (str "{\"plugins\":[{\"type\":\"data\",\"id\":\"cards\",\"inline\":"
+                     "{\"label\":\"Cards\",\"items\":[{\"result\":\"Draw 2.\"}],"
+                     "\"title\":\"Tarot\",\"sections\":[{\"each\":\"items\","
+                     "\"item\":{\"title\":\"A card\",\"body\":\"{{result}}\"}}]}}]}"))
+          item (-> (config/load-config f) :plugins first :inline :sections first :item)]
+      (is (= "{{result}}" (:body item)))
+      (is (= "A card" (:title item))))))
+
 (deftest rejects-invalid-json-config
   (testing "an unknown plugin type fails validation"
     (let [f (write-temp-json "{\"plugins\":[{\"type\":\"bogus\",\"id\":\"x\"}]}")]
