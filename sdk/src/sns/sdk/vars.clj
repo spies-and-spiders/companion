@@ -45,8 +45,8 @@
   (and (map? spec) (contains? spec :value)))
 
 (defn- typed
-  "Record the type the value resolved as, so an edited var can come back as the
-   number or boolean the plugin sent rather than the string an input hands over."
+  "Record the type the value resolved as, so an edited var comes back as the
+   number or boolean the plugin sent."
   [v]
   (if-let [t (let [value (:value v)]
                (cond (boolean? value) :bool
@@ -68,13 +68,11 @@
 
 (defn resolve-var
   "Resolve one declared var into an `sns.sdk.schema/item-var`. Idempotent:
-   resolving an already-resolved var returns it unchanged, so a view-model can
-   round-trip without redrawing, or restamping its `:type` from a half-typed
-   value.
+   resolving an already-resolved var returns it unchanged, so a round-tripped
+   view-model keeps the values and types it arrived with.
 
-   `id` is unused beyond documenting the call site — a var carries no label
-   unless a plugin sets one, since the UI derives the default from the key it
-   is stored under."
+   `id` is unused beyond documenting the call site — a var carries the label a
+   plugin sets, and the UI derives one from the key otherwise."
   [rng _id spec]
   (if (resolved? spec)
     spec

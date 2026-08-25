@@ -393,6 +393,22 @@ Taking `:precise` twice gives `:ab` 3; `:x` is untouched. Vars are re-derived by
 replaying the path from the mod's declared starting values, so the same path
 always yields the same result.
 
+There are two ways to keep a mod levelling, and mixing them counts every
+upgrade twice:
+
+- **the path is the state** — persist the *declared* vars plus the path, and
+  re-derive with `current-state` on each render. Reproducible from what was
+  stored; a DM's edit to a value lasts until the next derivation. This is what
+  the built-in `:relics` type does.
+- **the vars are the state** — keep the *resolved* vars and move them one
+  upgrade at a time with `(sns.sdk.progression/apply-ops rng vars option)` as
+  each option is chosen. This is what a plugin that reads its item back off the
+  view-model wants, since the displayed (possibly edited) value is what the
+  next upgrade builds on.
+
+The SDK deals in vars. Your mod's shape, where its path rides, and the step from
+a mod to a view-model item are yours to decide.
+
 A resolved var records the `:type` it was declared as (`:int`, `:decimal`,
 `:bool` — anything else is text). The editor picks its control from that — a
 number field, a checkbox for the flags `:enable` switches — and puts the value

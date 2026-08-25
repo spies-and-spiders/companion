@@ -66,8 +66,8 @@
                [:value any?]
                ;; The type the value resolved as: the browser picks its control
                ;; from this and parses the string an input hands back into it.
-               ;; Declared rather than inferred, since mid-edit the value may be
-               ;; blank. Absent means text.
+               ;; Stamped once at resolution, since mid-edit the value may be
+               ;; blank and say nothing. Absent means text.
                [:type {:optional true} [:enum :int :decimal :bool]]
                [:label {:optional true} string?]
                [:random {:optional true} keyword?]
@@ -170,9 +170,13 @@
    ;; the item carries. Progression's ops address them by the same ids the
    ;; template interpolates, so levelling a mod up and drawing its randoms
    ;; touch one map, not two.
+   ;;
+   ;; Progression reads `:vars` and `:upgrades`. `:template` records the shape
+   ;; the built-ins use for their text; a plugin turns its own mod into an item
+   ;; and may key that however it likes.
    ::mod [:map
           [:vars {:optional true} [:map-of keyword? any?]]
-          [:template string?]
+          [:template {:optional true} string?]
           [:upgrades {:optional true} [:ref ::upgrades]]]
 
    ;; --- a persisted progression step ---

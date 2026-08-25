@@ -25,10 +25,20 @@
    path is handed to plugins on the request context, so a custom op works in
    ordinary upgrade graphs without a bespoke `Progression` implementation.
 
-   `mod-item`/`options-at` are the two steps every plugin takes between a mod
-   and the view-model, kept here so each one need not restate them."
+   Everything here takes vars and returns vars; a plugin owns its own mod shape,
+   and the step from a mod to a view-model item. There are two ways to keep one
+   levelling, and mixing them double-counts every upgrade:
+
+   - *the path is the state* — keep the **declared** vars and the path, and
+     re-derive with `sns.sdk.protocols/current-state` on each render. The mod is
+     reproducible from what was persisted, and a DM's edit to a value lasts only
+     until the next derivation.
+   - *the vars are the state* — keep the **resolved** vars and move them one
+     upgrade at a time with `apply-ops` as each is chosen. This is what a plugin
+     that reads its item back off the view-model wants, since the displayed
+     value is then what the next upgrade builds on."
   (:require
-    [sns.sdk.protocols :as p]))
+    [sns.sdk.vars :as vars]))
 
 (defmulti apply-op
   "Apply mutation `op` with value `v` to `vars` (`sns.sdk.schema/item-vars`),
@@ -74,21 +84,35 @@
 (defmethod apply-op :disable [vars _ ks]
   (set-values vars (zipmap ks (repeat false))))
 
-;; --- mod -> view-model ---------------------------------------------------
-;; A mod's `:path` defaults to `[]`, so a freshly drawn mod needs no special
-;; case at the call site.
+;; --- applying one option's ops -------------------------------------------
 
-(defn options-at
-  "The upgrade options available to `mod` as its next step, or nil at a
-   terminal node."
-  [progression mod]
-  (:options (p/level-options progression mod (:path mod []))))
+(def ^:private structural-keys
+  "Keys on an option that describe the graph, skipped when its ops are applied.
+   Everything else on an option is an op, which is what makes a typo'd op an
+   error."
+  #{:id :repeatable :upgrades})
 
-(defn mod-item
-  "`mod` as an `sns.sdk.schema/item`: its template as `:item/body`, and the vars
-   progression derived for it as `:item/vars`, for the browser to render one
-   against the other."
-  [progression mod]
-  (let [vars (p/current-state progression mod (:path mod []))]
-    (cond-> {:item/body (:template mod)}
-            (seq vars) (assoc :item/vars vars))))
+(def ^:private op-order
+  "The built-in ops in application order. Ops outside this list (a plugin's own)
+   are applied afterwards in name order, so an option's ops resolve identically
+   every time regardless of map ordering."
+  [:inc :dec :conj :enable :disable])
+
+(defn- ordered [ops]
+  (let [order (zipmap op-order (range))]
+    (sort-by (fn [op] [(get order op (count op-order)) (name op)])
+             (keys ops))))
+
+(defn apply-ops
+  "Apply every mutation op on `option` to `vars` — one upgrade's worth of
+   change, and the whole of what taking an option does to a mod's values.
+
+   `rng` resolves vars still in their declared form (see `sns.sdk.vars`), so an
+   option taken before anything is drawn lands on the drawn value. Resolving is
+   idempotent, which is what lets a path stepped one option at a time agree with
+   the same path replayed from the start."
+  [rng vars option]
+  (let [ops (apply dissoc option structural-keys)]
+    (reduce (fn [vars op] (apply-op vars op (get ops op)))
+            (vars/resolve-vars rng vars)
+            (ordered ops))))

@@ -188,10 +188,10 @@
   (or label (-> (name id) (str/replace #"[-_]" " ") str/capitalize)))
 
 (defn- var-type
-  "The control a var edits with. Driven by the declared `:type` rather than the
-   value in hand, which says nothing once the field is blank. Numbers all edit
-   as `:decimal`: a var holding 2 may want 2.5 typed into it, and `:int`'s step
-   of 1 rejects that."
+  "The control a var edits with, driven by the declared `:type` — which holds
+   still while the field is blank mid-edit. Numbers all edit as `:decimal`: a
+   var holding 2 may want 2.5 typed into it, and `:int`'s step of 1 rejects
+   that."
   [type options]
   (cond
     (seq options)           :enum
@@ -213,41 +213,75 @@
   [vars]
   (remove (comp :context? val) vars))
 
+(defn- var-grid
+  "The editable vars under `base-path`, several to a row. Values are what a DM
+   changes mid-session, so they lead — the prose that interpolates them is the
+   rarer edit and sits behind a disclosure."
+  [class base-path vars]
+  (when-let [editable (seq (editable-vars vars))]
+    [:div {:class class}
+     (for [[id v] editable]
+       (edit-var (conj base-path id) id v))]))
+
 ;; The body field holds the template itself — `{{ x }}` where a value sits — so
 ;; the sentence and the values are edited independently and neither forces
 ;; retyping the other. What the DM types is what the plugin gets back.
-(defn- edit-item [si ii {:item/keys [title body metadata vars]}]
-  [:li.entry.entry--edit {:replicant/key ii}
-   (edit-field "Item title" [:loot/sections si :section/items ii :item/title] title false)
-   (edit-field "Body" [:loot/sections si :section/items ii :item/body] body true)
-   (edit-metadata [:loot/sections si :section/items ii :item/metadata] metadata)
-   (when-let [editable (seq (editable-vars vars))]
-     [:div.entry__vars
-      (for [[id v] editable]
-        (edit-var [:loot/sections si :section/items ii :item/vars id] id v))])])
+(defn- edit-text
+  "An item's prose, folded away behind a summary that previews it as rendered —
+   which is what a DM reads to find the item, and the edit they seldom want."
+  [si ii {:item/keys [title body metadata]} preview]
+  [:details.fold {:replicant/key (str "text-" si "-" ii)}
+   [:summary.fold__summary
+    [:span.fold__preview preview]
+    [:span.fold__hint "text"]]
+   [:div.fold__body
+    (edit-field "Item title" [:loot/sections si :section/items ii :item/title] title false)
+    (edit-field "Body" [:loot/sections si :section/items ii :item/body] body true)
+    (edit-metadata [:loot/sections si :section/items ii :item/metadata] metadata)]])
 
-(defn- edit-block [si {:section/keys [heading items]}]
-  [:section.block {:replicant/key si}
-   (edit-field "Section heading" [:loot/sections si :section/heading] heading false)
-   [:ul.entries (map-indexed (fn [ii item] (edit-item si ii item)) items)]])
+(defn- edit-item [loot-vars si ii {:item/keys [title body vars] :as item}]
+  (let [all     (merge loot-vars vars)
+        rendered #(some-> % (template/render all) str str/trim not-empty)
+        preview (str (some-> (rendered title) (str ": ")) (rendered body))]
+    [:li.entry.entry--edit {:replicant/key ii}
+     (var-grid "entry__vars" [:loot/sections si :section/items ii :item/vars] vars)
+     (edit-text si ii item preview)]))
+
+(defn- edit-block [loot-vars si {:section/keys [heading items]}]
+  [:section.block.block--edit {:replicant/key si}
+   ;; Styled as the heading it is, so the sections stay legible as structure
+   ;; while still editing in place.
+   [:input.block__heading.block__heading--edit
+    {:type  "text"
+     :value (str heading)
+     :on    {:input [[:ui/edit-result [:loot/sections si :section/heading] :text
+                      [:event.target/value]]]}}]
+   [:ul.entries (map-indexed (fn [ii item] (edit-item loot-vars si ii item)) items)]])
 
 (defn result-editor
   "Render the result view-model as an editable form. Behavioural `:loot/actions`
    are intentionally not editable (and preserved untouched in state)."
   [vm]
   (when vm
-    [:article.sigil.sigil--edit {:replicant/key "result-editor"}
-     [:div.sigil__frame
-      (edit-field "Subtitle" [:loot/subtitle] (:loot/subtitle vm) false)
-      (edit-field "Title" [:loot/title] (:loot/title vm) false)
-      ;; Shared values, edited once: these are ambient to every template in the
-      ;; view-model, so changing one here updates every item that reads it.
-      (when-let [editable (seq (editable-vars (:loot/vars vm)))]
-        [:div.entry__vars.entry__vars--shared
-         (for [[id v] editable]
-           (edit-var [:loot/vars id] id v))])
-      [:div.sigil__body
-       (map-indexed edit-block (:loot/sections vm))]]]))
+    (let [loot-vars (:loot/vars vm)]
+      [:article.sigil.sigil--edit {:replicant/key "result-editor"}
+       [:div.sigil__frame
+        ;; The rendered title, so the editor says which item is on the bench.
+        [:h2.sigil__title (template/render (:loot/title vm) loot-vars)]
+        [:details.fold {:replicant/key "text-loot"}
+         [:summary.fold__summary
+          ;; the *template*, since the heading above already shows it rendered
+          [:span.fold__preview (:loot/title vm)]
+          [:span.fold__hint "title & subtitle"]]
+         [:div.fold__body
+          (edit-field "Title" [:loot/title] (:loot/title vm) false)
+          (edit-field "Subtitle" [:loot/subtitle] (:loot/subtitle vm) false)]]
+        ;; Shared values, edited once: these are ambient to every template in the
+        ;; view-model, so changing one here updates every item that reads it.
+        (when-let [grid (var-grid "entry__vars entry__vars--shared" [:loot/vars] loot-vars)]
+          (list [:h3.block__heading "Shared values"] grid))
+        [:div.sigil__body
+         (map-indexed (partial edit-block loot-vars) (:loot/sections vm))]]])))
 
 ;; --- the Group Deception & Persuasion tracker (always-on, bespoke) -----------
 
