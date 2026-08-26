@@ -48,10 +48,13 @@
    Knowing *which* fields are templates lives here rather than at the call
    site, so `sns.ui.render` and the report path cannot drift apart."
   [{:loot/keys [vars] :as vm}]
-  (letfn [(item [{:item/keys [vars] :as i}]
-            (-> i
-                (update :item/body render vars)
-                (update :item/title render vars)))]
+  (letfn [(item [i]
+            ;; Loot vars are ambient, an item's own shadow them - as in
+            ;; `sns.ui.render/entry`.
+            (let [vars (merge vars (:item/vars i))]
+              (-> i
+                  (update :item/body render vars)
+                  (update :item/title render vars))))]
     (-> vm
         (update :loot/title render vars)
         (update :loot/subtitle render vars)
