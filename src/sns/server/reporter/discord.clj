@@ -22,32 +22,44 @@
   (->> (r/sample-without-replacement 2 words)
        (str/join \space)))
 
-(defn- item-lines [{:item/keys [title body metadata]}]
-  (cond-> []
-          title          (conj (str "**" title "**"))
-          body           (conj body)
-          (seq metadata) (conj (str/join " " (mapv #(str "`" % "`") metadata)))))
+(defn- chips [metadata]
+  (str/join " " (map #(str "`" % "`") metadata)))
 
-(defn- section-lines [{:section/keys [heading items]}]
-  (cond-> []
-          heading (conj (str "__" heading "__"))
-          true    (into (mapcat item-lines items))))
+(defn- add-item
+  "Adds one item's lines, and its metadata keyed by whatever the reader can see:
+   the item's title, the heading of a section holding it alone, or — failing
+   both — a number put in front of the body."
+  [heading single? {:keys [n] :as acc} {:item/keys [title body metadata]}]
+  (let [k      (or title (when single? heading))
+        number (when (and (seq metadata) (nil? k)) (inc n))]
+    (cond-> acc
+            number         (assoc :n number)
+            title          (update :lines conj (str "**" title "**"))
+            true           (update :lines conj (cond->> body number (str number ". ")))
+            (seq metadata) (update :meta conj (str "**" (or k number) "** " (chips metadata))))))
 
-(defn view-model->embed
-  "Render a view-model as a Discord embed map."
+(defn- add-section [acc {:section/keys [heading items]}]
+  (reduce #(add-item heading (= 1 (count items)) %1 %2)
+          (cond-> acc heading (update :lines conj (str "__" heading "__")))
+          items))
+
+(defn view-model->embeds
+  "Render a view-model as Discord embeds: the loot itself, then — when anything
+   carries metadata — a second, quieter embed holding it. Keeping metadata out
+   of the first embed leaves its description copy-pasteable as-is."
   [{:loot/keys [title subtitle sections]}]
-  (let [desc (->> sections
-                  (mapcat section-lines)
-                  (str/join "\n")
+  (let [{:keys [lines meta]} (reduce add-section {:lines [] :meta [] :n 0} sections)
+        desc (->> (str/join "\n" lines)
                   (str (when subtitle (str "*" subtitle "*\n\n"))))]
-    (cond-> {:title (or title "Loot") :color gilt}
-            (seq desc) (assoc :description desc))))
+    (cond-> [(cond-> {:title (or title "Loot") :color gilt}
+                     (seq desc) (assoc :description desc))]
+            (seq meta) (conj {:description (str "-# Metadata\n" (str/join "\n" meta))}))))
 
 (defn- payload [{:keys [avatar-url discord-username words]} view-model]
   {:content    (str "||" (loot-message-unique-name words) "||")
    :avatar_url avatar-url
    :username   (or discord-username default-username)
-   :embeds     [(view-model->embed view-model)]})
+   :embeds     (view-model->embeds view-model)})
 
 (defn- build-words [words extra-words]
   (cond
