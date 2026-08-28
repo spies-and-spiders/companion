@@ -81,6 +81,10 @@ The UI renders this shape generically — a new loot type needs **no** UI code, 
 the server — a template travels to the browser beside the variables it
 interpolates, and [Handlebars](https://handlebarsjs.com) renders it there:
 `{{ name }}`, `{{ x.[0] }}` to index a drawn collection, `{{#if flag}}…{{/if}}`.
+The [handlebars-helpers](https://github.com/helpers/handlebars-helpers) string,
+array, object, collection, comparison, math, number, inflection, regex and misc
+groups are registered, so `{{titleize name}}`, `{{add gold 5}}` and
+`{{#gt gold 2}}…{{/gt}}` work too.
 A plugin with nothing to interpolate just sends finished text; a template with
 no tags renders as itself.
 

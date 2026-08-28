@@ -7,7 +7,26 @@
    collection (a numeric segment needs the brackets — `{{ x.0 }}` is a parse
    error), `{{#if flag}}…{{/if}}` for a conditional."
   (:require
-    ["handlebars" :as handlebars]))
+    ["handlebars" :as handlebars]
+    ["@budibase/handlebars-helpers/lib/array" :as array-helpers]
+    ["@budibase/handlebars-helpers/lib/collection" :as collection-helpers]
+    ["@budibase/handlebars-helpers/lib/comparison" :as comparison-helpers]
+    ["@budibase/handlebars-helpers/lib/inflection" :as inflection-helpers]
+    ["@budibase/handlebars-helpers/lib/math" :as math-helpers]
+    ["@budibase/handlebars-helpers/lib/misc" :as misc-helpers]
+    ["@budibase/handlebars-helpers/lib/number" :as number-helpers]
+    ["@budibase/handlebars-helpers/lib/object" :as object-helpers]
+    ["@budibase/handlebars-helpers/lib/regex" :as regex-helpers]
+    ["@budibase/handlebars-helpers/lib/string" :as string-helpers]))
+
+;; handlebars-helpers (the @budibase fork — upstream 0.10.0 lazy-requires its
+;; deps in a way shadow-cljs cannot bundle), minus the groups that need node
+;; (fs, path, url) or are dead weight in a loot template (code, i18n, html,
+;; match, lorem, uuid).
+(doseq [group [array-helpers collection-helpers comparison-helpers inflection-helpers
+               math-helpers misc-helpers number-helpers object-helpers regex-helpers
+               string-helpers]]
+  (handlebars/registerHelper group))
 
 ;; Handlebars caches compilation on the function it returns, so compiling per
 ;; call throws that away — measured ~70x the cost of rendering an already

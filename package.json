@@ -11,6 +11,8 @@
     "dist": "shadow-cljs release app && clojure -T:build uber"
   },
   "dependencies": {
-    "handlebars": "^4.7.9"
+    "@budibase/handlebars-helpers": "^0.14.3",
+    "handlebars": "^4.7.9",
+    "util": "^0.12.5"
   }
 }

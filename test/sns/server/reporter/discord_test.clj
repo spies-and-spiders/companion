@@ -41,7 +41,6 @@
       (is (str/includes? (:description meta) "**Passive** `offence`"))
       (is (str/includes? (:description main) "\n+2 damage")
           "no number is added when a heading can serve as the key")))
-
   (testing "with neither title nor sole-item heading, items are numbered"
     (let [[main meta] (discord/view-model->embeds
                         {:loot/title    "Relic"
