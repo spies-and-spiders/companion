@@ -24,7 +24,8 @@
     (java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers HttpResponse$BodyHandlers)
     (java.nio.file Files)
     (java.nio.file.attribute FileAttribute)
-    (java.time Duration)))
+    (java.time Duration)
+    (java.util.zip ZipInputStream)))
 
 (def ^:private client (HttpClient/newHttpClient))
 
@@ -41,6 +42,16 @@
           body (.body resp)]
       {:status (.statusCode resp)
        :body   (when-not (str/blank? body) (edn/read-string body))})))
+
+(defn- request-bytes
+  "A raw GET, for responses that are not EDN (the export ZIP)."
+  [base-url path]
+  (let [req  (-> (HttpRequest/newBuilder (URI/create (str base-url path)))
+                 (.timeout (Duration/ofSeconds 10))
+                 (.GET)
+                 (.build))
+        resp (.send client req (HttpResponse$BodyHandlers/ofByteArray))]
+    {:status (.statusCode resp) :body (.body resp)}))
 
 (defn- fail!
   "Throws rather than exiting directly, so `finally` blocks up the stack (e.g.
@@ -166,6 +177,40 @@
       (println "  (no action offered this roll for" id "- skipping action check)")
       (exercise-action! base-url id (:action/event event)))))
 
+(defn- exercise-export!
+  "Download the state ZIP and read its entries back. Exercises java.util.zip in
+   the native image, which is the only place that can prove it survived."
+  [base-url]
+  (let [{:keys [status body]} (request-bytes base-url "/api/export")]
+    (when (not= 200 status) (fail! (str "export returned HTTP " status) {:status status}))
+    (let [names (with-open [zip (ZipInputStream. (io/input-stream body))]
+                  (loop [acc #{}]
+                    (if-let [entry (.getNextEntry zip)]
+                      (recur (conj acc (.getName entry)))
+                      acc)))]
+      (when-not (contains? names "relics.edn")
+        (fail! "export ZIP is missing the relics collection" {:entries names}))
+      (println "  export ->" (str/join ", " (sort names))))))
+
+(defn- exercise-browser-storage!
+  "The :browser contract: the server holds nothing, so state travels in and
+   mutations come back out."
+  [base-url]
+  (let [gen        (expect-200! (request base-url :post "/api/generate" {:id :relics}) "generate :relics")
+        [id relic] (first (get-in gen [:store/mutations :relics]))]
+    (when-not id (fail! "browser storage returned no mutations to apply" {:body gen}))
+    (println "  generate :relics -> mutations returned")
+    (let [choice (-> gen :loot/actions first :action/event second :params :choice)
+          acted  (expect-200! (request base-url :post "/api/action"
+                                       {:id     :relics
+                                        :action :level-up
+                                        :params (cond-> {:relic-id id} choice (assoc :choice choice))
+                                        :state  {:relics {id relic}}})
+                              "action :relics :level-up")]
+      (when-not (get-in acted [:store/mutations :relics id])
+        (fail! "browser storage returned no mutation for the levelled relic" {:body acted}))
+      (println "  action :relics :level-up -> state travelled both ways"))))
+
 (defn- run-plugin-suite! [base-url ffi-available?]
   (expect-200! (request base-url :get "/api/capabilities" nil) "capabilities")
   (exercise-generate! base-url :divine-dust)
@@ -177,6 +222,13 @@
     (exercise-statefully! base-url :ffi-loot)
     (println "  (skipping :ffi-loot - no shared library built on this runner)")))
 
+(defn- run-suite! [base-url ffi-available? storage-backend]
+  (if (= :browser storage-backend)
+    (do (expect-200! (request base-url :get "/api/capabilities" nil) "capabilities")
+        (exercise-browser-storage! base-url))
+    (do (run-plugin-suite! base-url ffi-available?)
+        (exercise-export! base-url))))
+
 (defn- run-backend! [{:keys [bin-path lib-path port storage-backend] :as opts}]
   (println "=== backend:" storage-backend "===")
   (let [base-url (str "http://127.0.0.1:" port)
@@ -185,7 +237,7 @@
         proc (start-server! bin-path config-path)]
     (try
       (wait-for-ready! base-url proc)
-      (run-plugin-suite! base-url (some? lib-path))
+      (run-suite! base-url (some? lib-path) storage-backend)
       (finally
         (stop-server! proc)))))
 
@@ -202,7 +254,8 @@
     (let [target (str (io/file (temp-dir! "sns-smoke-lib") (str "libloot." (lib-extension))))
           lib-path (build-ffi-plugin! target)]
       (run-backend! {:bin-path bin-path :lib-path lib-path :port 18089 :storage-backend :file})
-      (run-backend! {:bin-path bin-path :lib-path lib-path :port 18090 :storage-backend :memory}))
+      (run-backend! {:bin-path bin-path :lib-path lib-path :port 18090 :storage-backend :memory})
+      (run-backend! {:bin-path bin-path :lib-path lib-path :port 18091 :storage-backend :browser}))
     (println "Smoke test passed.")
     (System/exit 0)
     (catch Exception e

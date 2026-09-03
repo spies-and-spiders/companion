@@ -4,7 +4,7 @@
     [randy.core :as r]
     [sns.sdk.protocols :as p]
     [sns.server.social :as social]
-    [sns.server.store.memory :as memory]
+    [sns.server.store.edn :as edn-store]
     [sns.social :as pure]))
 
 (deftest group-bonus-weighted-average
@@ -24,7 +24,7 @@
     (is (= 4 (pure/group-bonus [3.5 4.5])))))
 
 (deftest tracker-flow
-  (let [store (memory/create)]
+  (let [store (doto (edn-store/create {:backend :memory}) p/setup!)]
     (testing "an empty tracker snapshots to no characters and +0 bonuses"
       (is (= {:characters [] :deception 0 :persuasion 0} (social/snapshot store))))
     (testing "upsert adds a present character (bonuses arrive as strings)"
@@ -44,8 +44,9 @@
         (is (= 10.5 (:deception (second (:characters s)))))
         (is (= 8.75 (:deception s))))
       (social/upsert! store {:name "Bob" :deception 1 :persuasion -2}))
-    (testing "state persists under the __-prefixed internal collection"
-      (is (= #{"Alice" "Bob"} (set (keys (p/fetch store :__social "characters"))))))
+    (testing "each character is stored as its own entity"
+      (is (= #{"Alice" "Bob"}
+             (set (keys (p/read-collection store :social))))))
     (testing "unticking excludes a character from the averages"
       (let [s (social/toggle! store "Bob")]
         (is (= 7 (:deception s)))

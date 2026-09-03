@@ -390,7 +390,7 @@
       (or (str/blank? q)
           (str/includes? (str/lower-case (str label)) q)))))
 
-(defn picker [{:keys [loot-types selected roll-n page type-filter]}]
+(defn picker [{:keys [loot-types selected roll-n page type-filter browser-storage?]}]
   (let [loot-selected (when (= :loot page) selected)
         match?        (matcher type-filter)
         ;; A hidden type is meant to be reached only by rolling the loot-table,
@@ -431,4 +431,10 @@
          (type-button (= :social page) [:ui/open-social] "✦" "Group Social" nil)])
       (for [{:keys [id label] :as spec} utilities]
         [:li {:replicant/key id}
-         (type-button (= id loot-selected) [:ui/select-type id] "✦" label (modifier spec))])]]))
+         (type-button (= id loot-selected) [:ui/select-type id] "✦" label (modifier spec))])]
+     [:button.rail__export {:on {:click [[:ui/export]]}}
+      "Download state"]
+     [:p.rail__hint
+      (if browser-storage?
+        "State lives in this browser. Download it to keep a copy or move it to a local deployment."
+        "A ZIP of every collection, as the app stores them.")]]))

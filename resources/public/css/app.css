@@ -191,6 +191,23 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   color: var(--muted);
 }
 
+.rail__export {
+  margin: 1.4rem 0.3rem 0;
+  padding: 0.55rem 0.8rem;
+  width: calc(100% - 0.6rem);
+  background: none;
+  color: var(--muted);
+  border: var(--rule);
+  border-radius: 2px;
+  font: inherit;
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.rail__export:hover { color: var(--gilt); border-color: var(--gilt); }
+
 /* --- workbench ------------------------------------------------------------- */
 
 .workbench {

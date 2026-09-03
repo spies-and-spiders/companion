@@ -46,6 +46,10 @@
                  ;; Overrides the UI's "Generate <label>" button text — useful
                  ;; when generating means something else (e.g. "Add character").
                 [:generate-label {:optional true} string?]
+                 ;; The store collections this type reads or writes. Defaults to
+                 ;; a single collection named after :id. Under :browser storage
+                 ;; the client ships exactly these with each request.
+                [:store/collections {:optional true} [:sequential keyword?]]
                 [:inputs {:optional true} [:sequential ::field]]]
 
    ;; --- view-model (the only contract the UI renderer understands) ---
@@ -224,8 +228,8 @@
              [:port {:optional true} int?]]
 
    ::storage [:map
-              [:backend keyword?]
-              [:url {:optional true} string?]
+              [:backend [:enum :file :memory :browser]]
+              ;; :file only — the directory holding one EDN file per collection.
               [:dir {:optional true} string?]]
 
    ;; Dispatch coerces `:type` to a keyword so a JSON config (where it is the

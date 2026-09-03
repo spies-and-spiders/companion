@@ -1,31 +1,34 @@
 (ns sns.server.social
-  "Store-backed wrapper around the shared tracker logic in `sns.social`.
-   Persists under the `__`-prefixed :__social collection so it can never clash
-   with user-defined loot types. (When storage is :none the browser runs the
-   tracker locally instead — see the capabilities endpoint.)"
+  "Store-backed wrapper around the shared tracker logic in `sns.social`. One
+   entry per character in the `:social` collection, keyed by name — which is
+   already the shape the shared logic works on, so this only reads, writes and
+   delegates."
   (:require
     [randy.rng :as rng]
     [sns.sdk.protocols :as p]
     [sns.social :as social]))
 
-(def ^:private collection :__social)
-(def ^:private doc-id "characters")
+(def ^:private coll :social)
+
+(defn- characters [store]
+  (p/read-collection store coll))
 
 (defn snapshot [store]
-  (social/snapshot (p/fetch store collection doc-id)))
+  (social/snapshot (characters store)))
 
 (defn upsert! [store character]
-  (let [entry (or (social/normalise-character character)
-                  (throw (ex-info "Character name is required" {})))]
-    (p/update! store collection doc-id #(conj (or % {}) entry))
+  (let [[char-name attrs] (or (social/normalise-character character)
+                              (throw (ex-info "Character name is required" {})))]
+    (p/mutate! store {coll {char-name attrs}})
     (snapshot store)))
 
 (defn toggle! [store char-name]
-  (p/update! store collection doc-id #(social/toggle % char-name))
+  (when-let [character (get (characters store) char-name)]
+    (p/mutate! store {coll {char-name (update character :present? not)}}))
   (snapshot store))
 
 (defn remove! [store char-name]
-  (p/update! store collection doc-id #(social/remove-character % char-name))
+  (p/mutate! store {coll {char-name nil}})
   (snapshot store))
 
 (defn roll
@@ -35,6 +38,6 @@
   (let [skill (keyword skill)]
     (when-not (contains? #{:deception :persuasion} skill)
       (throw (ex-info "Unknown skill" {:skill skill})))
-    (let [characters (p/fetch store collection doc-id)]
-      (assoc (social/snapshot characters)
-             :roll (social/roll-result characters skill (rng/next-int rng 1 21))))))
+    (let [chars (characters store)]
+      (assoc (social/snapshot chars)
+             :roll (social/roll-result chars skill (rng/next-int rng 1 21))))))

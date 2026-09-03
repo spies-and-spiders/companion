@@ -2,21 +2,23 @@
   (:require
     [clojure.java.io :as io]
     [clojure.test :refer [deftest is testing]]
-    [sns.sdk.protocols :as p]
     [sns.server.store :as store]))
 
 (deftest from-config-selects-backend
   (testing "defaults to in-memory"
     (is (some? (store/from-config nil)))
     (is (some? (store/from-config {:backend :memory}))))
-  (testing "the :none backend discards everything"
-    (let [s (store/from-config {:backend :none})]
-      (is (= {:a 1} (p/put! s :c "id" {:a 1})))
-      (is (nil? (p/fetch s :c "id")))
-      (is (= [] (p/query s :c {})))
-      (is (= {:n 1} (p/update! s :c "id" (fnil #(update % :n inc) {:n 0}))))))
   (testing "file backend is built from config"
     (is (some? (store/from-config
                  {:backend :file
                   :dir     (str (io/file (System/getProperty "java.io.tmpdir")
-                                         (str "sns-cfg-" (System/nanoTime))))})))))
+                                         (str "sns-cfg-" (System/nanoTime))))}))))
+  (testing ":browser has no server-side store — its state arrives per request"
+    (is (nil? (store/from-config {:backend :browser}))))
+  (testing "an unknown backend is rejected rather than silently ignored"
+    (is (thrown? Exception (store/from-config {:backend :mysql})))))
+
+(deftest browser?-reads-the-config
+  (is (true? (store/browser? {:storage {:backend :browser}})))
+  (is (false? (store/browser? {:storage {:backend :file}})))
+  (is (false? (store/browser? {}))))

@@ -1,35 +1,34 @@
 package sns.sdk;
 
-import java.util.function.Function;
-
 /**
- * Persistence abstraction. Built-in backends are a MySQL-compatible SQL server, a
- * file per collection, or in-memory; a plugin may supply its own by implementing
- * this interface. Mirrors the {@code sns.sdk.protocols/Store} protocol. {@code
- * coll} is a collection keyword and {@code id} a document key.
+ * Persistence for stateful plugins. State is a set of named collections, each a
+ * map of key to value; a collection needs no declaration and reads as an empty
+ * map until something is written to it. Available to in-process plugins only;
+ * CLI and FFI plugins persist their own state. Mirrors the {@code
+ * sns.sdk.protocols/Store} protocol.
+ *
+ * <p>Both methods take and return plain data, so the same calls work against a
+ * local store or one whose state lives in the DM's browser. Declare the
+ * collections you use with {@code :store/collections} in your loot-spec; it
+ * defaults to a single collection named after the plugin's {@code :id}.
  */
 public interface Store {
 
     /**
-     * Prepare the backend for use (e.g. create a schema, ensure a directory
-     * exists). Called once at startup, before any other method; construction
-     * itself must stay side-effect-free. Default is a no-op.
+     * Prepare the backend for use. Called once at startup, before any other
+     * method; construction itself must stay side-effect-free. Default is a no-op.
      */
     default void setup() {}
 
-    /** Return the document at {@code id}, or {@code null}. */
-    Object fetch(Object coll, Object id);
-
-    /** Return documents in {@code coll} matching query map {@code q}. */
-    Object query(Object coll, Object q);
-
-    /** Insert or replace the document at {@code id}. Returns {@code doc}. */
-    Object put(Object coll, Object id, Object doc);
+    /**
+     * Return the whole collection {@code coll} (a keyword) as a map, or an empty
+     * map when absent.
+     */
+    Object readCollection(Object coll);
 
     /**
-     * Atomically apply {@code f} to the document at {@code id} and store the
-     * result. Returns the new document. Invoke {@code f} with the current document,
-     * e.g. {@code f.invoke(current)}.
+     * Apply {@code mutations}, shaped {@code {<collection> {<key> <value>}}}. A
+     * null value retracts that key; keys left out are untouched.
      */
-    Object update(Object coll, Object id, Function<?, ?> f);
+    void mutate(Object mutations);
 }

@@ -11,7 +11,8 @@
     [sns.server.progression :as progression]
     [sns.server.registry :as registry]
     [sns.server.reporter :as reporter]
-    [sns.server.store :as store])
+    [sns.server.store :as store]
+    [sns.server.store.request :as request])
   (:import
     (java.util.random RandomGeneratorFactory)))
 
@@ -60,7 +61,7 @@
          registry (registry/build config)
          rng (or rng (.create (RandomGeneratorFactory/of "L64X128MixRandom")))
          store (or store (store/from-config (:storage config)))]
-     (p/setup! store)
+     (some-> store p/setup!)
      (when (seq table)
        (validate-table! registry table))
      ;; Config-declared random presets, usable from any plugin's vars as
@@ -138,8 +139,20 @@
     (mapv (fn [generator]
             (let [spec (p/loot-spec generator)]
               (cond-> spec
+                      ;; Defaulted here rather than in each generator, so the UI
+                      ;; always receives an explicit list to fetch state for.
+                      true (update :store/collections #(or (not-empty %) [(:id spec)]))
                       (hidden (:id spec)) (assoc :hidden? true))))
           (vals registry))))
+
+(defn with-state
+  "Under `:browser` storage, an engine whose store is seeded with the `state` the
+   client sent and records what plugins write; read it back afterwards with
+   `sns.server.store.request/recorded-mutations`. Every other backend keeps its
+   own store and ignores `state`."
+  [{:keys [config] :as engine} state]
+  (cond-> engine
+          (store/browser? config) (assoc :store (request/create state))))
 
 (defn generate
   "Generate loot of type `id` with `inputs`, returning a validated view-model."
@@ -176,11 +189,11 @@
      {:id id :view-model (generate engine id inputs)})))
 
 (defn capabilities
-  "UI-facing flags describing optional features enabled by config (drives, e.g.,
-   whether the report button is shown, and whether the group tracker persists
-   server-side or must live in the browser)."
+  "UI-facing flags describing optional features enabled by config: whether the
+   report button is shown, and whether state lives in the browser (in which case
+   the client ships it with each request and applies the writes that come back)."
   [{:keys [reporter config]}]
-  (cond-> {:social-storage? (not= :none (get-in config [:storage :backend]))}
+  (cond-> {:browser-storage? (store/browser? config)}
           reporter (assoc :report? true
                           :report-label (p/report-label reporter))))
 

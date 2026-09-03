@@ -4,7 +4,7 @@
     [sns.sdk.protocols :as p]
     [sns.server.config :as config]
     [sns.server.engine :as engine]
-    [sns.server.store.memory :as memory]))
+    [sns.server.store.edn :as edn-store]))
 
 (def ^:private test-config
   {:plugins    [{:type :builtin :id :divine-dust :entrypoint 'sns.builtin.dust/generator}]
@@ -12,8 +12,8 @@
 
 (deftest builds-registry-and-generates
   (let [eng (engine/create test-config)]
-    (testing "loot-specs lists the registered type"
-      (is (= [{:id :divine-dust :label "Divine Dust"}]
+    (testing "loot-specs lists the registered type, with its collections defaulted"
+      (is (= [{:id :divine-dust :label "Divine Dust" :store/collections [:divine-dust]}]
              (engine/loot-specs eng))))
     (testing "generate returns a validated view-model"
       (is (= {:loot/title    "Divine Dust"
@@ -104,7 +104,7 @@
     ;; Load a committed, hermetic fixture rather than the git-ignored repo-root
     ;; config.edn (absent in CI). Override the store to keep the test in-memory.
     (let [eng (engine/create (config/load-config "test/resources/config.edn")
-                             {:store (memory/create)})]
+                             {:store (edn-store/create {:backend :memory})})]
       (is (= "Divine Dust" (:loot/title (engine/generate eng :divine-dust))))
       (is (re-find #"Relic" (:loot/subtitle (engine/generate eng :relics)))))))
 

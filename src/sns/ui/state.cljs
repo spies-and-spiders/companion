@@ -17,5 +17,5 @@
          :editing?      false ; manually editing the current result in place
          :page          :loot ; :loot | :social (the always-on group tracker)
          :social        nil   ; tracker snapshot (from the backend, or local)
-         :social-local? false ; no server storage: tracker lives in the browser
+         :browser-storage? false ; state lives in IndexedDB and travels with each request
          :social-form   {}})) ; the add/update-character form fields

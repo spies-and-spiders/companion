@@ -2,11 +2,11 @@
   "Nexus registry: pure actions return effects; effects perform side-effects
    (state writes, HTTP). Requiring this namespace registers everything."
   (:require
-    [clojure.edn :as edn]
     [clojure.string :as str]
     [nexus.registry :as nxr]
-    [sns.social :as social]
     [sns.ui.api :as api]
+    [sns.ui.export :as export]
+    [sns.ui.idb :as idb]
     [sns.ui.template :as template]))
 
 (nxr/register-system->state! deref)
@@ -50,20 +50,50 @@
 (nxr/register-effect! :fx/load-capabilities
                       (fn [{:keys [dispatch]} _system]
                         (api/request {:url "/api/capabilities"}
-                                     (fn [{:keys [report? report-label social-storage?]}]
+                                     (fn [{:keys [report? report-label browser-storage?]}]
                                        (dispatch [[:fx/assoc-in [:report?] (boolean report?)]
                                                   [:fx/assoc-in [:report-label] report-label]
-                                                  ;; storage :none -> the tracker lives in the browser
-                                                  [:fx/assoc-in [:social-local?] (false? social-storage?)]]))
+                                                  [:fx/assoc-in [:browser-storage?] (boolean browser-storage?)]]))
                                      (fn [_err] nil))))
 
-(defn- result-effect [{:keys [dispatch]} req]
+(defn- collections-for
+  "The store collections a request needs. Known loot type -> exactly what it
+   declared; a table roll -> every declared collection, since the server picks
+   the type."
+  [system id]
+  (let [specs (:loot-types @system)]
+    (if id
+      (or (some #(when (= id (:id %)) (:store/collections %)) specs) [])
+      (into [] (distinct (mapcat :store/collections specs))))))
+
+(defn- stateful-request
+  "Issue `req`, attaching the collections it needs from IndexedDB first and
+   applying any writes that come back afterwards. With server-side storage this
+   is a plain request — the server persists its own writes."
+  [system collections req on-ok on-err]
+  (if-not (:browser-storage? @system)
+    (api/request req on-ok on-err)
+    (-> (idb/read-collections collections)
+        (.then (fn [state]
+                 (api/request
+                   (assoc-in req [:body :state] state)
+                   (fn [resp]
+                     (-> (idb/apply-mutations! (:store/mutations resp))
+                         ;; Stripped before it reaches app state, so an edited
+                         ;; view-model never echoes stale writes back.
+                         (.then (fn [_] (on-ok (dissoc resp :store/mutations))))
+                         (.catch (fn [e] (on-err {:error (str e)})))))
+                   on-err)))
+        (.catch (fn [e] (on-err {:error (str e)}))))))
+
+(defn- result-effect [{:keys [dispatch]} system collections req]
   (dispatch [[:fx/assoc-in [:loading?] true] [:fx/assoc-in [:error] nil]
              [:fx/assoc-in [:report-status] nil]])
-  (api/request req
-               (fn [vm] (dispatch [[:fx/assoc-in [:result] vm]
-                                   [:fx/assoc-in [:editing?] false]
-                                   [:fx/assoc-in [:loading?] false]]))
+  (stateful-request
+    system collections req
+    (fn [vm] (dispatch [[:fx/assoc-in [:result] vm]
+                        [:fx/assoc-in [:editing?] false]
+                        [:fx/assoc-in [:loading?] false]]))
                (fn [err] (dispatch [[:fx/assoc-in [:error] (:error err)]
                                     [:fx/assoc-in [:loading?] false]]))))
 
@@ -78,17 +108,27 @@
                                        (fn [err] (dispatch [[:fx/assoc-in [:report-status] nil]
                                                             [:fx/assoc-in [:error] (:error err)]]))))))
 
+(nxr/register-effect! :fx/export
+                      (fn [{:keys [dispatch]} system]
+                        (export/download!
+                          (:browser-storage? @system)
+                          (fn [err] (dispatch [[:fx/assoc-in [:error] (:error err)]])))))
+
 (nxr/register-effect! :fx/generate
-                      (fn [ctx _system id inputs]
-                        (result-effect ctx {:method :post :url "/api/generate" :body {:id id :inputs inputs}})))
+                      (fn [ctx system id inputs]
+                        (result-effect ctx system (collections-for system id)
+                                       {:method :post :url "/api/generate"
+                                        :body   {:id id :inputs inputs}})))
 
 (nxr/register-effect! :fx/roll
-                      (fn [{:keys [dispatch]} _system inputs n]
+                      (fn [{:keys [dispatch]} system inputs n]
                         (dispatch [[:fx/assoc-in [:loading?] true] [:fx/assoc-in [:error] nil]
                                    [:fx/assoc-in [:report-status] nil]])
-                        (api/request {:method :post
-                                      :url    "/api/roll"
-                                      :body   (cond-> {:inputs inputs} (some? n) (assoc :n n))}
+                        (stateful-request
+                          system (collections-for system nil)
+                          {:method :post
+                           :url    "/api/roll"
+                           :body   (cond-> {:inputs inputs} (some? n) (assoc :n n))}
                                      ;; roll returns {:id ... :view-model ...} so we can
                                      ;; jump the picker to the discipline that was rolled.
                                      (fn [{:keys [id view-model]}]
@@ -101,38 +141,22 @@
                                                           [:fx/assoc-in [:loading?] false]])))))
 
 (nxr/register-effect! :fx/action
-                      (fn [ctx _system id action params view-model]
-                        (result-effect ctx {:method :post
-                                            :url    "/api/action"
-                                            :body   {:id id :action action :params params :view-model view-model}})))
+                      (fn [ctx system id action params view-model]
+                        (result-effect ctx system (collections-for system id)
+                                       {:method :post
+                                        :url    "/api/action"
+                                        :body   {:id id :action action :params params :view-model view-model}})))
 
 ;; The Group Deception & Persuasion tracker: every request returns the full
-;; tracker snapshot, so one effect covers load/add/toggle/remove/roll.
+;; tracker snapshot, so one effect covers load/add/toggle/remove/roll. Its
+;; `:social` collection travels like any plugin's.
 (nxr/register-effect! :fx/social-request
-                      (fn [{:keys [dispatch]} _system req]
-                        (api/request req
-                                     (fn [snapshot] (dispatch [[:fx/assoc-in [:social] snapshot]
-                                                               [:fx/assoc-in [:error] nil]]))
-                                     (fn [err] (dispatch [[:fx/assoc-in [:error] (:error err)]])))))
-
-;; Browser-local tracker (server storage is :none): the snapshot lives in app
-;; state, mirrored to sessionStorage so it survives a mid-session reload but
-;; dies with the tab.
-(def ^:private social-storage-key "sns-social")
-
-(nxr/register-effect! :fx/social-local!
-                      (fn [{:keys [dispatch]} system f]
-                        (let [next (f (or (:social @system) (social/snapshot {})))]
-                          (.setItem js/sessionStorage social-storage-key (pr-str next))
-                          (dispatch [[:fx/assoc-in [:social] next]
-                                     [:fx/assoc-in [:error] nil]]))))
-
-(nxr/register-effect! :fx/social-local-load
-                      (fn [{:keys [dispatch]} _system]
-                        (let [snapshot (or (some->> (.getItem js/sessionStorage social-storage-key)
-                                                    (edn/read-string))
-                                           (social/snapshot {}))]
-                          (dispatch [[:fx/assoc-in [:social] snapshot]]))))
+                      (fn [{:keys [dispatch]} system req]
+                        (stateful-request
+                          system [:social] req
+                          (fn [snapshot] (dispatch [[:fx/assoc-in [:social] snapshot]
+                                                    [:fx/assoc-in [:error] nil]]))
+                          (fn [err] (dispatch [[:fx/assoc-in [:error] (:error err)]])))))
 
 ;; --- actions (pure: state -> effects) ----------------------------------------
 
@@ -234,18 +258,14 @@
 
 ;; --- the always-on Group Deception & Persuasion tracker ----------------------
 
-(defn- local-op
-  "Lift a characters-map transform into a snapshot -> snapshot fn."
-  [f]
-  (fn [snapshot]
-    (social/snapshot (f (social/rows->characters (:characters snapshot))))))
-
 (nxr/register-action! :ui/open-social
-                      (fn [{:keys [social-local?]}]
+                      (fn [_state]
                         [[:fx/assoc-in [:page] :social]
-                         (if social-local?
-                           [:fx/social-local-load]
-                           [:fx/social-request {:url "/api/social"}])]))
+                         [:fx/social-request {:method :post :url "/api/social" :body {}}]]))
+
+(nxr/register-action! :ui/export
+                      (fn [_state]
+                        [[:fx/export]]))
 
 (nxr/register-action! :ui/set-social-input
                       (fn [_state field value]
@@ -259,83 +279,26 @@
                                                        :persuasion persuasion}]]))
 
 (nxr/register-action! :ui/social-add
-                      (fn [{:keys [social-local? social-form]}]
-                        (if social-local?
-                          (if-let [entry (social/normalise-character social-form)]
-                            [[:fx/social-local! (local-op #(conj % entry))]
-                             [:fx/assoc-in [:social-form] {}]]
-                            [[:fx/assoc-in [:error] "Character name is required"]])
-                          [[:fx/social-request {:method :post
-                                                :url    "/api/social/character"
-                                                :body   social-form}]
-                           [:fx/assoc-in [:social-form] {}]])))
+                      (fn [{:keys [social-form]}]
+                        [[:fx/social-request {:method :post
+                                              :url    "/api/social/character"
+                                              :body   {:character social-form}}]
+                         [:fx/assoc-in [:social-form] {}]]))
 
 (nxr/register-action! :ui/social-toggle
-                      (fn [{:keys [social-local?]} char-name]
-                        (if social-local?
-                          [[:fx/social-local! (local-op #(social/toggle % char-name))]]
-                          [[:fx/social-request {:method :post
-                                                :url    "/api/social/toggle"
-                                                :body   {:name char-name}}]])))
+                      (fn [_state char-name]
+                        [[:fx/social-request {:method :post
+                                              :url    "/api/social/toggle"
+                                              :body   {:name char-name}}]]))
 
 (nxr/register-action! :ui/social-remove
-                      (fn [{:keys [social-local?]} char-name]
-                        (if social-local?
-                          [[:fx/social-local! (local-op #(social/remove-character % char-name))]]
-                          [[:fx/social-request {:method :post
-                                                :url    "/api/social/remove"
-                                                :body   {:name char-name}}]])))
+                      (fn [_state char-name]
+                        [[:fx/social-request {:method :post
+                                              :url    "/api/social/remove"
+                                              :body   {:name char-name}}]]))
 
 (nxr/register-action! :ui/social-roll
-                      (fn [{:keys [social-local?]} skill]
-                        (if social-local?
-                          [[:fx/social-local!
-                            (fn [snapshot]
-                              (let [characters (social/rows->characters (:characters snapshot))
-                                    die        (inc (rand-int 20))]
-                                (assoc (social/snapshot characters)
-                                       :roll (social/roll-result characters skill die))))]]
-                          [[:fx/social-request {:method :post
-                                                :url    "/api/social/roll"
-                                                :body   {:skill skill}}]])))
-
-(nxr/register-action! :ui/report
-                      (fn [_state]
-                        [[:fx/report]]))
-
-(nxr/register-action! :ui/toggle-edit
-                      (fn [state]
-                        ;; clear any stale "Sent ✓" so an edited item reads as unsent
-                        [[:fx/assoc-in [:editing?] (not (:editing? state))]
-                         [:fx/assoc-in [:report-status] nil]]))
-
-(defn- retype
-  "Put an edited value back into the type the plugin declared (`:type` on
-   `sns.sdk.schema/item-var`), since every input hands back a string. Blank or
-   mid-typing (`-`, `1e`) becomes nil: it renders as nothing, and an op still
-   accumulates onto it."
-  [type value]
-  (if (and (string? value) (#{:int :decimal} type))
-    (parse-double value)
-    value))
-
-(nxr/register-action! :ui/edit-result
-                      (fn [_state path type value]
-                        [[:fx/assoc-in (into [:result] path) (retype type value)]
-                         [:fx/assoc-in [:report-status] nil]]))
-
-(nxr/register-action! :ui/edit-result-metadata
-                      (fn [_state path value]
-                        [[:fx/assoc-in (into [:result] path)
-                          (->> (str/split (or value "") #",")
-                               (map str/trim)
-                               (remove str/blank?)
-                               vec)]
-                         [:fx/assoc-in [:report-status] nil]]))
-
-;; Dispatched directly from a view-model's :action/event vector. Sends the
-;; current (possibly DM-edited) :result alongside the action's own static
-;; params, so the plugin can see edits made since generation (issue #8).
-(nxr/register-action! :loot/action
-                      (fn [{:keys [result]} {:keys [id action params]}]
-                        [[:fx/action id action params result]]))
+                      (fn [_state skill]
+                        [[:fx/social-request {:method :post
+                                              :url    "/api/social/roll"
+                                              :body   {:skill skill}}]]))

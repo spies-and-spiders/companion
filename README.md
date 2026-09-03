@@ -15,7 +15,7 @@ There are five types of loot plugins, all used to define custom loot:
 
 All five are configured the same way in `config.edn`:
 ```clojure
-{:storage    {:backend :mysql :url "jdbc:mariadb://localhost:3306/sns"}
+{:storage    {:backend :file :dir "./state"}
  :plugins    [{:type :data    :id :uniques :source "data/uniques.edn"}
               {:type :cli     :id :weather :label "Weather"
                               :command ["python3" "examples/cli-plugin/weather.py"]}
@@ -47,8 +47,8 @@ the rail always reflects what you're looking at. A hidden type that is in no
 Separate from plugins, the **Group Deception & Persuasion tracker** is part of the app
 itself: always available under Utilities, with its own page (add characters and their
 two bonuses, tick/untick who's present, roll 1d20 + the group bonus). Its state
-persists via the configured storage under the `__social` collection — the `__` prefix
-marks internal collections, which can never clash with plugin loot-type ids.
+persists via the configured storage under the `:social/` attribute namespace, which
+can never clash with a plugin's own attributes.
 
 You may provide **`config.json`** instead of `config.edn`; simply replace all keywords (e.g. `:weight`) and symbols (e.g. `my.plugin/generator`) with regular JSON strings. 
 
@@ -228,14 +228,20 @@ reporter; `GET /api/capabilities` tells the UI whether to show the button.
 
 ### `Store` (optional — custom persistence)
 ```clojure
-(fetch [this coll id]) (query [this coll q]) (put! [this coll id doc]) (update! [this coll id f])
+(read-collection [this coll]) (mutate! [this mutations])
 ```
-Three built-in backends, chosen by config `:storage {:backend ...}`:
-`:mysql` (any MySQL-compatible server via JDBC `:url` — see
-[docs/storage.md](docs/storage.md)), `:file` (one transit-encoded file per
-loot-type under `:dir`, default `./state`), and `:memory` (default; for tests/dev).
-Docs are transit-serialised so Clojure values (e.g. keyword-valued upgrade mods)
-round-trip losslessly.
+State is a set of named collections, each a map of key to value; a collection
+needs no declaration and reads as `{}` until written to. Three backends, chosen
+by config `:storage {:backend ...}`: `:memory` (the default), `:file` (one EDN
+file per collection under `:dir`, default `./state`, and the files are the
+source of truth — hand edits propagate live) and `:browser` (IndexedDB, with the
+state travelling on each request).
+
+Both methods take and return plain data, so plugins work unchanged whichever
+backend is configured. A loot type's `:store/collections` declares what it uses,
+defaulting to `[<plugin-id>]`. Available to `:builtin` and `:jar` plugins;
+`:cli` and `:ffi` persist their own state.
+See [docs/storage.md](docs/storage.md).
 
 ---
 

@@ -50,21 +50,23 @@
     "Send `view-model` (`sns.sdk.schema/view-model`) to the destination; throws ex-info on failure."))
 
 (defprotocol Store
-  "Persistence abstraction. Built-in backends: a MySQL-compatible SQL server, a
-   JSON file per collection, or in-memory. `coll` is a collection/table keyword,
-   `id` a document key."
+  "Persistence for stateful plugins. State is a set of named collections, each a
+   map of key to value; a collection needs no declaration and reads as `{}` until
+   something is written to it. Available to in-process plugins only — `:cli` and
+   `:ffi` plugins persist their own state.
+
+   Both methods take and return plain data, so the same calls work against a
+   local store or one whose state lives in the DM's browser. Declare the
+   collections you use with `:store/collections` in your `loot-spec`; it defaults
+   to a single collection named after the plugin's `:id`."
   (setup! [this]
-    "Prepare the backend for use (e.g. create a schema, ensure a directory
-     exists). Called once at startup, before any `fetch`/`query`/`put!`/
-     `update!`; construction itself must stay side-effect-free.")
-  (fetch [this coll id]
-    "Return the document at `id`, or nil.")
-  (query [this coll q]
-    "Return documents in `coll` matching query map `q`.")
-  (put! [this coll id doc]
-    "Insert or replace the document at `id`. Returns `doc`.")
-  (update! [this coll id f]
-    "Atomically apply `f` to the document at `id`. Returns the new document."))
+    "Prepare the backend for use. Called once at startup, before any other
+     method; construction itself must stay side-effect-free.")
+  (read-collection [this coll]
+    "The whole collection `coll` (a keyword) as a map, or `{}` when absent.")
+  (mutate! [this mutations]
+    "Apply `mutations`, shaped `{<collection> {<key> <value>}}`. A nil value
+     retracts that key; keys left out are untouched. Returns nil."))
 
 (defn- loot-id
   "The loot-type id a generator declares, used to route a view-model's actions
@@ -158,7 +160,5 @@
 (extend-type sns.sdk.Store
   Store
   (setup! [this] (.setup this))
-  (fetch [this coll id] (.fetch this coll id))
-  (query [this coll q] (.query this coll q))
-  (put! [this coll id doc] (.put this coll id doc))
-  (update! [this coll id f] (.update this coll id f)))
+  (read-collection [this coll] (.readCollection this coll))
+  (mutate! [this mutations] (.mutate this mutations)))
