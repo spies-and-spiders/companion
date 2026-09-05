@@ -50,11 +50,34 @@
 (nxr/register-effect! :fx/load-capabilities
                       (fn [{:keys [dispatch]} _system]
                         (api/request {:url "/api/capabilities"}
-                                     (fn [{:keys [report? report-label browser-storage?]}]
+                                     (fn [{:keys [report? report-label browser-storage? history]}]
                                        (dispatch [[:fx/assoc-in [:report?] (boolean report?)]
                                                   [:fx/assoc-in [:report-label] report-label]
-                                                  [:fx/assoc-in [:browser-storage?] (boolean browser-storage?)]]))
+                                                  [:fx/assoc-in [:browser-storage?] (boolean browser-storage?)]
+                                                  [:fx/assoc-in [:history-mode] (or history :button)]
+                                                  ;; only now is it known whether the
+                                                  ;; history lives in this browser
+                                                  [:fx/load-history]]))
                                      (fn [_err] nil))))
+
+;; --- result history ---------------------------------------------------------
+;; One row per loot type in the `:history` collection, so it lives wherever the
+;; DM's `:storage` config puts every other collection.
+
+(def ^:private history-collection :history)
+
+;; ponytail: oldest entries fall off at this depth. Paging if a DM ever wants a
+;; history deeper than a session's worth of loot.
+(def ^:private history-limit 100)
+
+(defn- with-entry [rows vm]
+  (vec (take history-limit (cons {:at (js/Date.now) :view-model vm} rows))))
+
+(defn- history-mode [{:keys [loot-types history-mode]} id]
+  (or (some #(when (= id (:id %)) (:history %)) loot-types) history-mode))
+
+(defn- rows-for [state id]
+  (get (:history state) (some-> id name)))
 
 (defn- collections-for
   "The store collections a request needs. Known loot type -> exactly what it
@@ -94,14 +117,45 @@
     [[:fx/assoc-in [:results selected] result]]
     []))
 
-(defn- result-effect [{:keys [dispatch]} system collections req]
+(defn- history-request
+  "Read the history collection back, having first applied `mutations` (nil just
+   reads). Goes through `stateful-request` like every other stateful call, so a
+   `:browser` store round-trips through IndexedDB and a server-side one does not."
+  [{:keys [dispatch]} system mutations]
+  (stateful-request
+    system [history-collection]
+    {:method :post :url "/api/history" :body (cond-> {} mutations (assoc :mutations mutations))}
+    (fn [resp] (dispatch [[:fx/assoc-in [:history] (:store/state resp)]]))
+    (fn [err] (dispatch [[:fx/assoc-in [:error] (:error err)]]))))
+
+(nxr/register-effect! :fx/load-history
+                      (fn [ctx system]
+                        (history-request ctx system nil)))
+
+(nxr/register-effect! :fx/history
+                      (fn [ctx system id rows]
+                        (history-request ctx system {(name id) rows})))
+
+(defn- history-fx
+  "Effects recording `vm` against loot type `id`, when the mode in force says
+   `trigger` is what stores it."
+  [state id vm trigger]
+  (when (and id vm (= trigger (history-mode state id)))
+    [[:fx/history id (with-entry (rows-for state id) vm)]]))
+
+(defn- result-effect
+  "Run `req` and put the view-model it returns on the bench. `record-id` names
+   the loot type to file the result under in the history, or is nil for a call
+   (an action) that reworks the item already there rather than generating one."
+  [{:keys [dispatch]} system collections req record-id]
   (dispatch [[:fx/assoc-in [:loading?] true] [:fx/assoc-in [:error] nil]
              [:fx/assoc-in [:report-status] nil]])
   (stateful-request
     system collections req
-    (fn [vm] (dispatch [[:fx/assoc-in [:result] vm]
+    (fn [vm] (dispatch (into (vec (history-fx @system record-id vm :always))
+                       [[:fx/assoc-in [:result] vm]
                         [:fx/assoc-in [:editing?] false]
-                        [:fx/assoc-in [:loading?] false]]))
+                        [:fx/assoc-in [:loading?] false]])))
                (fn [err] (dispatch [[:fx/assoc-in [:error] (:error err)]
                                     [:fx/assoc-in [:loading?] false]]))))
 
@@ -112,7 +166,10 @@
                           (dispatch [[:fx/assoc-in [:report-status] :sending]
                                      [:fx/assoc-in [:error] nil]])
                           (api/request {:method :post :url "/api/report" :body {:view-model vm}}
-                                       (fn [_ok] (dispatch [[:fx/assoc-in [:report-status] :sent]]))
+                                       (fn [_ok]
+                                         (dispatch (into (vec (history-fx @system (:selected @system)
+                                                                          (:result @system) :on-report))
+                                                         [[:fx/assoc-in [:report-status] :sent]])))
                                        (fn [err] (dispatch [[:fx/assoc-in [:report-status] nil]
                                                             [:fx/assoc-in [:error] (:error err)]]))))))
 
@@ -126,7 +183,8 @@
                       (fn [ctx system id inputs]
                         (result-effect ctx system (collections-for system id)
                                        {:method :post :url "/api/generate"
-                                        :body   {:id id :inputs inputs}})))
+                                        :body   {:id id :inputs inputs}}
+                                       id)))
 
 (nxr/register-effect! :fx/roll
                       (fn [{:keys [dispatch]} system inputs n]
@@ -140,7 +198,8 @@
                                      ;; roll returns {:id ... :view-model ...} so we can
                                      ;; jump the picker to the discipline that was rolled.
                                      (fn [{:keys [id view-model]}]
-                                       (dispatch (into (stash-fx @system)
+                                       (dispatch (into (into (stash-fx @system)
+                                                       (history-fx @system id view-model :always))
                                                  [[:fx/assoc-in [:selected] id]
                                                   [:fx/assoc-in [:inputs] {}]
                                                   [:fx/assoc-in [:result] view-model]
@@ -154,7 +213,8 @@
                         (result-effect ctx system (collections-for system id)
                                        {:method :post
                                         :url    "/api/action"
-                                        :body   {:id id :action action :params params :view-model view-model}})))
+                                        :body   {:id id :action action :params params :view-model view-model}}
+                                       nil)))
 
 ;; A loot type's manually-managed collection: read on selection, and re-read
 ;; after every edit, so what is on screen is what the store holds. `mutations`
@@ -319,6 +379,34 @@
 (nxr/register-action! :loot/action
                       (fn [{:keys [result]} {:keys [id action params]}]
                         [[:fx/action id action params result]]))
+
+;; The history list under the result: newest first, one entry per stored
+;; view-model. Restoring one puts it back on the bench, where it can be edited,
+;; actioned or reported like any freshly generated result.
+
+(nxr/register-action! :ui/history-save
+                      (fn [{:keys [selected result] :as state}]
+                        (when (and selected result)
+                          [[:fx/history selected (with-entry (rows-for state selected) result)]])))
+
+(nxr/register-action! :ui/history-restore
+                      (fn [{:keys [selected] :as state} idx]
+                        (when-let [vm (get-in (rows-for state selected) [idx :view-model])]
+                          [[:fx/assoc-in [:result] vm]
+                           [:fx/assoc-in [:editing?] false]
+                           [:fx/assoc-in [:report-status] nil]])))
+
+(nxr/register-action! :ui/history-delete
+                      (fn [{:keys [selected] :as state} idx]
+                        (let [rows (vec (rows-for state selected))]
+                          (when (< idx (count rows))
+                            [[:fx/history selected
+                              (into (subvec rows 0 idx) (subvec rows (inc idx)))]]))))
+
+;; A nil row retracts the key, so clearing leaves nothing behind in the store.
+(nxr/register-action! :ui/history-clear
+                      (fn [{:keys [selected]}]
+                        [[:fx/history selected nil]]))
 
 (nxr/register-action! :ui/export
                       (fn [_state]

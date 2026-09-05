@@ -31,6 +31,10 @@
             [:list? {:optional true} boolean?]
             [:options {:optional true} [:sequential any?]]]
 
+   ;; When a generated result is added to the browser-side history: on every
+   ;; generation, only when reported, only on the manual button, or not at all.
+   ::history [:enum :always :on-report :button :never]
+
    ::loot-spec [:map
                 [:id keyword?]
                 [:label string?]
@@ -54,6 +58,8 @@
                  ;; the UI renders a generic editor for it and the plugin reads
                  ;; it back through the store. See `::manual-state`.
                 [:store/manual {:optional true} ::manual-state]
+                 ;; Overrides the config's global `:history` for this type.
+                [:history {:optional true} ::history]
                 [:inputs {:optional true} [:sequential ::field]]]
 
    ;; --- manually-managed state (the `:store/manual` editor) ---
@@ -247,6 +253,7 @@
    ::data-spec [:map
                 [:label string?]
                 [:utility? {:optional true} boolean?]
+                [:history {:optional true} ::history]
                 [:inputs {:optional true} [:sequential ::field]]
                 [:items [:sequential [:map-of keyword? any?]]]
                 [:take {:optional true} int?]
@@ -287,6 +294,7 @@
                     [:hidden? {:optional true} boolean?]
                     [:command [:sequential string?]]
                     [:utility? {:optional true} boolean?]
+                    [:history {:optional true} ::history]
                     [:label {:optional true} string?]
                     [:store/collections {:optional true} [:sequential keyword?]]
                     [:store/manual {:optional true} ::manual-state]
@@ -308,6 +316,7 @@
                     [:symbol string?]
                     [:free-symbol {:optional true} string?]
                     [:utility? {:optional true} boolean?]
+                    [:history {:optional true} ::history]
                     [:label {:optional true} string?]
                     [:store/collections {:optional true} [:sequential keyword?]]
                     [:store/manual {:optional true} ::manual-state]
@@ -357,6 +366,7 @@
              [:plugins [:sequential ::plugin]]
              [:randoms {:optional true} ::randoms]
              [:reporting {:optional true} ::reporting]
+             [:history {:optional true} ::history]
              [:loot-table {:optional true} [:sequential ::loot-entry]]]})
 
 (def registry

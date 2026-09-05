@@ -98,6 +98,14 @@
     (let [eng (engine/with-state eng state)]
       (ok (with-mutations eng (engine/manual-state eng id mutations))))))
 
+(defn- history-handler
+  "The result history, read and written like any other collection so it follows
+   the configured storage backend."
+  [eng]
+  (fn [{{:keys [mutations state]} :body-params}]
+    (let [eng (engine/with-state eng state)]
+      (ok (with-mutations eng (engine/history eng mutations))))))
+
 (defn- zip-bytes
   "A ZIP holding one `<collection>.edn` per collection, written by the same
    serialiser the `:file` backend uses so the archive unzips straight into a
@@ -130,6 +138,7 @@
        ["/api/action" {:post (action-handler eng)}]
        ["/api/report" {:post (report-handler eng)}]
        ["/api/state" {:post (state-handler eng)}]
+       ["/api/history" {:post (history-handler eng)}]
        ["/api/export" {:get (export-handler eng)}]]
       {:data {:muuntaja     m
               :interceptors [(format/format-negotiate-interceptor m)

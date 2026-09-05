@@ -79,6 +79,36 @@ exactly this: a manual character table plus one action that rolls 1d20 + the gro
 bonus over whoever is present. Add `{:type :builtin :id :social}` to `:plugins` to
 use it.
 
+### Result history
+
+Generated results are kept per plugin, with the timestamp they were made, in a
+`history` collection — so they live wherever `:storage` puts everything else (a
+`history.edn` file, memory, or the browser's IndexedDB) and travel with an export.
+The list appears under the result: click an entry to put it back on the bench, `✕` to
+drop one, **Clear** to empty the plugin's history. When `:history` says so, a
+**Save to history** button sits alongside *Edit item*.
+
+| `:history`   | When a result is stored                       |
+|--------------|-----------------------------------------------|
+| `:always`    | Every generation (and every loot-table roll).  |
+| `:on-report` | Only when the result is reported.              |
+| `:button`    | Only when **Save to history** is pressed. The default. |
+| `:never`     | Not at all.                                    |
+
+Set it globally in config, and override it per plugin in that plugin's loot-spec
+(`:data` specs set it in the spec file; `:cli`/`:ffi` plugins on their config entry,
+as with `:utility?`):
+
+```clojure
+{:history :on-report
+ :plugins [{:type :data :id :uniques :source "data/uniques.edn"}]}
+```
+
+`history` is reserved: don't name a plugin's own `:store/collections` after it.
+
+The separate "last result" the UI restores when you come back to a plugin is not
+configurable — it is always remembered for as long as the tab is open.
+
 You may provide **`config.json`** instead of `config.edn`; simply replace all keywords (e.g. `:weight`) and symbols (e.g. `my.plugin/generator`) with regular JSON strings. 
 
 ---

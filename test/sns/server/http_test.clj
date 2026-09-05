@@ -64,6 +64,11 @@
       (is (= {:browser-storage? false
               :report?          true
               :report-label     "Send to Discord"} (body resp)))))
+  (testing ":history is surfaced only when the config sets it"
+    (let [app  (http/app (engine/create (assoc config :history :on-report)
+                                        {:store (edn-store/create {:backend :memory})}))
+          resp (app {:request-method :get :uri "/api/capabilities"})]
+      (is (= {:browser-storage? false :history :on-report} (body resp)))))
   (testing ":browser storage -> the client ships state with each request"
     (let [app  (http/app (engine/create (assoc config :storage {:backend :browser})))
           resp (app {:request-method :get :uri "/api/capabilities"})]
@@ -118,6 +123,33 @@
            (:store/mutations resp))
         "the edit comes back for the client to apply")
     (is (= false (get-in resp [:store/state "Vex" :present?])))))
+
+(deftest history-endpoint
+  (let [app   (http/app (engine/create config {:store (edn-store/create {:backend :memory})}))
+        entry {:at 1 :view-model {:loot/title "Dust"}}]
+    (testing "the history starts empty"
+      (let [resp (post app "/api/history" {})]
+        (is (= 200 (:status resp)))
+        (is (= {:store/state {}} (body resp)))))
+    (testing "rows are stored per loot type and read back"
+      (is (= {"divine-dust" [entry]}
+             (:store/state (body (post app "/api/history"
+                                       {:mutations {"divine-dust" [entry]}}))))))
+    (testing "a nil row clears that type"
+      (is (= {} (:store/state (body (post app "/api/history"
+                                          {:mutations {"divine-dust" nil}}))))))
+    (testing "a blank key is a 400"
+      (is (= 400 (:status (post app "/api/history" {:mutations {"  " []}})))))))
+
+(deftest history-endpoint-under-browser-storage
+  ;; The history follows :storage like any other collection, so under :browser it
+  ;; travels in with the request and the write comes back for the client to apply.
+  (let [app   (http/app (engine/create (assoc config :storage {:backend :browser})))
+        entry {:at 2 :view-model {:loot/title "Relic"}}
+        resp  (body (post app "/api/history" {:state     {:history {"relics" []}}
+                                              :mutations {"relics" [entry]}}))]
+    (is (= {:history {"relics" [entry]}} (:store/mutations resp)))
+    (is (= {"relics" [entry]} (:store/state resp)))))
 
 (deftest errors-return-edn
   (let [app (http/app (engine/create config {:store (edn-store/create {:backend :memory})}))

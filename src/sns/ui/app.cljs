@@ -12,7 +12,8 @@
   (some #(when (= selected (:id %)) %) loot-types))
 
 (defn- view [state]
-  (let [spec (current-spec state)]
+  (let [spec         (current-spec state)
+        history-mode (or (:history spec) (:history-mode state))]
     [:div.app
      [:header.topbar
       [:div.brand [:span.brand__mark "✦"] [:span.brand__name "sns-companion"]]]
@@ -38,6 +39,8 @@
           [:button.action-btn
            {:on {:click [[:ui/toggle-edit]]}}
            (if (:editing? state) "Done editing" "Edit item")]
+          (when (= :button history-mode)
+            [:button.action-btn {:on {:click [[:ui/history-save]]}} "Save to history"])
           (when (:report? state)
             [:button.report__btn
              {:disabled (= :sending (:report-status state))
@@ -46,6 +49,8 @@
                :sending "Sending…"
                :sent    "Sent ✓"
                (or (:report-label state) "Send"))])])
+       (render/history (:selected state)
+                       (get (:history state) (some-> (:selected state) name)))
        (when (and (nil? (:result state)) (nil? spec))
          [:div.empty
           [:p.empty__line "Choose a loot type, or make a loot roll."]])]]]))

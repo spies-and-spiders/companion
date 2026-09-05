@@ -150,6 +150,7 @@
       (cond-> {:id    id
                :label (:label spec)}
               (:utility? spec) (assoc :utility? true)
+              (:history spec) (assoc :history (:history spec))
               (:inputs spec) (assoc :inputs (:inputs spec))))
     (generate [_ ctx]
       (generate spec ctx))))
@@ -172,7 +173,8 @@
           (cond-> {:id     id
                    :label  (:label spec)
                    :inputs (into [reload-field] (:inputs spec))}
-                  (:utility? spec) (assoc :utility? true))))
+                  (:utility? spec) (assoc :utility? true)
+                  (:history spec) (assoc :history (:history spec)))))
       (generate [_ ctx]
         (when (get-in ctx [:inputs :__reload?])
           (reset! spec-atom (load-spec source)))

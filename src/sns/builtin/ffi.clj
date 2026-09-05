@@ -76,7 +76,7 @@
    `:store/collections`/`:store/manual` declare state: what they name is read and
    sent as `state`, and the `mutations` the library returns are applied by the
    engine."
-  [{:keys [id library free-symbol label utility? inputs] sym :symbol :as plugin}]
+  [{:keys [id library free-symbol label utility? history inputs] sym :symbol :as plugin}]
   (let [linker (Linker/nativeLinker)
         lookup (library-lookup (str library))
         handle (downcall linker lookup (str sym) (ptr->ptr))
@@ -84,6 +84,7 @@
                  (downcall linker lookup (str free-symbol) (ptr->void)))
         spec   (merge (cond-> {:id id :label (or label (name id))}
                               utility? (assoc :utility? true)
+                              history (assoc :history history)
                               (seq inputs) (assoc :inputs (vec inputs)))
                       (io/spec-storage plugin))
         colls  (io/collections plugin)]

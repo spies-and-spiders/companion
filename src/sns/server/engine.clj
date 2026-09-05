@@ -182,6 +182,24 @@
     (cond-> {:store/state (p/read-collection store coll)}
             applied (assoc :store/mutations {coll applied}))))
 
+(def history-collection
+  "Where the result history lives: one row per loot type, in the store the
+   config's `:storage` selects, like every other collection."
+  :history)
+
+(defn history
+  "Read — and first write, given `mutations` — the result history. `mutations` is
+   `{<loot-type name> <rows>}`, where rows are `{:at <ms> :view-model <vm>}`
+   newest first and a nil row clears that type. Shaped like `manual-state`: the
+   whole collection out, plus what was applied for a `:browser` client to store."
+  [{:keys [store]} mutations]
+  (when (seq mutations)
+    (when-some [blank (some #(when (str/blank? (str %)) %) (keys mutations))]
+      (throw (ex-info "A history key cannot be blank" {:key blank})))
+    (edn-store/mutate! store {history-collection mutations}))
+  (cond-> {:store/state (p/read-collection store history-collection)}
+          (seq mutations) (assoc :store/mutations {history-collection mutations})))
+
 (defn- persist!
   "Apply the writes `view-model` declares. Called only once it has validated, so
    a plugin that returns something unusable leaves the store untouched — the
@@ -240,10 +258,13 @@
 
 (defn capabilities
   "UI-facing flags describing optional features enabled by config: whether the
-   report button is shown, and whether state lives in the browser (in which case
-   the client ships it with each request and applies the writes that come back)."
+   report button is shown, whether state lives in the browser (in which case the
+   client ships it with each request and applies the writes that come back), and
+   when generated results join the browser-side history (absent = the client's
+   default, `:button`)."
   [{:keys [reporter config]}]
   (cond-> {:browser-storage? (store/browser? config)}
+          (:history config) (assoc :history (:history config))
           reporter (assoc :report? true
                           :report-label (p/report-label reporter))))
 

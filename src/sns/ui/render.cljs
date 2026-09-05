@@ -431,3 +431,32 @@
       (if browser-storage?
         "State lives in this browser. Download it to keep a copy or move it to a local deployment."
         "A ZIP of every collection, as the app stores them.")]]))
+
+;; --- result history -----------------------------------------------------------
+
+(defn- history-label
+  "A one-line description of a stored result: its rendered title, since that is
+   what tells two rolls of the same type apart."
+  [{:loot/keys [title vars]}]
+  (or (not-empty (str/trim (str (template/render title vars)))) "Untitled"))
+
+(defn history
+  "The stored results for the selected loot type, newest first. Clicking one
+   puts it back on the bench."
+  [selected entries]
+  (when (seq entries)
+    [:section.history
+     [:div.history__head
+      [:p.summon__eyebrow "History"]
+      [:button.action-btn {:on {:click [[:ui/history-clear]]}} "Clear"]]
+     [:ul.history__list
+      (map-indexed
+        (fn [idx {:keys [at view-model]}]
+          [:li.history__row {:replicant/key (str selected "-" at "-" idx)}
+           [:button.history__entry {:on {:click [[:ui/history-restore idx]]}}
+            [:span.history__time (.toLocaleString (js/Date. at))]
+            [:span.history__name (history-label view-model)]]
+           [:button.history__remove {:type "button"
+                                     :on   {:click [[:ui/history-delete idx]]}}
+            "✕"]])
+        entries)]]))
