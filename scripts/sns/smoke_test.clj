@@ -120,7 +120,20 @@
                                      ;; native image via reflection inside `bigdec` (dd6fc1a).
                                      {:type    :cli                                                       :id :weather :utility? true :label "Weather"
                                       :command [(python-command) "examples/cli-plugin/weather.py"]
-                                      :inputs  [{:id :chill-factor :label "Chill Factor" :type :decimal}]}]
+                                      :inputs  [{:id :chill-factor :label "Chill Factor" :type :decimal}]}
+                                     ;; A :cli plugin with declared state: the
+                                     ;; engine reads its collection into the
+                                     ;; request and applies the mutations it
+                                     ;; returns, so neither direction depends on
+                                     ;; the script understanding EDN.
+                                     {:type         :cli
+                                      :id           :tally
+                                      :utility?     true
+                                      :label        "Tally"
+                                      :command      [(python-command) "examples/cli-plugin/tally.py"]
+                                      :inputs       [{:id :who :label "Who" :type :text}]
+                                      :store/manual {:key-label "Name"
+                                                     :fields    [{:id :count :label "Count" :type :int :default 0}]}}]
                                     lib-path (conj ffi-plugin))
                 :loot-table (cond-> [{:id :divine-dust} {:id :relics} {:id :uniques} {:id :rings}]
                                     lib-path (conj {:id :ffi-loot}))}
@@ -177,6 +190,23 @@
     (if-not event
       (println "  (no action offered this roll for" id "- skipping action check)")
       (exercise-action! base-url id (:action/event event)))))
+
+(defn- exercise-cli-state!
+  "A `:cli` plugin's state round trip: what it writes on one call it must read
+   back on the next, having crossed the process boundary as JSON both ways."
+  [base-url]
+  (println "  generate :tally (declared state, twice)")
+  (let [title #(:loot/title (expect-200! (request base-url :post "/api/generate"
+                                                  {:id :tally :inputs {:who "Vex"}})
+                                         "generate :tally"))
+        first-run (title)
+        second-run (title)]
+    ;; The counts are the assertion: reaching 2 means the first call's declared
+    ;; write was applied here and read back into the second call's request.
+    (when-not (= ["Vex \u00d7 1" "Vex \u00d7 2"] [first-run second-run])
+      (fail! "the CLI plugin did not read back what it wrote"
+             {:titles [first-run second-run]}))
+    (println "  generate :tally -> wrote 1, read it back, wrote 2")))
 
 (defn- exercise-manual-state!
   "The `:store/manual` contract: an edited row is coerced, persisted, and read
@@ -258,6 +288,7 @@
   (exercise-generate! base-url :weather {:chill-factor "1.5"})
   (exercise-statefully! base-url :relics)
   (exercise-manual-state! base-url)
+  (exercise-cli-state! base-url)
   (if ffi-available?
     (exercise-statefully! base-url :ffi-loot)
     (println "  (skipping :ffi-loot - no shared library built on this runner)")))

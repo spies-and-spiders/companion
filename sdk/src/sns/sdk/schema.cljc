@@ -148,12 +148,18 @@
    ;; Modelled as a union so codegen emits two request types and the
    ;; generate-vs-action split is structural. Not runtime-validated — the engine
    ;; produces it.
+   ;; `state` carries the collections the plugin declared with
+   ;; `:store/collections`/`:store/manual`, read for it by the engine — an
+   ;; external plugin never touches the store itself, and writes back by
+   ;; returning `mutations`.
    ::plugin-request [:or
                      [:map
-                      [:inputs [:map-of keyword? any?]]]
+                      [:inputs [:map-of keyword? any?]]
+                      [:state {:optional true} [:map-of keyword? [:map-of any? any?]]]]
                      [:map
                       [:action string?]
-                      [:params {:optional true} [:map-of keyword? any?]]]]
+                      [:params {:optional true} [:map-of keyword? any?]]
+                      [:state {:optional true} [:map-of keyword? [:map-of any? any?]]]]]
 
    ;; What the plugin returns. `action` is a bare name the adapter keywordises to
    ;; route the follow-up back to the same plugin.
@@ -175,7 +181,11 @@
                     [:title string?]
                     [:subtitle {:optional true} string?]
                     [:sections {:optional true} [:sequential ::plugin-section]]
-                    [:actions {:optional true} [:sequential ::plugin-action]]]
+                    [:actions {:optional true} [:sequential ::plugin-action]]
+                    ;; Writes to apply, `{<collection> {<key> <value>}}` with a
+                    ;; null retracting. The engine applies them once this output
+                    ;; has validated, so a plugin that errors changes nothing.
+                    [:mutations {:optional true} ::mutations]]
 
    ;; --- upgrade-graph DSL (mod state + progression) ---
    ;; `::option` and `::upgrades` are mutually recursive, so the recursive edges
@@ -278,6 +288,8 @@
                     [:command [:sequential string?]]
                     [:utility? {:optional true} boolean?]
                     [:label {:optional true} string?]
+                    [:store/collections {:optional true} [:sequential keyword?]]
+                    [:store/manual {:optional true} ::manual-state]
                         ;; An external plugin has no loot-spec of its own, so it
                         ;; declares its input fields here; the engine folds them
                         ;; into the spec and sends the collected values as
@@ -297,6 +309,8 @@
                     [:free-symbol {:optional true} string?]
                     [:utility? {:optional true} boolean?]
                     [:label {:optional true} string?]
+                    [:store/collections {:optional true} [:sequential keyword?]]
+                    [:store/manual {:optional true} ::manual-state]
                     [:inputs {:optional true} [:sequential ::field]]]]
                  ;; A :jar plugin names its generator either as a Clojure
                  ;; :entrypoint factory var or as a :class with a 0-arity

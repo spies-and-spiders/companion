@@ -9,9 +9,16 @@
    Actions round-trip: a returned `action` becomes a `:loot/action` event the UI
    dispatches back to the engine, which re-invokes the same plugin with an
    `action`/`params` request (rather than `inputs`), so an external plugin can
-   drive stateful follow-ups (e.g. levelling up) entirely in its own language."
+   drive stateful follow-ups (e.g. levelling up) entirely in its own language.
+
+   State round-trips the same way. An external plugin never reaches the store —
+   the engine reads the collections it declared and sends them as `state`, and
+   the `mutations` it returns are applied on this side. So a plugin that wants
+   persistent state writes JSON, not EDN, and never learns which backend is
+   configured."
   (:require
     [jsonista.core :as j]
+    [sns.sdk.protocols :as p]
     [sns.sdk.schema :as schema]))
 
 (def ^:private mapper j/keyword-keys-object-mapper)
@@ -32,14 +39,47 @@
   {:action/label label
    :action/event [:loot/action {:id id :action (keyword action) :params (or params {})}]})
 
+(defn- ->mutations
+  "Every JSON object key arrives keywordised. A collection name is a keyword on
+   this side, but the key of an entry within it is a plain string, so those go
+   back — otherwise a row written by a plugin would never match one written by
+   the manual-state editor."
+  [mutations]
+  (update-vals mutations #(update-keys % name)))
+
 (defn ->view-model
   "Convert a friendly (un-namespaced) map into a view-model. Actions are wired
-   back to plugin `id`."
-  [id {:keys [title subtitle sections actions]}]
+   back to plugin `id`, and declared `mutations` become the engine's to apply."
+  [id {:keys [title subtitle sections actions mutations]}]
   (cond-> {:loot/title title}
           subtitle (assoc :loot/subtitle subtitle)
           (seq sections) (assoc :loot/sections (mapv ->section sections))
-          (seq actions) (assoc :loot/actions (mapv #(->action id %) actions))))
+          (seq actions) (assoc :loot/actions (mapv #(->action id %) actions))
+          (seq mutations) (assoc :store/mutations (->mutations mutations))))
+
+(defn spec-storage
+  "The `:store/...` keys an external plugin's config contributes to its
+   loot-spec. Declared in config rather than by the plugin, exactly as `:inputs`
+   and `:utility?` are, since it has no loot-spec of its own."
+  [{:store/keys [collections manual]}]
+  (cond-> {}
+          (seq collections) (assoc :store/collections (vec collections))
+          manual (assoc :store/manual manual)))
+
+(defn collections
+  "The collections to read and ship with each request, or nil when the plugin
+   declared none. `:store/manual` implies the one named after the plugin's `:id`,
+   matching what the loot-spec defaults to."
+  [{:keys [id] :store/keys [collections manual]}]
+  (or (not-empty (vec collections)) (when manual [id])))
+
+(defn with-state
+  "`request` plus the declared collections, read out of `ctx`'s store. Absent
+   when the plugin declared none, so a stateless plugin costs no reads."
+  [ctx colls request]
+  (cond-> request
+          (seq colls)
+          (assoc :state (into {} (map (juxt identity #(p/read-collection (:store ctx) %))) colls))))
 
 (defn encode-request
   "Serialise a request context (the map handed to the plugin) to JSON."

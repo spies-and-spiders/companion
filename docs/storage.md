@@ -20,8 +20,13 @@ chosen in `config.edn` under `:storage`.
 
 ## Who can use it
 
-In-process plugins only — `:builtin` and `:jar`. `:cli` and `:ffi` plugins
-exchange JSON over a process/ABI boundary and persist their own state.
+Every plugin type. `:builtin` and `:jar` plugins hold the `Store` and read it
+directly. `:cli` and `:ffi` plugins never see it: they declare the collections
+they use on their config entry, and the engine reads those and sends them as the
+request's `state`, applying the `mutations` they return. So an external plugin
+gets persistent state without parsing EDN, touching the state directory, or
+knowing which backend is configured — see the README's external plugin
+contract.
 
 ## Reading
 

@@ -532,6 +532,9 @@ the transport differs. The engine sends a **request** and reads back an **output
                                {"body": "…", "metadata": ["obscured"]}]}]}
 ```
 
+A plugin that needs persistent state gets it too — see
+[State](#state-storecollections-storemanual) below.
+
 - **`:cli`** runs your `:command`, writing the request to **stdin** and reading the
   output from **stdout**. A non-zero exit is an error, and whatever the command
   wrote to **stderr** becomes the error the DM sees. See
@@ -584,9 +587,47 @@ symbol** with an action request (note `action`/`params` instead of `inputs`):
 ```
 The plugin returns a fresh output (which may itself carry the next round of
 `actions`). Branch on whether `action` is present in the request to tell a generate
-from an action. A `:cli` plugin must persist any state itself (a file or an external
-store) — the engine does not persist it; an `:ffi` plugin runs in-process and may
-instead hold state in memory for the app's lifetime.
+from an action.
+
+### State (`store/collections`, `store/manual`)
+
+An external plugin never touches the store. It **declares** the collections it
+uses on its config entry; the engine reads them and sends them as the request's
+`state`, and applies the `mutations` the plugin returns:
+
+```json
+// request → plugin                    // output ← plugin
+{"inputs": {"rounds": 5},               {"title": "3 flares over 5 rounds",
+ "state": {"crystals": {                 "mutations": {"crystals": {
+   "Quincy": {"chance": 27}}}}             "Quincy": {"chance": 32},
+                                           "Viktor": null}}}
+```
+
+`mutations` is `{<collection>: {<key>: <value>}}`, a `null` retracting that key.
+The engine applies it only once the output has validated, so a plugin that errors
+changes nothing. Every backend works the same way, including `:browser` — the
+plugin never learns which is configured, and never parses or writes EDN.
+
+Declare state one of two ways on the config entry:
+
+- **`store/collections`** — the collections to read, e.g. `["crystals"]`.
+- **`store/manual`** — a DM-maintained table the UI renders an editor for, held
+  in the collection named after the plugin's `id`. Same shape as a builtin's
+  `:store/manual`: a `key-label`, the `fields` of a row, and `list?` when a key
+  owns several records.
+
+```json
+{"type": "cli", "id": "crystals", "label": "Crystal Flares", "utility?": true,
+ "command": ["./5e-cli", "crystal", "procs"],
+ "inputs": [{"id": "rounds", "label": "Combat rounds", "type": "int", "default": 10}],
+ "store/manual": {"key-label": "Character",
+                  "fields": [{"id": "chance", "label": "Flare chance (%)", "type": "int",
+                              "default": 10}]}}
+```
+
+`examples/cli-plugin/tally.py` is a runnable version of both directions.
+
+A plugin that declares neither is sent no `state` and costs no reads.
 
 ---
 
