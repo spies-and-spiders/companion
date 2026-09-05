@@ -11,7 +11,8 @@
     [sns.server.progression :as progression]
     [sns.server.registry :as registry]
     [sns.server.reporter :as reporter]
-    [sns.server.store :as store])
+    [sns.server.store :as store]
+    [sns.server.store.edn :as edn-store])
   (:import
     (java.util.random RandomGeneratorFactory)))
 
@@ -60,7 +61,7 @@
          registry (registry/build config)
          rng (or rng (.create (RandomGeneratorFactory/of "L64X128MixRandom")))
          store (or store (store/from-config (:storage config)))]
-     (p/setup! store)
+     (some-> store p/setup!)
      (when (seq table)
        (validate-table! registry table))
      ;; Config-declared random presets, usable from any plugin's vars as
@@ -138,8 +139,65 @@
     (mapv (fn [generator]
             (let [spec (p/loot-spec generator)]
               (cond-> spec
+                      ;; Defaulted here rather than in each generator, so the UI
+                      ;; always receives an explicit list to fetch state for.
+                      true (update :store/collections #(or (not-empty %) [(:id spec)]))
                       (hidden (:id spec)) (assoc :hidden? true))))
           (vals registry))))
+
+(defn- coerce-entry
+  "One row of a manual-state collection, narrowed to the declared fields and
+   coerced to their types. A field left blank falls back to its `:default`, the
+   same way an input does."
+  [fields entry]
+  (reduce (fn [acc {:keys [id type default]}]
+            (let [v (get entry id)]
+              (assoc acc id (if (or (nil? v) (= "" v)) default (coerce type v)))))
+          {}
+          fields))
+
+(defn manual-state
+  "Read — and first write, given `mutations` — the DM-owned collection loot type
+   `id` declares with `:store/manual`. `mutations` is `{<key> <row>}`, a nil row
+   retracting that key; rows are coerced to the declared fields. Returns
+   `{:store/state <the whole collection>}`, carrying `:store/mutations` for what
+   was actually applied when there was anything to apply."
+  [{:keys [registry store]} id mutations]
+  (let [generator (or (get registry id)
+                      (throw (ex-info "Unknown loot type" {:id id})))
+        spec      (p/loot-spec generator)
+        {:keys [fields list?]} (or (:store/manual spec)
+                                   (throw (ex-info "Loot type has no manual state" {:id id})))
+        coll      (or (first (:store/collections spec)) id)
+        applied   (when (seq mutations)
+                    (when-some [blank (some #(when (str/blank? (str %)) %) (keys mutations))]
+                      (throw (ex-info "A manual-state key cannot be blank" {:id id :key blank})))
+                    (update-vals mutations
+                                 #(cond
+                                    (nil? %) nil
+                                    list?    (mapv (partial coerce-entry fields) %)
+                                    :else    (coerce-entry fields %))))]
+    (when applied
+      (edn-store/mutate! store {coll applied}))
+    (cond-> {:store/state (p/read-collection store coll)}
+            applied (assoc :store/mutations {coll applied}))))
+
+(defn- persist!
+  "Apply the writes `view-model` declares. Called only once it has validated, so
+   a plugin that returns something unusable leaves the store untouched — the
+   whole point of declaring writes rather than performing them."
+  [store view-model]
+  (when-let [mutations (:store/mutations view-model)]
+    (edn-store/mutate! store mutations))
+  view-model)
+
+(defn with-state
+  "Under `:browser` storage, an engine whose store holds the `state` the client
+   sent. What a plugin writes travels back on its view-model, so nothing needs
+   recording here. Every other backend keeps its own store and ignores `state`."
+  [{:keys [config] :as engine} state]
+  (cond-> engine
+          (store/browser? config) (assoc :store (edn-store/->MemoryStore (atom (or state {}))))))
 
 (defn generate
   "Generate loot of type `id` with `inputs`, returning a validated view-model."
@@ -152,7 +210,8 @@
      (randoms/with-rng rng
        (->> (ctx engine inputs)
             (p/generate generator)
-            (schema/assert! ::schema/view-model))))))
+            (schema/assert! ::schema/view-model)
+            (persist! (:store engine)))))))
 
 (defn- roll->id
   "Resolve the entered d100 roll `n` (1-100) to a loot type via the allocation."
@@ -172,15 +231,19 @@
   ([{:keys [loot-sampler loot-allocation] :as engine} inputs n]
    (when-not loot-sampler
      (throw (ex-info "No loot-table configured" {})))
-   (let [id (if (some? n) (roll->id loot-allocation n) (loot-sampler))]
-     {:id id :view-model (generate engine id inputs)})))
+   (let [id (if (some? n) (roll->id loot-allocation n) (loot-sampler))
+         vm (generate engine id inputs)]
+     ;; Writes ride at the top of the result, where a plain generate leaves
+     ;; them, rather than buried inside the wrapper this adds.
+     (cond-> {:id id :view-model (dissoc vm :store/mutations)}
+             (:store/mutations vm) (assoc :store/mutations (:store/mutations vm))))))
 
 (defn capabilities
-  "UI-facing flags describing optional features enabled by config (drives, e.g.,
-   whether the report button is shown, and whether the group tracker persists
-   server-side or must live in the browser)."
+  "UI-facing flags describing optional features enabled by config: whether the
+   report button is shown, and whether state lives in the browser (in which case
+   the client ships it with each request and applies the writes that come back)."
   [{:keys [reporter config]}]
-  (cond-> {:social-storage? (not= :none (get-in config [:storage :backend]))}
+  (cond-> {:browser-storage? (store/browser? config)}
           reporter (assoc :report? true
                           :report-label (p/report-label reporter))))
 
@@ -206,4 +269,5 @@
       (throw (ex-info "Loot type does not support actions" {:id id})))
     (randoms/with-rng rng
       (->> (p/handle-action generator (assoc (ctx engine nil) :view-model view-model) action params)
-           (schema/assert! ::schema/view-model)))))
+           (schema/assert! ::schema/view-model)
+           (persist! (:store engine))))))

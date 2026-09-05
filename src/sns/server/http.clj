@@ -9,12 +9,16 @@
     [ring.util.http-response :refer [ok]]
     [ring.util.response :as response]
     [sns.server.engine :as engine]
-    [sns.server.social :as social]
+    [sns.server.store :as store]
+    [sns.server.store.edn :as edn-store]
     [taoensso.telemere :as t])
   (:import
     (clojure.lang ExceptionInfo)
+    (java.io ByteArrayInputStream ByteArrayOutputStream)
     (java.net URL)
-    (java.util Date)))
+    (java.nio.charset StandardCharsets)
+    (java.util Date)
+    (java.util.zip ZipEntry ZipOutputStream)))
 
 (defmethod response/resource-data :resource
   [^URL url]
@@ -52,17 +56,28 @@
   (fn [_req]
     (ok (engine/loot-specs eng))))
 
+(defn- with-mutations
+  "The writes declared on `response` are the client's to apply under `:browser`,
+   where the state lives in its IndexedDB. Every other backend has persisted them
+   already, so they are stripped rather than sent."
+  [eng response]
+  (cond-> response
+          (not (store/browser? (:config eng))) (dissoc :store/mutations)))
+
 (defn- generate-handler [eng]
-  (fn [{{:keys [id inputs]} :body-params}]
-    (ok (engine/generate eng id (or inputs {})))))
+  (fn [{{:keys [id inputs state]} :body-params}]
+    (let [eng (engine/with-state eng state)]
+      (ok (with-mutations eng (engine/generate eng id (or inputs {})))))))
 
 (defn- roll-handler [eng]
-  (fn [{{:keys [inputs n]} :body-params}]
-    (ok (engine/roll eng (or inputs {}) n))))
+  (fn [{{:keys [inputs n state]} :body-params}]
+    (let [eng (engine/with-state eng state)]
+      (ok (with-mutations eng (engine/roll eng (or inputs {}) n))))))
 
 (defn- action-handler [eng]
-  (fn [{{:keys [id action params view-model]} :body-params}]
-    (ok (engine/handle-action eng id action params view-model))))
+  (fn [{{:keys [id action params view-model state]} :body-params}]
+    (let [eng (engine/with-state eng state)]
+      (ok (with-mutations eng (engine/handle-action eng id action params view-model))))))
 
 (defn- capabilities-handler [eng]
   (fn [_req]
@@ -73,27 +88,37 @@
     (engine/report! eng view-model)
     (ok)))
 
-;; --- the always-on Group Deception & Persuasion tracker (not a plugin) -------
+(defn- state-handler
+  "Read (and first apply `:mutations` to) a loot type's manually-managed
+   collection — the DM-owned table its `:store/manual` spec declares. Shaped
+   like every other stateful call: state in, mutations out, so the same handler
+   serves a server-side store and one living in the DM's browser."
+  [eng]
+  (fn [{{:keys [id mutations state]} :body-params}]
+    (let [eng (engine/with-state eng state)]
+      (ok (with-mutations eng (engine/manual-state eng id mutations))))))
 
-(defn- social-snapshot-handler [{:keys [store]}]
+(defn- zip-bytes
+  "A ZIP holding one `<collection>.edn` per collection, written by the same
+   serialiser the `:file` backend uses so the archive unzips straight into a
+   usable state directory."
+  ^bytes [state]
+  (let [out (ByteArrayOutputStream.)]
+    (with-open [zip (ZipOutputStream. out)]
+      (doseq [[coll value] (sort-by key state)]
+        (.putNextEntry zip (ZipEntry. (str (name coll) ".edn")))
+        (.write zip ^bytes (.getBytes ^String (edn-store/edn-str value) StandardCharsets/UTF_8))
+        (.closeEntry zip)))
+    (.toByteArray out)))
+
+(defn- export-handler [eng]
   (fn [_req]
-    (ok (social/snapshot store))))
-
-(defn- social-upsert-handler [{:keys [store]}]
-  (fn [{character :body-params}]
-    (ok (social/upsert! store character))))
-
-(defn- social-toggle-handler [{:keys [store]}]
-  (fn [{{char-name :name} :body-params}]
-    (ok (social/toggle! store char-name))))
-
-(defn- social-remove-handler [{:keys [store]}]
-  (fn [{{char-name :name} :body-params}]
-    (ok (social/remove! store char-name))))
-
-(defn- social-roll-handler [{:keys [store rng]}]
-  (fn [{{:keys [skill]} :body-params}]
-    (ok (social/roll store rng skill))))
+    (when-not (:store eng)
+      (throw (ex-info "Browser storage exports from the client, not the server" {})))
+    {:status  200
+     :headers {"Content-Type"        "application/zip"
+               "Content-Disposition" "attachment; filename=\"sns-state.zip\""}
+     :body    (ByteArrayInputStream. (zip-bytes (edn-store/all-state (:store eng))))}))
 
 (defn app [eng]
   (http/ring-handler
@@ -104,11 +129,8 @@
        ["/api/roll" {:post (roll-handler eng)}]
        ["/api/action" {:post (action-handler eng)}]
        ["/api/report" {:post (report-handler eng)}]
-       ["/api/social" {:get (social-snapshot-handler eng)}]
-       ["/api/social/character" {:post (social-upsert-handler eng)}]
-       ["/api/social/toggle" {:post (social-toggle-handler eng)}]
-       ["/api/social/remove" {:post (social-remove-handler eng)}]
-       ["/api/social/roll" {:post (social-roll-handler eng)}]]
+       ["/api/state" {:post (state-handler eng)}]
+       ["/api/export" {:get (export-handler eng)}]]
       {:data {:muuntaja     m
               :interceptors [(format/format-negotiate-interceptor m)
                              (format/format-response-interceptor m)

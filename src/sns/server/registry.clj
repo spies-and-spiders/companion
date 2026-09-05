@@ -8,6 +8,7 @@
     [sns.builtin.dust :as dust]
     [sns.builtin.ffi :as ffi]
     [sns.builtin.relics :as relics]
+    [sns.builtin.social :as social]
     [sns.server.classpath :as classpath]))
 
 (def builtins
@@ -15,7 +16,8 @@
    `:builtin` plugin registers under. Eagerly required, so config needs no
    `:entrypoint` (and no Clojure symbols) to use them."
   {:divine-dust dust/generator
-   :relics      relics/generator})
+   :relics      relics/generator
+   :social      social/generator})
 
 (defn- resolve-fn
   "Resolve a fully-qualified symbol to its var, requiring its namespace."

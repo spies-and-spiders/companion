@@ -72,21 +72,26 @@
    to its `:symbol` (and optional `:free-symbol`) in the shared library at
    `:library`. The library stays loaded for the app's lifetime (a global arena).
    `:utility?` marks a session tool rather than loot, and `:inputs` declares the
-   form fields whose values are sent as the request's `inputs`."
-  [{:keys [id library free-symbol label utility? inputs] sym :symbol}]
+   form fields whose values are sent as the request's `inputs`.
+   `:store/collections`/`:store/manual` declare state: what they name is read and
+   sent as `state`, and the `mutations` the library returns are applied by the
+   engine."
+  [{:keys [id library free-symbol label utility? inputs] sym :symbol :as plugin}]
   (let [linker (Linker/nativeLinker)
         lookup (library-lookup (str library))
         handle (downcall linker lookup (str sym) (ptr->ptr))
         free   (when free-symbol
-                 (downcall linker lookup (str free-symbol) (ptr->void)))]
+                 (downcall linker lookup (str free-symbol) (ptr->void)))
+        spec   (merge (cond-> {:id id :label (or label (name id))}
+                              utility? (assoc :utility? true)
+                              (seq inputs) (assoc :inputs (vec inputs)))
+                      (io/spec-storage plugin))
+        colls  (io/collections plugin)]
     (reify
       p/LootGenerator
-      (loot-spec [_]
-        (cond-> {:id id :label (or label (name id))}
-                utility? (assoc :utility? true)
-                (seq inputs) (assoc :inputs (vec inputs))))
+      (loot-spec [_] spec)
       (generate [_ ctx]
-        (call id handle free {:inputs (:inputs ctx)}))
+        (call id handle free (io/with-state ctx colls {:inputs (:inputs ctx)})))
       p/LootAction
-      (handle-action [_ _ action params]
-        (call id handle free {:action action :params params})))))
+      (handle-action [_ ctx action params]
+        (call id handle free (io/with-state ctx colls {:action action :params params}))))))

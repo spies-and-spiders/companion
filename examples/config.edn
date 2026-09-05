@@ -22,27 +22,26 @@
           :port 8080}
 
  ;; --- storage ---------------------------------------------------------------
- ;; Where stateful loot (e.g. relics that level up) is persisted. Optional;
- ;; defaults to in-memory (nothing is saved between runs).
+ ;; Where stateful plugin state is kept, as named collections of key -> value.
+ ;; Optional; defaults to in-memory (nothing survives a run).
  ;;
- ;;   :memory  — atom-backed, not durable. The default when :storage is absent.
- ;;   :file    — one EDN file per loot-type under :dir (default "./state").
- ;;   :mysql   — any MySQL-compatible server (MySQL/MariaDB/Dolt) at :url.
- ;;   :none    — persist nothing at all (for purely stateless loot types).
- ;;              The Group tracker still works, held in the browser tab.
+ ;;   :memory  — in memory. The default when :storage is absent.
+ ;;   :file    — one EDN file per collection under :dir (default "./state").
+ ;;              The files are the source of truth: edit them by hand while the
+ ;;              app runs and the next read picks the change up.
+ ;;   :browser — IndexedDB in the DM's browser; the server holds nothing. State
+ ;;              is device-local, so use the export button to take it with you.
  ;;
- ;; Pick one backend; the unused keys are ignored.
+ ;; Only :file reads :dir; see docs/storage.md.
  :storage {:backend :file
-           :dir     "./state"
-              ;; :backend :mysql
-           :url     "jdbc:mariadb://localhost:3306/sns"}
+           :dir     "./state"}
 
  ;; --- plugins ---------------------------------------------------------------
  ;; The loot types available in the UI. Five kinds:
  ;;
  ;;   :builtin — a generator shipped in this app: the :id alone selects it
- ;;              (:divine-dust, :relics). An optional :entrypoint Clojure var
- ;;              overrides the lookup.
+ ;;              (:divine-dust, :relics, :social). An optional :entrypoint
+ ;;              Clojure var overrides the lookup.
  ;;   :data    — a code-free loot type defined entirely in an EDN/JSON spec
  ;;              file (:source is a filesystem path, e.g. relative to config.edn),
  ;;              or written straight into this file under :inline (which wins
@@ -56,14 +55,17 @@
  ;;              available when running the app via java -jar
  ;;
  ;; Every plugin needs a unique :id; that id is what the :loot-table references.
- ;; (The Group Deception & Persuasion tracker is part of the app itself — it is
- ;; always available under Utilities and needs no plugin entry.)
  ;;
  ;; Any plugin may add :hidden? true to keep itself out of the UI's loot-type
  ;; picker, so it can only turn up by rolling the :loot-table. (It still appears
  ;; on the picker while it is the type on screen.)
  :plugins [{:type :builtin :id :divine-dust}
            {:type :builtin :id :relics}
+              ;; The Group Deception & Persuasion tracker: a manual character
+              ;; table (name, two bonuses, present?) that the UI renders an
+              ;; editor for, plus one action rolling 1d20 + the group bonus.
+              ;; Any plugin can declare such a table with :store/manual.
+           {:type :builtin :id :social}
            {:type :data :id :uniques :source "data/uniques.edn"}
            {:type :data :id :rings :source "data/rings.edn"}
               ;; The same DSL, written inline: handy for a short table you don't

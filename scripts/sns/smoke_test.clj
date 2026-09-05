@@ -24,7 +24,8 @@
     (java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers HttpResponse$BodyHandlers)
     (java.nio.file Files)
     (java.nio.file.attribute FileAttribute)
-    (java.time Duration)))
+    (java.time Duration)
+    (java.util.zip ZipInputStream)))
 
 (def ^:private client (HttpClient/newHttpClient))
 
@@ -41,6 +42,16 @@
           body (.body resp)]
       {:status (.statusCode resp)
        :body   (when-not (str/blank? body) (edn/read-string body))})))
+
+(defn- request-bytes
+  "A raw GET, for responses that are not EDN (the export ZIP)."
+  [base-url path]
+  (let [req  (-> (HttpRequest/newBuilder (URI/create (str base-url path)))
+                 (.timeout (Duration/ofSeconds 10))
+                 (.GET)
+                 (.build))
+        resp (.send client req (HttpResponse$BodyHandlers/ofByteArray))]
+    {:status (.statusCode resp) :body (.body resp)}))
 
 (defn- fail!
   "Throws rather than exiting directly, so `finally` blocks up the stack (e.g.
@@ -99,6 +110,7 @@
                                     (= :file storage-backend) (assoc :dir state-dir))
                 :plugins    (cond-> [{:type :builtin :id :divine-dust}
                                      {:type :builtin :id :relics}
+                                     {:type :builtin :id :social}
                                      {:type :data :id :uniques :source "data/uniques.edn"}
                                      {:type :data :id :rings :source "data/rings.edn"}
                                      ;; :chill-factor is unused by weather.py itself; it exists so
@@ -108,7 +120,20 @@
                                      ;; native image via reflection inside `bigdec` (dd6fc1a).
                                      {:type    :cli                                                       :id :weather :utility? true :label "Weather"
                                       :command [(python-command) "examples/cli-plugin/weather.py"]
-                                      :inputs  [{:id :chill-factor :label "Chill Factor" :type :decimal}]}]
+                                      :inputs  [{:id :chill-factor :label "Chill Factor" :type :decimal}]}
+                                     ;; A :cli plugin with declared state: the
+                                     ;; engine reads its collection into the
+                                     ;; request and applies the mutations it
+                                     ;; returns, so neither direction depends on
+                                     ;; the script understanding EDN.
+                                     {:type         :cli
+                                      :id           :tally
+                                      :utility?     true
+                                      :label        "Tally"
+                                      :command      [(python-command) "examples/cli-plugin/tally.py"]
+                                      :inputs       [{:id :who :label "Who" :type :text}]
+                                      :store/manual {:key-label "Name"
+                                                     :fields    [{:id :count :label "Count" :type :int :default 0}]}}]
                                     lib-path (conj ffi-plugin))
                 :loot-table (cond-> [{:id :divine-dust} {:id :relics} {:id :uniques} {:id :rings}]
                                     lib-path (conj {:id :ffi-loot}))}
@@ -166,6 +191,95 @@
       (println "  (no action offered this roll for" id "- skipping action check)")
       (exercise-action! base-url id (:action/event event)))))
 
+(defn- exercise-cli-state!
+  "A `:cli` plugin's state round trip: what it writes on one call it must read
+   back on the next, having crossed the process boundary as JSON both ways."
+  [base-url]
+  (println "  generate :tally (declared state, twice)")
+  (let [title #(:loot/title (expect-200! (request base-url :post "/api/generate"
+                                                  {:id :tally :inputs {:who "Vex"}})
+                                         "generate :tally"))
+        first-run (title)
+        second-run (title)]
+    ;; The counts are the assertion: reaching 2 means the first call's declared
+    ;; write was applied here and read back into the second call's request.
+    (when-not (= ["Vex \u00d7 1" "Vex \u00d7 2"] [first-run second-run])
+      (fail! "the CLI plugin did not read back what it wrote"
+             {:titles [first-run second-run]}))
+    (println "  generate :tally -> wrote 1, read it back, wrote 2")))
+
+(defn- exercise-manual-state!
+  "The `:store/manual` contract: an edited row is coerced, persisted, and read
+   back by the plugin that declared it."
+  [base-url]
+  (println "  state :social")
+  (let [written (expect-200! (request base-url :post "/api/state"
+                                      {:id        :social
+                                       :mutations {"Smoke" {:deception "7" :persuasion ""}}})
+                             "state :social")
+        row     (get (:store/state written) "Smoke")]
+    (when-not (= {:deception 7M :persuasion 0 :present? true} row)
+      (fail! "manual state was not coerced to the declared fields" {:row row}))
+    (let [vm (exercise-generate! base-url :social)]
+      (when-not (= "1/1 present" (:loot/subtitle vm))
+        (fail! "the plugin did not read back its manual state" {:body vm}))
+      (exercise-action! base-url :social (-> vm :loot/actions first :action/event)))
+    (expect-200! (request base-url :post "/api/state" {:id :social :mutations {"Smoke" nil}})
+                 "state :social retract")))
+
+(defn- exercise-export!
+  "Download the state ZIP and read its entries back. Exercises java.util.zip in
+   the native image, which is the only place that can prove it survived."
+  [base-url]
+  (let [{:keys [status body]} (request-bytes base-url "/api/export")]
+    (when (not= 200 status) (fail! (str "export returned HTTP " status) {:status status}))
+    (let [names (with-open [zip (ZipInputStream. (io/input-stream body))]
+                  (loop [acc #{}]
+                    (if-let [entry (.getNextEntry zip)]
+                      (recur (conj acc (.getName entry)))
+                      acc)))]
+      (when-not (contains? names "relics.edn")
+        (fail! "export ZIP is missing the relics collection" {:entries names}))
+      (println "  export ->" (str/join ", " (sort names))))))
+
+(defn- exercise-browser-storage!
+  "The :browser contract: the server holds nothing, so state travels in and
+   mutations come back out."
+  [base-url]
+  (let [gen        (expect-200! (request base-url :post "/api/generate" {:id :relics}) "generate :relics")
+        [id relic] (first (get-in gen [:store/mutations :relics]))]
+    (when-not id (fail! "browser storage returned no mutations to apply" {:body gen}))
+    (println "  generate :relics -> mutations returned")
+    (let [choice (-> gen :loot/actions first :action/event second :params :choice)
+          acted  (expect-200! (request base-url :post "/api/action"
+                                       {:id     :relics
+                                        :action :level-up
+                                        :params (cond-> {:relic-id id} choice (assoc :choice choice))
+                                        :state  {:relics {id relic}}})
+                              "action :relics :level-up")]
+      (when-not (get-in acted [:store/mutations :relics id])
+        (fail! "browser storage returned no mutation for the levelled relic" {:body acted}))
+      (println "  action :relics :level-up -> state travelled both ways")))
+  (let [rolled (expect-200! (request base-url :post "/api/roll" {}) "roll")]
+    ;; A roll wraps the view-model; its writes must still sit at the top level.
+    (when (contains? (:view-model rolled) :store/mutations)
+      (fail! "roll left mutations buried inside :view-model" {:body rolled}))
+    (println "  roll ->" (:id rolled)
+             (if (:store/mutations rolled) "with mutations at the top level" "(stateless type)"))))
+
+(defn- exercise-browser-manual-state!
+  "A manual-state edit under `:browser`: the collection travels in, the coerced
+   write comes back out for the client's IndexedDB."
+  [base-url]
+  (let [resp (expect-200! (request base-url :post "/api/state"
+                                   {:id        :social
+                                    :state     {:social {"Vex" {:deception 5 :persuasion 2 :present? true}}}
+                                    :mutations {"Vex" {:deception 5 :persuasion 2 :present? false}}})
+                          "state :social")]
+    (when-not (false? (get-in resp [:store/mutations :social "Vex" :present?]))
+      (fail! "manual-state edit did not come back as a mutation" {:body resp}))
+    (println "  state :social -> manual edit travelled both ways")))
+
 (defn- run-plugin-suite! [base-url ffi-available?]
   (expect-200! (request base-url :get "/api/capabilities" nil) "capabilities")
   (exercise-generate! base-url :divine-dust)
@@ -173,9 +287,19 @@
   (exercise-generate! base-url :rings)
   (exercise-generate! base-url :weather {:chill-factor "1.5"})
   (exercise-statefully! base-url :relics)
+  (exercise-manual-state! base-url)
+  (exercise-cli-state! base-url)
   (if ffi-available?
     (exercise-statefully! base-url :ffi-loot)
     (println "  (skipping :ffi-loot - no shared library built on this runner)")))
+
+(defn- run-suite! [base-url ffi-available? storage-backend]
+  (if (= :browser storage-backend)
+    (do (expect-200! (request base-url :get "/api/capabilities" nil) "capabilities")
+        (exercise-browser-storage! base-url)
+        (exercise-browser-manual-state! base-url))
+    (do (run-plugin-suite! base-url ffi-available?)
+        (exercise-export! base-url))))
 
 (defn- run-backend! [{:keys [bin-path lib-path port storage-backend] :as opts}]
   (println "=== backend:" storage-backend "===")
@@ -185,7 +309,7 @@
         proc (start-server! bin-path config-path)]
     (try
       (wait-for-ready! base-url proc)
-      (run-plugin-suite! base-url (some? lib-path))
+      (run-suite! base-url (some? lib-path) storage-backend)
       (finally
         (stop-server! proc)))))
 
@@ -202,7 +326,8 @@
     (let [target (str (io/file (temp-dir! "sns-smoke-lib") (str "libloot." (lib-extension))))
           lib-path (build-ffi-plugin! target)]
       (run-backend! {:bin-path bin-path :lib-path lib-path :port 18089 :storage-backend :file})
-      (run-backend! {:bin-path bin-path :lib-path lib-path :port 18090 :storage-backend :memory}))
+      (run-backend! {:bin-path bin-path :lib-path lib-path :port 18090 :storage-backend :memory})
+      (run-backend! {:bin-path bin-path :lib-path lib-path :port 18091 :storage-backend :browser}))
     (println "Smoke test passed.")
     (System/exit 0)
     (catch Exception e

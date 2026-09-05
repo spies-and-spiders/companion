@@ -3,7 +3,8 @@
     [clojure.test :refer [deftest is testing]]
     [sns.builtin.cli :as cli]
     [sns.sdk.protocols :as p]
-    [sns.sdk.schema :as schema]))
+    [sns.sdk.schema :as schema]
+    [sns.server.store.edn :as edn-store]))
 
 (deftest converts-stdout-json-to-view-model
   (testing "friendly JSON on stdout becomes a namespaced, valid view-model"
@@ -87,3 +88,64 @@
           vm  (p/handle-action gen {} :bump {:n 5})]
       (is (schema/validate ::schema/view-model vm))
       (is (= "bump:5" (:loot/title vm))))))
+
+;; --- declared state (`:store/collections` / `:store/manual`) ------------------
+
+(def ^:private manual
+  {:key-label "Character"
+   :list?     true
+   :fields    [{:id :crystal :label "Crystal" :type :text}
+               {:id :chance :label "Flare chance (%)" :type :int :default 10}]})
+
+(defn- store-of [state]
+  (edn-store/->MemoryStore (atom state)))
+
+(deftest declared-storage-surfaces-in-loot-spec
+  (testing "config-declared storage reaches the spec, so the UI renders its editor"
+    (let [spec (p/loot-spec (cli/generator {:id :crystals :command ["true"] :store/manual manual}))]
+      (is (= manual (:store/manual spec)))
+      (is (schema/validate ::schema/loot-spec spec))))
+  (testing "a plugin declaring nothing gets no storage keys"
+    (let [spec (p/loot-spec (cli/generator {:id :echo :command ["true"]}))]
+      (is (not (contains? spec :store/manual)))
+      (is (not (contains? spec :store/collections))))))
+
+(deftest declared-collections-are-read-and-sent-as-state
+  (let [cmd ["python3" "-c"
+             (str "import sys,json; d=json.load(sys.stdin); "
+                  "print(json.dumps({'title': json.dumps(d.get('state'), sort_keys=True)}))")]
+        state {:crystals {"Quincy" [{:crystal "Blaze Wretch" :chance 27}]}
+               :other    {"x" {:n 1}}}]
+    (testing ":store/manual implies the collection named after the plugin's id"
+      (let [gen (cli/generator {:id :crystals :command cmd :store/manual manual})
+            vm  (p/generate gen {:inputs {} :store (store-of state)})]
+        (is (= "{\"crystals\": {\"Quincy\": [{\"chance\": 27, \"crystal\": \"Blaze Wretch\"}]}}"
+               (:loot/title vm)))))
+    (testing ":store/collections ships exactly what it names"
+      (let [gen (cli/generator {:id :crystals :command cmd :store/collections [:other]})
+            vm  (p/generate gen {:inputs {} :store (store-of state)})]
+        (is (= "{\"other\": {\"x\": {\"n\": 1}}}" (:loot/title vm)))))
+    (testing "a plugin declaring nothing is sent no state, and the store is untouched"
+      (let [gen (cli/generator {:id :echo :command cmd})
+            vm  (p/generate gen {:inputs {} :store (reify p/Store
+                                                     (setup! [_])
+                                                     (read-collection [_ _]
+                                                       (throw (ex-info "should not read" {}))))})]
+        (is (= "null" (:loot/title vm)))))
+    (testing "an action call carries the same state"
+      (let [gen (cli/generator {:id :crystals :command cmd :store/manual manual})
+            vm  (p/handle-action gen {:store (store-of state)} :roll {})]
+        (is (= "{\"crystals\": {\"Quincy\": [{\"chance\": 27, \"crystal\": \"Blaze Wretch\"}]}}"
+               (:loot/title vm)))))))
+
+(deftest returned-mutations-become-declared-writes
+  (testing "a script's `mutations` reach the view-model with entry keys still strings"
+    (let [cmd ["python3" "-c"
+               (str "import sys,json; json.load(sys.stdin); "
+                    "print(json.dumps({'title':'Logged','mutations':"
+                    "{'crystals':{'Quincy':{'flares':3},'Viktor':None}}}))")]
+          gen (cli/generator {:id :crystals :command cmd :store/manual manual})
+          vm  (p/generate gen {:inputs {} :store (store-of {})})]
+      (is (schema/validate ::schema/view-model vm))
+      (is (= {:crystals {"Quincy" {:flares 3} "Viktor" nil}} (:store/mutations vm))
+          "collection names keywordise; the keys within a collection do not"))))

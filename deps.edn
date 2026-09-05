@@ -4,8 +4,6 @@
          metosin/malli                        {:mvn/version "0.20.1"}
          aero/aero                            {:mvn/version "1.1.6"}
          org.flatland/ordered                 {:mvn/version "1.15.12"}
-         com.github.seancorfield/next.jdbc    {:mvn/version "1.3.1118"}
-         org.mariadb.jdbc/mariadb-java-client {:mvn/version "3.5.10"}
          metosin/jsonista                     {:mvn/version "1.0.0"}
          hato/hato                            {:mvn/version "1.0.0"}
          metosin/muuntaja                     {:mvn/version "0.6.11"}
@@ -14,7 +12,6 @@
          metosin/reitit-interceptors          {:mvn/version "0.10.1"}
          metosin/ring-http-response           {:mvn/version "0.9.5"}
          metosin/reitit-sieppari              {:mvn/version "0.10.1"}
-
          ring/ring-core              {:mvn/version "1.15.5"}
          com.s-exp/hirundo           {:mvn/version "1.0.0-alpha214"
                                       :exclusions  [io.helidon.webserver/helidon-webserver-grpc]}

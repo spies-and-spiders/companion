@@ -31,16 +31,20 @@
    its `:command` (a vector of program + args). `:utility?` marks a session tool
    rather than loot (grouped separately in the UI, barred from the :loot-table),
    and `:inputs` declares the form fields whose values are sent as the request's
-   `inputs`."
-  [{:keys [id command label utility? inputs]}]
-  (reify
-    p/LootGenerator
-    (loot-spec [_]
-      (cond-> {:id id :label (or label (name id))}
-              utility? (assoc :utility? true)
-              (seq inputs) (assoc :inputs (vec inputs))))
-    (generate [_ ctx]
-      (run id command {:inputs (:inputs ctx)}))
-    p/LootAction
-    (handle-action [_ _ action params]
-      (run id command {:action action :params params}))))
+   `inputs`. `:store/collections`/`:store/manual` declare state: what they name is
+   read and sent as `state`, and the `mutations` the script returns are applied
+   by the engine."
+  [{:keys [id command label utility? inputs] :as plugin}]
+  (let [spec  (merge (cond-> {:id id :label (or label (name id))}
+                             utility? (assoc :utility? true)
+                             (seq inputs) (assoc :inputs (vec inputs)))
+                     (io/spec-storage plugin))
+        colls (io/collections plugin)]
+    (reify
+      p/LootGenerator
+      (loot-spec [_] spec)
+      (generate [_ ctx]
+        (run id command (io/with-state ctx colls {:inputs (:inputs ctx)})))
+      p/LootAction
+      (handle-action [_ ctx action params]
+        (run id command (io/with-state ctx colls {:action action :params params}))))))

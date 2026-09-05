@@ -15,7 +15,7 @@ There are five types of loot plugins, all used to define custom loot:
 
 All five are configured the same way in `config.edn`:
 ```clojure
-{:storage    {:backend :mysql :url "jdbc:mariadb://localhost:3306/sns"}
+{:storage    {:backend :file :dir "./state"}
  :plugins    [{:type :data    :id :uniques :source "data/uniques.edn"}
               {:type :cli     :id :weather :label "Weather"
                               :command ["python3" "examples/cli-plugin/weather.py"]}
@@ -23,7 +23,8 @@ All five are configured the same way in `config.edn`:
                               :symbol "generate" :free-symbol "loot_free"}
               {:type :jar     :id :custom  :jar "plugins/custom.jar"
                               :entrypoint my.plugin/generator}
-              {:type :builtin :id :relics}]
+              {:type :builtin :id :relics}
+              {:type :builtin :id :social}]
  :loot-table [{:id :uniques :weight 30} {:id :relics :weight 10}]}
 ```
 
@@ -44,11 +45,39 @@ chance. Whichever hidden type is on screen appears on the picker while it is the
 the rail always reflects what you're looking at. A hidden type that is in no
 `:loot-table` is unreachable; nothing stops you configuring that.
 
-Separate from plugins, the **Group Deception & Persuasion tracker** is part of the app
-itself: always available under Utilities, with its own page (add characters and their
-two bonuses, tick/untick who's present, roll 1d20 + the group bonus). Its state
-persists via the configured storage under the `__social` collection — the `__` prefix
-marks internal collections, which can never clash with plugin loot-type ids.
+A plugin may declare **manual state** with `:store/manual` in its loot-spec: a table
+the DM fills in by hand rather than one the app generates. The UI renders a generic
+editor for it above the plugin's own form, and the plugin reads it back through the
+store like any other collection.
+
+```clojure
+{:id           :social
+ :label        "Group Social"
+ :utility?     true
+ :store/manual {:key-label "Character"
+                :fields    [{:id :deception :label "Deception" :type :decimal :default 0}
+                            {:id :persuasion :label "Persuasion" :type :decimal :default 0}
+                            {:id :present? :label "Present" :type :bool :default true}]}}
+```
+
+Each key is a row and `:fields` are its columns, declared as ordinary input fields and
+coerced to their types on the way in (a blank falls back to `:default`). With
+`:list? true` a row holds a *sequence* of those field maps instead of one, for a key
+that owns several records:
+
+```clojure
+:store/manual {:key-label "Character" :list? true
+               :fields [{:id :soul :label "Soul" :type :text}
+                        {:id :proc-chance :label "Proc chance" :type :decimal :default 0}]}
+```
+
+The state lives in the first of the plugin's `:store/collections` (its `:id` by
+default) and is stored, exported and hand-editable exactly like any other collection.
+
+The shipped **`:social` builtin** — the Group Deception & Persuasion tracker — is
+exactly this: a manual character table plus one action that rolls 1d20 + the group
+bonus over whoever is present. Add `{:type :builtin :id :social}` to `:plugins` to
+use it.
 
 You may provide **`config.json`** instead of `config.edn`; simply replace all keywords (e.g. `:weight`) and symbols (e.g. `my.plugin/generator`) with regular JSON strings. 
 
@@ -74,7 +103,8 @@ The UI renders this shape generically — a new loot type needs **no** UI code, 
                                                      :options ["fire" "cold"]}}}]}]
  :loot/actions  [{:action/label "Level up"
                   :action/event [:loot/action {:id :relics :action :level-up}]}]
- :loot/state    {…}}                             ; optional, opaque
+ :loot/state    {…}                              ; optional, opaque
+ :store/mutations {:relics {"r1" {…}}}}          ; optional — writes to apply
 ```
 
 **Titles and bodies are templates, not finished text.** Nothing is rendered on
@@ -108,6 +138,11 @@ and hand back with the next action (as `ctx`'s `:view-model`). Keep it to
 progression bookkeeping that has no place in the rendered item — an upgrade
 `:path`, a stored id. Everything the DM can *see* should be read back off the
 view-model itself.
+
+`:store/mutations` is how a stateful type writes: `{<collection> {<key>
+<value>}}`, a nil value retracting that key. The engine applies it *after* this
+view-model validates, so a plugin that returns something unusable changes
+nothing. See [docs/storage.md](docs/storage.md).
 
 or
 
@@ -228,14 +263,25 @@ reporter; `GET /api/capabilities` tells the UI whether to show the button.
 
 ### `Store` (optional — custom persistence)
 ```clojure
-(fetch [this coll id]) (query [this coll q]) (put! [this coll id doc]) (update! [this coll id f])
+(read-collection [this coll])   ; writes are declared, see below
 ```
-Three built-in backends, chosen by config `:storage {:backend ...}`:
-`:mysql` (any MySQL-compatible server via JDBC `:url` — see
-[docs/storage.md](docs/storage.md)), `:file` (one transit-encoded file per
-loot-type under `:dir`, default `./state`), and `:memory` (default; for tests/dev).
-Docs are transit-serialised so Clojure values (e.g. keyword-valued upgrade mods)
-round-trip losslessly.
+State is a set of named collections, each a map of key to value; a collection
+needs no declaration and reads as `{}` until written to. Three backends, chosen
+by config `:storage {:backend ...}`: `:memory` (the default), `:file` (one EDN
+file per collection under `:dir`, default `./state`, and the files are the
+source of truth — hand edits propagate live) and `:browser` (IndexedDB, with the
+state travelling on each request).
+
+Reads take and return plain data, so plugins work unchanged whichever backend is
+configured. Writes are not a method: a plugin puts them on its view-model under
+`:store/mutations` (`{<collection> {<key> <value>}}`, a nil value retracting) and
+the engine applies them once that view-model has validated — so a call that ends
+in an error cannot leave state changed behind it.
+
+A loot type's `:store/collections` declares what it uses, defaulting to
+`[<plugin-id>]`. Available to `:builtin` and `:jar` plugins;
+`:cli` and `:ffi` persist their own state.
+See [docs/storage.md](docs/storage.md).
 
 ---
 
@@ -486,6 +532,9 @@ the transport differs. The engine sends a **request** and reads back an **output
                                {"body": "…", "metadata": ["obscured"]}]}]}
 ```
 
+A plugin that needs persistent state gets it too — see
+[State](#state-storecollections-storemanual) below.
+
 - **`:cli`** runs your `:command`, writing the request to **stdin** and reading the
   output from **stdout**. A non-zero exit is an error, and whatever the command
   wrote to **stderr** becomes the error the DM sees. See
@@ -538,9 +587,47 @@ symbol** with an action request (note `action`/`params` instead of `inputs`):
 ```
 The plugin returns a fresh output (which may itself carry the next round of
 `actions`). Branch on whether `action` is present in the request to tell a generate
-from an action. A `:cli` plugin must persist any state itself (a file or an external
-store) — the engine does not persist it; an `:ffi` plugin runs in-process and may
-instead hold state in memory for the app's lifetime.
+from an action.
+
+### State (`store/collections`, `store/manual`)
+
+An external plugin never touches the store. It **declares** the collections it
+uses on its config entry; the engine reads them and sends them as the request's
+`state`, and applies the `mutations` the plugin returns:
+
+```json
+// request → plugin                    // output ← plugin
+{"inputs": {"rounds": 5},               {"title": "3 flares over 5 rounds",
+ "state": {"crystals": {                 "mutations": {"crystals": {
+   "Quincy": {"chance": 27}}}}             "Quincy": {"chance": 32},
+                                           "Viktor": null}}}
+```
+
+`mutations` is `{<collection>: {<key>: <value>}}`, a `null` retracting that key.
+The engine applies it only once the output has validated, so a plugin that errors
+changes nothing. Every backend works the same way, including `:browser` — the
+plugin never learns which is configured, and never parses or writes EDN.
+
+Declare state one of two ways on the config entry:
+
+- **`store/collections`** — the collections to read, e.g. `["crystals"]`.
+- **`store/manual`** — a DM-maintained table the UI renders an editor for, held
+  in the collection named after the plugin's `id`. Same shape as a builtin's
+  `:store/manual`: a `key-label`, the `fields` of a row, and `list?` when a key
+  owns several records.
+
+```json
+{"type": "cli", "id": "crystals", "label": "Crystal Flares", "utility?": true,
+ "command": ["./5e-cli", "crystal", "procs"],
+ "inputs": [{"id": "rounds", "label": "Combat rounds", "type": "int", "default": 10}],
+ "store/manual": {"key-label": "Character",
+                  "fields": [{"id": "chance", "label": "Flare chance (%)", "type": "int",
+                              "default": 10}]}}
+```
+
+`examples/cli-plugin/tally.py` is a runnable version of both directions.
+
+A plugin that declares neither is sent no `state` and costs no reads.
 
 ---
 

@@ -46,7 +46,26 @@
                  ;; Overrides the UI's "Generate <label>" button text — useful
                  ;; when generating means something else (e.g. "Add character").
                 [:generate-label {:optional true} string?]
+                 ;; The store collections this type reads or writes. Defaults to
+                 ;; a single collection named after :id. Under :browser storage
+                 ;; the client ships exactly these with each request.
+                [:store/collections {:optional true} [:sequential keyword?]]
+                 ;; Declares a DM-owned table in the first of those collections:
+                 ;; the UI renders a generic editor for it and the plugin reads
+                 ;; it back through the store. See `::manual-state`.
+                [:store/manual {:optional true} ::manual-state]
                 [:inputs {:optional true} [:sequential ::field]]]
+
+   ;; --- manually-managed state (the `:store/manual` editor) ---
+   ;; A collection the DM fills in by hand rather than one the app generates: a
+   ;; character table, a soul ledger. Each key is a row, and `:fields` are the
+   ;; columns it holds — coerced to their declared types on the way in, with a
+   ;; blank falling back to `:default`. With `:list?` the row holds a *sequence*
+   ;; of those field maps instead of one, for a key that owns several records.
+   ::manual-state [:map
+                   [:key-label {:optional true} string?]
+                   [:list? {:optional true} boolean?]
+                   [:fields [:sequential ::field]]]
 
    ;; --- view-model (the only contract the UI renderer understands) ---
    ::action [:map
@@ -109,7 +128,15 @@
                  ;; rendered item. The *displayed* values live in `:item/vars`
                  ;; and are the source of truth for everything else, so keep
                  ;; this to what genuinely cannot be read back off the item.
-                 [:loot/state {:optional true} any?]]
+                 [:loot/state {:optional true} any?]
+                 ;; Writes the plugin wants made. Declared rather than performed,
+                 ;; so the engine can apply them only once this view-model has
+                 ;; validated — a call that fails changes nothing.
+                 [:store/mutations {:optional true} ::mutations]]
+
+   ;; `{<collection> {<key> <value>}}`; a nil value retracts that key, and keys
+   ;; left out are untouched.
+   ::mutations [:map-of keyword? [:map-of any? any?]]
 
    ;; --- external plugin I/O contract (:cli over stdio, :ffi over a C ABI) ---
    ;; The "friendly", un-namespaced JSON an external plugin exchanges, mapped
@@ -121,12 +148,18 @@
    ;; Modelled as a union so codegen emits two request types and the
    ;; generate-vs-action split is structural. Not runtime-validated — the engine
    ;; produces it.
+   ;; `state` carries the collections the plugin declared with
+   ;; `:store/collections`/`:store/manual`, read for it by the engine — an
+   ;; external plugin never touches the store itself, and writes back by
+   ;; returning `mutations`.
    ::plugin-request [:or
                      [:map
-                      [:inputs [:map-of keyword? any?]]]
+                      [:inputs [:map-of keyword? any?]]
+                      [:state {:optional true} [:map-of keyword? [:map-of any? any?]]]]
                      [:map
                       [:action string?]
-                      [:params {:optional true} [:map-of keyword? any?]]]]
+                      [:params {:optional true} [:map-of keyword? any?]]
+                      [:state {:optional true} [:map-of keyword? [:map-of any? any?]]]]]
 
    ;; What the plugin returns. `action` is a bare name the adapter keywordises to
    ;; route the follow-up back to the same plugin.
@@ -148,7 +181,11 @@
                     [:title string?]
                     [:subtitle {:optional true} string?]
                     [:sections {:optional true} [:sequential ::plugin-section]]
-                    [:actions {:optional true} [:sequential ::plugin-action]]]
+                    [:actions {:optional true} [:sequential ::plugin-action]]
+                    ;; Writes to apply, `{<collection> {<key> <value>}}` with a
+                    ;; null retracting. The engine applies them once this output
+                    ;; has validated, so a plugin that errors changes nothing.
+                    [:mutations {:optional true} ::mutations]]
 
    ;; --- upgrade-graph DSL (mod state + progression) ---
    ;; `::option` and `::upgrades` are mutually recursive, so the recursive edges
@@ -224,8 +261,8 @@
              [:port {:optional true} int?]]
 
    ::storage [:map
-              [:backend keyword?]
-              [:url {:optional true} string?]
+              [:backend [:enum :file :memory :browser]]
+              ;; :file only — the directory holding one EDN file per collection.
               [:dir {:optional true} string?]]
 
    ;; Dispatch coerces `:type` to a keyword so a JSON config (where it is the
@@ -251,6 +288,8 @@
                     [:command [:sequential string?]]
                     [:utility? {:optional true} boolean?]
                     [:label {:optional true} string?]
+                    [:store/collections {:optional true} [:sequential keyword?]]
+                    [:store/manual {:optional true} ::manual-state]
                         ;; An external plugin has no loot-spec of its own, so it
                         ;; declares its input fields here; the engine folds them
                         ;; into the spec and sends the collected values as
@@ -270,6 +309,8 @@
                     [:free-symbol {:optional true} string?]
                     [:utility? {:optional true} boolean?]
                     [:label {:optional true} string?]
+                    [:store/collections {:optional true} [:sequential keyword?]]
+                    [:store/manual {:optional true} ::manual-state]
                     [:inputs {:optional true} [:sequential ::field]]]]
                  ;; A :jar plugin names its generator either as a Clojure
                  ;; :entrypoint factory var or as a :class with a 0-arity

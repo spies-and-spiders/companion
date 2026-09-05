@@ -1,35 +1,30 @@
 package sns.sdk;
 
-import java.util.function.Function;
-
 /**
- * Persistence abstraction. Built-in backends are a MySQL-compatible SQL server, a
- * file per collection, or in-memory; a plugin may supply its own by implementing
- * this interface. Mirrors the {@code sns.sdk.protocols/Store} protocol. {@code
- * coll} is a collection keyword and {@code id} a document key.
+ * Reads over persisted state, for stateful plugins. State is a set of named
+ * collections, each a map of key to value; a collection needs no declaration and
+ * reads as an empty map until something is written to it. Available to
+ * in-process plugins only; CLI and FFI plugins persist their own state. Mirrors
+ * the {@code sns.sdk.protocols/Store} protocol.
+ *
+ * <p>Writing is declarative and not part of this interface: put the changes on
+ * your view-model under {@code :store/mutations} and the engine applies them
+ * once the view-model has validated, so a plugin cannot leave state changed by a
+ * call that then fails. Declare the collections you use with {@code
+ * :store/collections} in your loot-spec; it defaults to a single collection
+ * named after the plugin's {@code :id}.
  */
 public interface Store {
 
     /**
-     * Prepare the backend for use (e.g. create a schema, ensure a directory
-     * exists). Called once at startup, before any other method; construction
-     * itself must stay side-effect-free. Default is a no-op.
+     * Prepare the backend for use. Called once at startup, before any other
+     * method; construction itself must stay side-effect-free. Default is a no-op.
      */
     default void setup() {}
 
-    /** Return the document at {@code id}, or {@code null}. */
-    Object fetch(Object coll, Object id);
-
-    /** Return documents in {@code coll} matching query map {@code q}. */
-    Object query(Object coll, Object q);
-
-    /** Insert or replace the document at {@code id}. Returns {@code doc}. */
-    Object put(Object coll, Object id, Object doc);
-
     /**
-     * Atomically apply {@code f} to the document at {@code id} and store the
-     * result. Returns the new document. Invoke {@code f} with the current document,
-     * e.g. {@code f.invoke(current)}.
+     * Return the whole collection {@code coll} (a keyword) as a map, or an empty
+     * map when absent.
      */
-    Object update(Object coll, Object id, Function<?, ?> f);
+    Object readCollection(Object coll);
 }

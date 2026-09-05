@@ -4,7 +4,7 @@
     [sns.sdk.protocols :as p]
     [sns.server.config :as config]
     [sns.server.engine :as engine]
-    [sns.server.store.memory :as memory]))
+    [sns.server.store.edn :as edn-store]))
 
 (def ^:private test-config
   {:plugins    [{:type :builtin :id :divine-dust :entrypoint 'sns.builtin.dust/generator}]
@@ -12,8 +12,8 @@
 
 (deftest builds-registry-and-generates
   (let [eng (engine/create test-config)]
-    (testing "loot-specs lists the registered type"
-      (is (= [{:id :divine-dust :label "Divine Dust"}]
+    (testing "loot-specs lists the registered type, with its collections defaulted"
+      (is (= [{:id :divine-dust :label "Divine Dust" :store/collections [:divine-dust]}]
              (engine/loot-specs eng))))
     (testing "generate returns a validated view-model"
       (is (= {:loot/title    "Divine Dust"
@@ -104,7 +104,7 @@
     ;; Load a committed, hermetic fixture rather than the git-ignored repo-root
     ;; config.edn (absent in CI). Override the store to keep the test in-memory.
     (let [eng (engine/create (config/load-config "test/resources/config.edn")
-                             {:store (memory/create)})]
+                             {:store (edn-store/create {:backend :memory})})]
       (is (= "Divine Dust" (:loot/title (engine/generate eng :divine-dust))))
       (is (re-find #"Relic" (:loot/subtitle (engine/generate eng :relics)))))))
 
@@ -243,3 +243,42 @@
                                                                 (assoc vm' :loot/state {:count 5})))))))))
     (testing "an action invoked without a view-model still works (nil :loot/state)"
       (is (= "count=1" (:loot/title (engine/handle-action eng :echo-state :bump {} nil)))))))
+
+(defn- declaring
+  "A generator returning `view-model` verbatim, for exercising the engine's
+   handling of the writes a plugin declares on it."
+  [view-model]
+  (reify p/LootGenerator
+    (loot-spec [_] {:id :writer :label "Writer"})
+    (generate [_ _] view-model)))
+
+(deftest declared-writes-are-applied-after-validation
+  (let [store (doto (edn-store/create {:backend :memory}) p/setup!)
+        eng   (-> (engine/create {:plugins []} {:store store})
+                  (assoc-in [:registry :writer]
+                            (declaring {:loot/title      "Written"
+                                        :store/mutations {:things {"a" {:n 1}}}})))]
+    (testing "a plugin's declared writes reach the store"
+      (is (= "Written" (:loot/title (engine/generate eng :writer))))
+      (is (= {"a" {:n 1}} (p/read-collection store :things))))
+    (testing "an invalid view-model leaves the store exactly as it was"
+      (let [eng (assoc-in eng [:registry :writer]
+                          ;; no :loot/title, so validation rejects it
+                          (declaring {:loot/subtitle   "Broken"
+                                      :store/mutations {:things {"a" nil "b" {:n 2}}}}))]
+        (is (thrown? Exception (engine/generate eng :writer)))
+        (is (= {"a" {:n 1}} (p/read-collection store :things))
+            "the retraction and the insert both went nowhere")))))
+
+(deftest browser-state-is-read-and-written-per-request
+  (let [eng (-> (engine/create {:storage {:backend :browser} :plugins []})
+                (assoc-in [:registry :writer]
+                          (declaring {:loot/title      "Written"
+                                      :store/mutations {:things {"b" {:n 2}}}})))]
+    (testing "the client's state is what the plugin reads, and is not kept"
+      (let [seeded (engine/with-state eng {:things {"a" {:n 1}}})]
+        (is (= {"a" {:n 1}} (p/read-collection (:store seeded) :things)))
+        (is (= {} (p/read-collection (:store (engine/with-state eng nil)) :things)))))
+    (testing "declared writes come back on the view-model for the client to apply"
+      (let [vm (engine/generate (engine/with-state eng {:things {"a" {:n 1}}}) :writer)]
+        (is (= {:things {"b" {:n 2}}} (:store/mutations vm)))))))
