@@ -9,6 +9,7 @@
          :inputs        {}    ; collected input-form values
          :drag          nil   ; in-progress list-input reorder: {:field :from}
          :result        nil   ; the latest view-model
+         :results       {}    ; last view-model per loot-type id (session-only)
          :error         nil
          :loading?      false
          :report?       false ; whether a reporter (e.g. Discord) is configured

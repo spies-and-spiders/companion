@@ -147,7 +147,8 @@
   [id spec]
   (reify p/LootGenerator
     (loot-spec [_]
-      (cond-> {:id id :label (:label spec)}
+      (cond-> {:id    id
+               :label (:label spec)}
               (:utility? spec) (assoc :utility? true)
               (:inputs spec) (assoc :inputs (:inputs spec))))
     (generate [_ ctx]
@@ -168,7 +169,9 @@
     (reify p/LootGenerator
       (loot-spec [_]
         (let [spec @spec-atom]
-          (cond-> {:id id :label (:label spec) :inputs (into [reload-field] (:inputs spec))}
+          (cond-> {:id     id
+                   :label  (:label spec)
+                   :inputs (into [reload-field] (:inputs spec))}
                   (:utility? spec) (assoc :utility? true))))
       (generate [_ ctx]
         (when (get-in ctx [:inputs :__reload?])

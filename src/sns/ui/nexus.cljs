@@ -86,6 +86,14 @@
                    on-err)))
         (.catch (fn [e] (on-err {:error (str e)}))))))
 
+(defn- stash-fx
+  "Effects that park the on-screen result under the loot type it belongs to, so
+   coming back to that type restores it."
+  [{:keys [selected result]}]
+  (if (and selected result)
+    [[:fx/assoc-in [:results selected] result]]
+    []))
+
 (defn- result-effect [{:keys [dispatch]} system collections req]
   (dispatch [[:fx/assoc-in [:loading?] true] [:fx/assoc-in [:error] nil]
              [:fx/assoc-in [:report-status] nil]])
@@ -132,11 +140,12 @@
                                      ;; roll returns {:id ... :view-model ...} so we can
                                      ;; jump the picker to the discipline that was rolled.
                                      (fn [{:keys [id view-model]}]
-                                       (dispatch [[:fx/assoc-in [:selected] id]
+                                       (dispatch (into (stash-fx @system)
+                                                 [[:fx/assoc-in [:selected] id]
                                                   [:fx/assoc-in [:inputs] {}]
                                                   [:fx/assoc-in [:result] view-model]
                                                   [:fx/assoc-in [:editing?] false]
-                                                  [:fx/assoc-in [:loading?] false]]))
+                                                  [:fx/assoc-in [:loading?] false]])))
                                      (fn [err] (dispatch [[:fx/assoc-in [:error] (:error err)]
                                                           [:fx/assoc-in [:loading?] false]])))))
 
@@ -172,14 +181,15 @@
   (some #(when (= id (:id %)) (:store/manual %)) loot-types))
 
 (nxr/register-action! :ui/select-type
-                      (fn [{:keys [loot-types]} id]
-                        (cond-> [[:fx/assoc-in [:selected] id]
+                      (fn [{:keys [loot-types results] :as state} id]
+                        (cond-> (into (stash-fx state)
+                                [[:fx/assoc-in [:selected] id]
                                  [:fx/assoc-in [:inputs] {}]
                                  [:fx/assoc-in [:drag] nil]
-                                 [:fx/assoc-in [:result] nil]
+                                 [:fx/assoc-in [:result] (get results id)]
                                  [:fx/assoc-in [:manual] nil]
                                  [:fx/assoc-in [:manual-key] ""]
-                                 [:fx/assoc-in [:editing?] false]]
+                                 [:fx/assoc-in [:editing?] false]])
                                 (manual-spec loot-types id)
                                 (conj [:fx/manual-state id nil]))))
 
