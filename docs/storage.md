@@ -59,6 +59,25 @@ The exception is a loot-table roll, where the type is chosen server-side and the
 client cannot know which declaration applies — it ships every declared
 collection instead.
 
+## Manual state
+
+A loot type may declare its *first* collection as a table the DM fills in by
+hand, with `:store/manual` in its loot-spec. The UI renders a generic editor for
+it — a row per key, the declared `:fields` inline — and `POST /api/state`
+(`{:id :mutations}`) writes it, coercing each field to its declared type and
+falling back to `:default` when one is left blank. Everything else about the
+collection is unchanged: the plugin reads it with `read-collection`, and it is
+stored, exported and hand-editable like any other.
+
+```clojure
+;; state/social.edn — written by the editor, editable by hand
+{"Vex"   {:deception 7M :persuasion 3M :present? true}
+ "Ilrec" {:deception 1M :persuasion -2M :present? false}}
+```
+
+See the README for the `:store/manual` declaration, including `:list?` for a key
+that owns several records.
+
 ## The `:file` backend
 
 The files are the source of truth. An edit made by hand while the app is running
@@ -99,6 +118,5 @@ The button builds the archive wherever the state is — in the page for
 write the same thing: one pretty-printed `<collection>.edn` per collection, the
 same files the `:file` backend keeps.
 
-Because manual state — a character table, a soul ledger — is data the DM typed
-rather than data the app generated, `:file` is the safer default for anything
-long-lived.
+Because manual state is data the DM typed rather than data the app generated,
+`:file` is the safer default for anything long-lived.

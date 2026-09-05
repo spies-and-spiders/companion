@@ -77,23 +77,47 @@
     (is (= 200 (:status resp)))
     (is (= {:loot/title "Dust"} @sink))))
 
-(deftest social-endpoints
-  (let [app (http/app (engine/create config {:store (edn-store/create {:backend :memory})}))]
-    (testing "the tracker is always available, regardless of configured plugins"
-      (let [resp (post app "/api/social" {})]
+(def ^:private social-config
+  (update config :plugins conj {:type :builtin :id :social}))
+
+(deftest state-endpoint
+  (let [app (http/app (engine/create social-config {:store (edn-store/create {:backend :memory})}))]
+    (testing "a manual collection starts empty"
+      (let [resp (post app "/api/state" {:id :social})]
         (is (= 200 (:status resp)))
-        (is (= {:characters [] :deception 0 :persuasion 0} (body resp)))))
-    (testing "the full character lifecycle round-trips"
-      (is (= [{:name "Alice" :deception 7 :persuasion 3 :present? true}]
-             (:characters (body (post app "/api/social/character"
-                                      {:character {:name "Alice" :deception "7" :persuasion "3"}})))))
-      (is (= [false] (mapv :present? (:characters (body (post app "/api/social/toggle" {:name "Alice"}))))))
-      (let [{:keys [roll]} (body (post app "/api/social/roll" {:skill :persuasion}))]
-        (is (= 0 (:bonus roll)))
-        (is (= (:die roll) (:total roll))))
-      (is (= [] (:characters (body (post app "/api/social/remove" {:name "Alice"}))))))
-    (testing "a blank name is a 400"
-      (is (= 400 (:status (post app "/api/social/character" {:character {:name ""}})))))))
+        (is (= {:store/state {}} (body resp)))))
+    (testing "a written row is narrowed to the declared fields and coerced"
+      (is (= {"Alice" {:deception 7M :persuasion 3M :present? true}}
+             (:store/state (body (post app "/api/state"
+                                       {:id        :social
+                                        :mutations {"Alice" {:deception "7"  :persuasion "3"
+                                                             :nickname  "Al"}}}))))))
+    (testing "a blank field falls back to the declared default"
+      (is (= {:deception 0 :persuasion 0 :present? true}
+             (get (:store/state (body (post app "/api/state"
+                                            {:id        :social
+                                             :mutations {"Bob" {:deception ""}}})))
+                  "Bob"))))
+    (testing "the plugin reads what the editor wrote"
+      (let [vm (body (post app "/api/generate" {:id :social}))]
+        (is (= "2/2 present" (:loot/subtitle vm)))))
+    (testing "a nil row retracts the key"
+      (is (= ["Bob"] (keys (:store/state (body (post app "/api/state"
+                                                     {:id :social :mutations {"Alice" nil}})))))))
+    (testing "a blank key is a 400, as is a type with no manual state"
+      (is (= 400 (:status (post app "/api/state" {:id :social :mutations {"  " {}}}))))
+      (is (= 400 (:status (post app "/api/state" {:id :relics})))))))
+
+(deftest state-endpoint-under-browser-storage
+  ;; The same handler, with the collection travelling in and the writes back out.
+  (let [app  (http/app (engine/create (assoc social-config :storage {:backend :browser})))
+        resp (body (post app "/api/state" {:id        :social
+                                           :state     {:social {"Vex" {:deception 5 :persuasion 2 :present? true}}}
+                                           :mutations {"Vex" {:deception 5 :persuasion 2 :present? false}}}))]
+    (is (= {:social {"Vex" {:deception 5M :persuasion 2M :present? false}}}
+           (:store/mutations resp))
+        "the edit comes back for the client to apply")
+    (is (= false (get-in resp [:store/state "Vex" :present?])))))
 
 (deftest errors-return-edn
   (let [app (http/app (engine/create config {:store (edn-store/create {:backend :memory})}))

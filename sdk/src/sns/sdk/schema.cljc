@@ -50,7 +50,22 @@
                  ;; a single collection named after :id. Under :browser storage
                  ;; the client ships exactly these with each request.
                 [:store/collections {:optional true} [:sequential keyword?]]
+                 ;; Declares a DM-owned table in the first of those collections:
+                 ;; the UI renders a generic editor for it and the plugin reads
+                 ;; it back through the store. See `::manual-state`.
+                [:store/manual {:optional true} ::manual-state]
                 [:inputs {:optional true} [:sequential ::field]]]
+
+   ;; --- manually-managed state (the `:store/manual` editor) ---
+   ;; A collection the DM fills in by hand rather than one the app generates: a
+   ;; character table, a soul ledger. Each key is a row, and `:fields` are the
+   ;; columns it holds — coerced to their declared types on the way in, with a
+   ;; blank falling back to `:default`. With `:list?` the row holds a *sequence*
+   ;; of those field maps instead of one, for a key that owns several records.
+   ::manual-state [:map
+                   [:key-label {:optional true} string?]
+                   [:list? {:optional true} boolean?]
+                   [:fields [:sequential ::field]]]
 
    ;; --- view-model (the only contract the UI renderer understands) ---
    ::action [:map

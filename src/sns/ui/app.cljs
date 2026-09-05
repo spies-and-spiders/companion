@@ -21,36 +21,34 @@
       [:main.workbench
        (when (:error state)
          [:p.notice.notice--error (:error state)])
-       (if (= :social (:page state))
-         (render/social-page state)
-         (list
-           (when spec
-             [:section.summon
-              [:p.summon__eyebrow (:label spec)]
-              (render/input-form spec (:inputs state))
-              [:button.generate {:on {:click [[:ui/generate]]}}
-               (if (:loading? state)
-                 "Summoning…"
-                 (or (:generate-label spec) (str "Generate " (:label spec))))]])
-           (if (:editing? state)
-             (render/result-editor (:result state))
-             (render/result (:result state)))
-           (when (:result state)
-             [:div.result-actions
-              [:button.action-btn
-               {:on {:click [[:ui/toggle-edit]]}}
-               (if (:editing? state) "Done editing" "Edit item")]
-              (when (:report? state)
-                [:button.report__btn
-                 {:disabled (= :sending (:report-status state))
-                  :on       {:click [[:ui/report]]}}
-                 (case (:report-status state)
-                   :sending "Sending…"
-                   :sent    "Sent ✓"
-                   (or (:report-label state) "Send"))])])
-           (when (and (nil? (:result state)) (nil? spec))
-             [:div.empty
-              [:p.empty__line "Choose a loot type, or make a loot roll."]])))]]]))
+       (render/manual-editor spec (:manual state) (:manual-key state))
+       (when spec
+         [:section.summon
+          [:p.summon__eyebrow (:label spec)]
+          (render/input-form spec (:inputs state))
+          [:button.generate {:on {:click [[:ui/generate]]}}
+           (if (:loading? state)
+             "Summoning…"
+             (or (:generate-label spec) (str "Generate " (:label spec))))]])
+       (if (:editing? state)
+         (render/result-editor (:result state))
+         (render/result (:result state)))
+       (when (:result state)
+         [:div.result-actions
+          [:button.action-btn
+           {:on {:click [[:ui/toggle-edit]]}}
+           (if (:editing? state) "Done editing" "Edit item")]
+          (when (:report? state)
+            [:button.report__btn
+             {:disabled (= :sending (:report-status state))
+              :on       {:click [[:ui/report]]}}
+             (case (:report-status state)
+               :sending "Sending…"
+               :sent    "Sent ✓"
+               (or (:report-label state) "Send"))])])
+       (when (and (nil? (:result state)) (nil? spec))
+         [:div.empty
+          [:p.empty__line "Choose a loot type, or make a loot roll."]])]]]))
 
 (defn- render! [state]
   (r/render (js/document.getElementById "app") (view state)))

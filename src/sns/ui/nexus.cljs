@@ -147,27 +147,41 @@
                                         :url    "/api/action"
                                         :body   {:id id :action action :params params :view-model view-model}})))
 
-;; The Group Deception & Persuasion tracker: every request returns the full
-;; tracker snapshot, so one effect covers load/add/toggle/remove/roll. Its
-;; `:social` collection travels like any plugin's.
-(nxr/register-effect! :fx/social-request
-                      (fn [{:keys [dispatch]} system req]
+;; A loot type's manually-managed collection: read on selection, and re-read
+;; after every edit, so what is on screen is what the store holds. `mutations`
+;; is `{<key> <row>}` (a nil row removes the key); nil just reads.
+(nxr/register-effect! :fx/manual-state
+                      (fn [{:keys [dispatch]} system id mutations]
                         (stateful-request
-                          system [:social] req
-                          (fn [snapshot] (dispatch [[:fx/assoc-in [:social] snapshot]
-                                                    [:fx/assoc-in [:error] nil]]))
+                          system (collections-for system id)
+                          {:method :post
+                           :url    "/api/state"
+                           :body   (cond-> {:id id} mutations (assoc :mutations mutations))}
+                          ;; ponytail: the reply replaces the whole local map, so
+                          ;; typing into a second row while the first is in flight
+                          ;; loses it. Per-row merging if that ever bites.
+                          (fn [resp] (dispatch [[:fx/assoc-in [:manual] (:store/state resp)]
+                                                [:fx/assoc-in [:error] nil]]))
                           (fn [err] (dispatch [[:fx/assoc-in [:error] (:error err)]])))))
 
 ;; --- actions (pure: state -> effects) ----------------------------------------
 
+(defn- manual-spec
+  "The `:store/manual` declaration of loot type `id`, or nil when it has none."
+  [loot-types id]
+  (some #(when (= id (:id %)) (:store/manual %)) loot-types))
+
 (nxr/register-action! :ui/select-type
-                      (fn [_state id]
-                        [[:fx/assoc-in [:page] :loot]
-                         [:fx/assoc-in [:selected] id]
-                         [:fx/assoc-in [:inputs] {}]
-                         [:fx/assoc-in [:drag] nil]
-                         [:fx/assoc-in [:result] nil]
-                         [:fx/assoc-in [:editing?] false]]))
+                      (fn [{:keys [loot-types]} id]
+                        (cond-> [[:fx/assoc-in [:selected] id]
+                                 [:fx/assoc-in [:inputs] {}]
+                                 [:fx/assoc-in [:drag] nil]
+                                 [:fx/assoc-in [:result] nil]
+                                 [:fx/assoc-in [:manual] nil]
+                                 [:fx/assoc-in [:manual-key] ""]
+                                 [:fx/assoc-in [:editing?] false]]
+                                (manual-spec loot-types id)
+                                (conj [:fx/manual-state id nil]))))
 
 (nxr/register-action! :ui/set-input
                       (fn [_state field value]
@@ -245,8 +259,7 @@
   (let [n (when-not (str/blank? roll-n)
             (let [parsed (js/parseInt roll-n 10)]
               (when-not (js/isNaN parsed) parsed)))]
-    [[:fx/assoc-in [:page] :loot]
-     [:fx/roll inputs n]]))
+    [[:fx/roll inputs n]]))
 
 (nxr/register-action! :ui/roll roll-fx)
 
@@ -256,49 +269,88 @@
                         (when (= key "Enter")
                           (roll-fx state))))
 
-;; --- the always-on Group Deception & Persuasion tracker ----------------------
-
-(nxr/register-action! :ui/open-social
+(nxr/register-action! :ui/report
                       (fn [_state]
-                        [[:fx/assoc-in [:page] :social]
-                         [:fx/social-request {:method :post :url "/api/social" :body {}}]]))
+                        [[:fx/report]]))
+
+(nxr/register-action! :ui/toggle-edit
+                      (fn [state]
+                        ;; clear any stale "Sent ✓" so an edited item reads as unsent
+                        [[:fx/assoc-in [:editing?] (not (:editing? state))]
+                         [:fx/assoc-in [:report-status] nil]]))
+
+(defn- retype
+  "Put an edited value back into the type the plugin declared (`:type` on
+   `sns.sdk.schema/item-var`), since every input hands back a string. Blank or
+   mid-typing (`-`, `1e`) becomes nil: it renders as nothing, and an op still
+   accumulates onto it."
+  [type value]
+  (if (and (string? value) (#{:int :decimal} type))
+    (parse-double value)
+    value))
+
+(nxr/register-action! :ui/edit-result
+                      (fn [_state path type value]
+                        [[:fx/assoc-in (into [:result] path) (retype type value)]
+                         [:fx/assoc-in [:report-status] nil]]))
+
+(nxr/register-action! :ui/edit-result-metadata
+                      (fn [_state path value]
+                        [[:fx/assoc-in (into [:result] path)
+                          (->> (str/split (or value "") #",")
+                               (map str/trim)
+                               (remove str/blank?)
+                               vec)]
+                         [:fx/assoc-in [:report-status] nil]]))
+
+;; Dispatched directly from a view-model's :action/event vector. Sends the
+;; current (possibly DM-edited) :result alongside the action's own static
+;; params, so the plugin can see edits made since generation (issue #8).
+(nxr/register-action! :loot/action
+                      (fn [{:keys [result]} {:keys [id action params]}]
+                        [[:fx/action id action params result]]))
 
 (nxr/register-action! :ui/export
                       (fn [_state]
                         [[:fx/export]]))
 
-(nxr/register-action! :ui/set-social-input
-                      (fn [_state field value]
-                        [[:fx/assoc-in [:social-form field] value]]))
+;; --- manually-managed state (the `:store/manual` editor) ---------------------
+;; Edits land in local state as they are typed and commit on `change` (blur, or
+;; a checkbox toggling), so a row costs one request rather than one per
+;; keystroke. Each commit sends the whole row and re-reads the collection.
 
-;; Clicking a roster row loads that character into the form for editing.
-(nxr/register-action! :ui/social-edit
-                      (fn [_state char-name deception persuasion]
-                        [[:fx/assoc-in [:social-form] {:name       char-name
-                                                       :deception  deception
-                                                       :persuasion persuasion}]]))
+(nxr/register-action! :ui/manual-edit
+                      (fn [_state k path value]
+                        [[:fx/assoc-in (into [:manual k] path) value]]))
 
-(nxr/register-action! :ui/social-add
-                      (fn [{:keys [social-form]}]
-                        [[:fx/social-request {:method :post
-                                              :url    "/api/social/character"
-                                              :body   {:character social-form}}]
-                         [:fx/assoc-in [:social-form] {}]]))
+(nxr/register-action! :ui/manual-commit
+                      (fn [{:keys [selected manual]} k]
+                        [[:fx/manual-state selected {k (get manual k)}]]))
 
-(nxr/register-action! :ui/social-toggle
-                      (fn [_state char-name]
-                        [[:fx/social-request {:method :post
-                                              :url    "/api/social/toggle"
-                                              :body   {:name char-name}}]]))
+(nxr/register-action! :ui/manual-remove
+                      (fn [{:keys [selected]} k]
+                        [[:fx/manual-state selected {k nil}]]))
 
-(nxr/register-action! :ui/social-remove
-                      (fn [_state char-name]
-                        [[:fx/social-request {:method :post
-                                              :url    "/api/social/remove"
-                                              :body   {:name char-name}}]]))
+(nxr/register-action! :ui/manual-remove-item
+                      (fn [{:keys [selected manual]} k idx]
+                        (let [rows (vec (get manual k))]
+                          (when (< idx (count rows))
+                            [[:fx/manual-state selected
+                              {k (into (subvec rows 0 idx) (subvec rows (inc idx)))}]]))))
 
-(nxr/register-action! :ui/social-roll
-                      (fn [_state skill]
-                        [[:fx/social-request {:method :post
-                                              :url    "/api/social/roll"
-                                              :body   {:skill skill}}]]))
+(nxr/register-action! :ui/manual-set-key
+                      (fn [_state value]
+                        [[:fx/assoc-in [:manual-key] value]]))
+
+;; A new key starts empty — the server fills its fields in from their declared
+;; defaults, so the browser needs to know nothing about them.
+(nxr/register-action! :ui/manual-add
+                      (fn [{:keys [selected loot-types manual manual-key]}]
+                        (let [k (str/trim (str manual-key))]
+                          (cond
+                            (str/blank? k)       nil
+                            (contains? manual k) [[:fx/assoc-in [:manual-key] ""]]
+                            :else
+                            [[:fx/manual-state selected
+                              {k (if (:list? (manual-spec loot-types selected)) [] {})}]
+                             [:fx/assoc-in [:manual-key] ""]]))))

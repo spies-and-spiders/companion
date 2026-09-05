@@ -9,7 +9,6 @@
     [ring.util.http-response :refer [ok]]
     [ring.util.response :as response]
     [sns.server.engine :as engine]
-    [sns.server.social :as social]
     [sns.server.store.edn :as edn-store]
     [sns.server.store.request :as request]
     [taoensso.telemere :as t])
@@ -90,35 +89,15 @@
     (engine/report! eng view-model)
     (ok)))
 
-;; --- the always-on Group Deception & Persuasion tracker (not a plugin) -------
-;; State-in/mutations-out like every other endpoint, so the tracker persists the
-;; same way plugins do — including under :browser, where its `:social`
-;; collection sits in IndexedDB alongside theirs and is covered by export.
-
-(defn- social-handler
-  "Wrap a tracker operation so it reads the client's state (`:browser`) or the
-   server's (everything else), and carries any writes back."
-  [eng f]
-  (fn [{params :body-params}]
-    (let [eng (engine/with-state eng (:state params))]
-      (ok (with-mutations eng (f eng params))))))
-
-(defn- social-routes [eng]
-  [["/api/social"
-    {:post (social-handler eng (fn [{:keys [store]} _]
-                                 (social/snapshot store)))}]
-   ["/api/social/character"
-    {:post (social-handler eng (fn [{:keys [store]} {:keys [character]}]
-                                 (social/upsert! store character)))}]
-   ["/api/social/toggle"
-    {:post (social-handler eng (fn [{:keys [store]} {char-name :name}]
-                                 (social/toggle! store char-name)))}]
-   ["/api/social/remove"
-    {:post (social-handler eng (fn [{:keys [store]} {char-name :name}]
-                                 (social/remove! store char-name)))}]
-   ["/api/social/roll"
-    {:post (social-handler eng (fn [{:keys [store rng]} {:keys [skill]}]
-                                 (social/roll store rng skill)))}]])
+(defn- state-handler
+  "Read (and first apply `:mutations` to) a loot type's manually-managed
+   collection — the DM-owned table its `:store/manual` spec declares. Shaped
+   like every other stateful call: state in, mutations out, so the same handler
+   serves a server-side store and one living in the DM's browser."
+  [eng]
+  (fn [{{:keys [id mutations state]} :body-params}]
+    (let [eng (engine/with-state eng state)]
+      (ok (with-mutations eng {:store/state (engine/manual-state eng id mutations)})))))
 
 (defn- zip-bytes
   "A ZIP holding one `<collection>.edn` per collection, written by the same
@@ -145,14 +124,14 @@
 (defn app [eng]
   (http/ring-handler
     (http/router
-      (into [["/api/loot-types" {:get (loot-types-handler eng)}]
-             ["/api/capabilities" {:get (capabilities-handler eng)}]
-             ["/api/generate" {:post (generate-handler eng)}]
-             ["/api/roll" {:post (roll-handler eng)}]
-             ["/api/action" {:post (action-handler eng)}]
-             ["/api/report" {:post (report-handler eng)}]
-             ["/api/export" {:get (export-handler eng)}]]
-            (social-routes eng))
+      [["/api/loot-types" {:get (loot-types-handler eng)}]
+       ["/api/capabilities" {:get (capabilities-handler eng)}]
+       ["/api/generate" {:post (generate-handler eng)}]
+       ["/api/roll" {:post (roll-handler eng)}]
+       ["/api/action" {:post (action-handler eng)}]
+       ["/api/report" {:post (report-handler eng)}]
+       ["/api/state" {:post (state-handler eng)}]
+       ["/api/export" {:get (export-handler eng)}]]
       {:data {:muuntaja     m
               :interceptors [(format/format-negotiate-interceptor m)
                              (format/format-response-interceptor m)

@@ -145,6 +145,39 @@
                       (hidden (:id spec)) (assoc :hidden? true))))
           (vals registry))))
 
+(defn- coerce-entry
+  "One row of a manual-state collection, narrowed to the declared fields and
+   coerced to their types. A field left blank falls back to its `:default`, the
+   same way an input does."
+  [fields entry]
+  (reduce (fn [acc {:keys [id type default]}]
+            (let [v (get entry id)]
+              (assoc acc id (if (or (nil? v) (= "" v)) default (coerce type v)))))
+          {}
+          fields))
+
+(defn manual-state
+  "Read — and first write, given `mutations` — the DM-owned collection loot type
+   `id` declares with `:store/manual`. `mutations` is `{<key> <row>}`, a nil row
+   retracting that key; rows are coerced to the declared fields. Returns the
+   whole collection."
+  [{:keys [registry store]} id mutations]
+  (let [generator (or (get registry id)
+                      (throw (ex-info "Unknown loot type" {:id id})))
+        spec      (p/loot-spec generator)
+        {:keys [fields list?]} (or (:store/manual spec)
+                                   (throw (ex-info "Loot type has no manual state" {:id id})))
+        coll      (or (first (:store/collections spec)) id)]
+    (when (seq mutations)
+      (when-some [blank (some #(when (str/blank? (str %)) %) (keys mutations))]
+        (throw (ex-info "A manual-state key cannot be blank" {:id id :key blank})))
+      (p/mutate! store {coll (update-vals mutations
+                                          #(cond
+                                             (nil? %) nil
+                                             list?    (mapv (partial coerce-entry fields) %)
+                                             :else    (coerce-entry fields %)))}))
+    (p/read-collection store coll)))
+
 (defn with-state
   "Under `:browser` storage, an engine whose store is seeded with the `state` the
    client sent and records what plugins write; read it back afterwards with

@@ -110,6 +110,7 @@
                                     (= :file storage-backend) (assoc :dir state-dir))
                 :plugins    (cond-> [{:type :builtin :id :divine-dust}
                                      {:type :builtin :id :relics}
+                                     {:type :builtin :id :social}
                                      {:type :data :id :uniques :source "data/uniques.edn"}
                                      {:type :data :id :rings :source "data/rings.edn"}
                                      ;; :chill-factor is unused by weather.py itself; it exists so
@@ -177,6 +178,25 @@
       (println "  (no action offered this roll for" id "- skipping action check)")
       (exercise-action! base-url id (:action/event event)))))
 
+(defn- exercise-manual-state!
+  "The `:store/manual` contract: an edited row is coerced, persisted, and read
+   back by the plugin that declared it."
+  [base-url]
+  (println "  state :social")
+  (let [written (expect-200! (request base-url :post "/api/state"
+                                      {:id        :social
+                                       :mutations {"Smoke" {:deception "7" :persuasion ""}}})
+                             "state :social")
+        row     (get (:store/state written) "Smoke")]
+    (when-not (= {:deception 7M :persuasion 0 :present? true} row)
+      (fail! "manual state was not coerced to the declared fields" {:row row}))
+    (let [vm (exercise-generate! base-url :social)]
+      (when-not (= "1/1 present" (:loot/subtitle vm))
+        (fail! "the plugin did not read back its manual state" {:body vm}))
+      (exercise-action! base-url :social (-> vm :loot/actions first :action/event)))
+    (expect-200! (request base-url :post "/api/state" {:id :social :mutations {"Smoke" nil}})
+                 "state :social retract")))
+
 (defn- exercise-export!
   "Download the state ZIP and read its entries back. Exercises java.util.zip in
    the native image, which is the only place that can prove it survived."
@@ -211,6 +231,19 @@
         (fail! "browser storage returned no mutation for the levelled relic" {:body acted}))
       (println "  action :relics :level-up -> state travelled both ways"))))
 
+(defn- exercise-browser-manual-state!
+  "A manual-state edit under `:browser`: the collection travels in, the coerced
+   write comes back out for the client's IndexedDB."
+  [base-url]
+  (let [resp (expect-200! (request base-url :post "/api/state"
+                                   {:id        :social
+                                    :state     {:social {"Vex" {:deception 5 :persuasion 2 :present? true}}}
+                                    :mutations {"Vex" {:deception 5 :persuasion 2 :present? false}}})
+                          "state :social")]
+    (when-not (false? (get-in resp [:store/mutations :social "Vex" :present?]))
+      (fail! "manual-state edit did not come back as a mutation" {:body resp}))
+    (println "  state :social -> manual edit travelled both ways")))
+
 (defn- run-plugin-suite! [base-url ffi-available?]
   (expect-200! (request base-url :get "/api/capabilities" nil) "capabilities")
   (exercise-generate! base-url :divine-dust)
@@ -218,6 +251,7 @@
   (exercise-generate! base-url :rings)
   (exercise-generate! base-url :weather {:chill-factor "1.5"})
   (exercise-statefully! base-url :relics)
+  (exercise-manual-state! base-url)
   (if ffi-available?
     (exercise-statefully! base-url :ffi-loot)
     (println "  (skipping :ffi-loot - no shared library built on this runner)")))
@@ -225,7 +259,8 @@
 (defn- run-suite! [base-url ffi-available? storage-backend]
   (if (= :browser storage-backend)
     (do (expect-200! (request base-url :get "/api/capabilities" nil) "capabilities")
-        (exercise-browser-storage! base-url))
+        (exercise-browser-storage! base-url)
+        (exercise-browser-manual-state! base-url))
     (do (run-plugin-suite! base-url ffi-available?)
         (exercise-export! base-url))))
 

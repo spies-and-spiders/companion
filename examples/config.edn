@@ -40,8 +40,8 @@
  ;; The loot types available in the UI. Five kinds:
  ;;
  ;;   :builtin — a generator shipped in this app: the :id alone selects it
- ;;              (:divine-dust, :relics). An optional :entrypoint Clojure var
- ;;              overrides the lookup.
+ ;;              (:divine-dust, :relics, :social). An optional :entrypoint
+ ;;              Clojure var overrides the lookup.
  ;;   :data    — a code-free loot type defined entirely in an EDN/JSON spec
  ;;              file (:source is a filesystem path, e.g. relative to config.edn),
  ;;              or written straight into this file under :inline (which wins
@@ -55,14 +55,17 @@
  ;;              available when running the app via java -jar
  ;;
  ;; Every plugin needs a unique :id; that id is what the :loot-table references.
- ;; (The Group Deception & Persuasion tracker is part of the app itself — it is
- ;; always available under Utilities and needs no plugin entry.)
  ;;
  ;; Any plugin may add :hidden? true to keep itself out of the UI's loot-type
  ;; picker, so it can only turn up by rolling the :loot-table. (It still appears
  ;; on the picker while it is the type on screen.)
  :plugins [{:type :builtin :id :divine-dust}
            {:type :builtin :id :relics}
+              ;; The Group Deception & Persuasion tracker: a manual character
+              ;; table (name, two bonuses, present?) that the UI renders an
+              ;; editor for, plus one action rolling 1d20 + the group bonus.
+              ;; Any plugin can declare such a table with :store/manual.
+           {:type :builtin :id :social}
            {:type :data :id :uniques :source "data/uniques.edn"}
            {:type :data :id :rings :source "data/rings.edn"}
               ;; The same DSL, written inline: handy for a short table you don't

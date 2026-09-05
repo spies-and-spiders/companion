@@ -299,68 +299,67 @@
         [:div.sigil__body
          (map-indexed (partial edit-block loot-vars) (:loot/sections vm))]]])))
 
-;; --- the Group Deception & Persuasion tracker (always-on, bespoke) -----------
+;; --- manually-managed state (a spec's `:store/manual` table) ------------------
+;; The DM-owned rows a plugin reads: one row per key, its declared fields
+;; inline. Edits are local until a `change` bubbles to the row, which commits
+;; the whole row — so typing costs nothing and blurring costs one request.
 
-(defn- bonus-str [n]
-  (if (neg? n) (str n) (str "+" n)))
+(defn- manual-cell [k path f value]
+  [:label.manual__cell {:replicant/key (:id f)
+                        :class         (when (= :bool (:type f)) "manual__cell--bool")}
+   [:span.field__label (:label f)]
+   ;; unique per row *and* per record, since a `:list?` row repeats its fields
+   (control (str "manual-" k "-" (str/join "-" (map #(if (keyword? %) (name %) %) path)))
+            value f [:ui/manual-edit k (vec path)])])
 
-(defn- social-field [social-form field label type]
-  [:label.field {:replicant/key field}
-   [:span.field__label label]
-   [:input.field__control
-    {:type  type
-     :step  (when (= "number" type) "any") ; bonuses may be fractional (e.g. 10.5)
-     :value (str (get social-form field))
-     :on    {:input [[:ui/set-social-input field [:event.target/value]]]}}]])
+(defn- manual-fields [k prefix fields row]
+  (for [f fields]
+    (manual-cell k (conj prefix (:id f)) f (get row (:id f)))))
 
-(defn- social-row [{char-name :name :keys [deception persuasion present?]}]
-  [:li.social__row {:replicant/key char-name
-                    :class         (when-not present? "social__row--absent")}
-   [:label.social__tick
-    [:input {:type    "checkbox"
-             :checked (boolean present?)
-             :on      {:change [[:ui/social-toggle char-name]]}}]]
-   ;; clicking the details loads them into the form for editing
-   [:button.social__details
-    {:title "Edit this character"
-     :on    {:click [[:ui/social-edit char-name deception persuasion]]}}
-    [:span.social__name char-name]
-    [:span.social__bonuses
-     (str "Deception " (bonus-str deception) " · Persuasion " (bonus-str persuasion))]]
-   [:button.social__remove {:on {:click [[:ui/social-remove char-name]]}} "Remove"]])
+(defn- manual-item
+  "One record of a `:list?` row. `idx` past the end is the blank trailing
+   record: filling any field in appends it, and the next blank appears."
+  [k fields idx row extra?]
+  [:li.manual__item {:replicant/key idx :class (when extra? "manual__item--extra")}
+   (manual-fields k [idx] fields row)
+   ;; The blank record keeps the button as an inert placeholder: without it the
+   ;; row is a column wider than the saved ones and the fields stop lining up.
+   [:button.manual__remove
+    {:type     "button"
+     :class    (when extra? "manual__remove--placeholder")
+     :disabled extra?
+     :on       (when-not extra? {:click [[:ui/manual-remove-item k idx]]})}
+    "✕"]])
 
-(defn social-page
-  "The always-present group tracker: an add/update form, a row per character
-   (tick beside their details), the two group bonuses, and the roll buttons."
-  [{:keys [social social-form]}]
-  (let [{:keys [characters deception persuasion roll]} social
-        present-n (count (filter :present? characters))]
-    [:section.social
-     [:p.summon__eyebrow "Group Deception & Persuasion"]
-     [:div.fields
-      (social-field social-form :name "Character name" "text")
-      (social-field social-form :deception "Deception bonus" "number")
-      (social-field social-form :persuasion "Persuasion bonus" "number")]
-     [:button.generate {:on {:click [[:ui/social-add]]}} "Add / update character"]
-     (if (seq characters)
-       [:ul.social__roster (map social-row characters)]
-       [:p.social__empty "No characters yet — add each party member above. Untick anyone who misses a session."])
-     [:div.social__summary
-      [:span.social__bonus (str "Group Deception " (bonus-str deception))]
-      [:span.social__bonus (str "Group Persuasion " (bonus-str persuasion))]
-      (when (seq characters)
-        [:span.social__present (str present-n "/" (count characters) " present")])]
-     [:div.social__rolls
-      [:button.action {:on {:click [[:ui/social-roll :deception]]}}
-       (str "Roll Deception (1d20" (bonus-str deception) ")")]
-      [:button.action {:on {:click [[:ui/social-roll :persuasion]]}}
-       (str "Roll Persuasion (1d20" (bonus-str persuasion) ")")]]
-     (when roll
-       [:p.social__result {:replicant/key (str roll)}
-        (str (if (= :deception (:skill roll)) "Deception" "Persuasion")
-             " check: " (:total roll)
-             " — rolled " (:die roll) " " (bonus-str (:bonus roll))
-             (case (:die roll) 1 " · natural 1!" 20 " · natural 20!" ""))])]))
+(defn- manual-row [{:keys [fields list?]} k value]
+  [:li.manual__row {:replicant/key k :on {:change [[:ui/manual-commit k]]}}
+   [:div.manual__head
+    [:span.manual__name k]
+    [:button.manual__remove {:type "button" :on {:click [[:ui/manual-remove k]]}} "Remove"]]
+   (if list?
+     [:ul.manual__items
+      (concat (map-indexed (fn [idx row] (manual-item k fields idx row false)) value)
+              [(manual-item k fields (count value) nil true)])]
+     [:div.manual__fields (manual-fields k [] fields value)])])
+
+(defn manual-editor
+  "The DM-owned table a spec declares with `:store/manual`, or nil when it
+   declares none."
+  [spec manual manual-key]
+  (when-let [{:keys [key-label] :as declaration} (:store/manual spec)]
+    (let [key-label (or key-label "Entry")]
+      [:section.manual
+       [:p.summon__eyebrow key-label]
+       [:ul.manual__rows
+        (for [[k v] (sort-by key manual)]
+          (manual-row declaration k v))
+        [:li.manual__row.manual__row--new {:replicant/key "__add"}
+         [:input.field__control
+          {:type        "text"
+           :placeholder (str "Add " (str/lower-case key-label) "…")
+           :value       (str manual-key)
+           :on          {:input  [[:ui/manual-set-key [:event.target/value]]]
+                         :change [[:ui/manual-add]]}}]]]])))
 
 ;; --- loot-type picker --------------------------------------------------------
 
@@ -390,19 +389,17 @@
       (or (str/blank? q)
           (str/includes? (str/lower-case (str label)) q)))))
 
-(defn picker [{:keys [loot-types selected roll-n page type-filter browser-storage?]}]
-  (let [loot-selected (when (= :loot page) selected)
-        match?        (matcher type-filter)
+(defn picker [{:keys [loot-types selected roll-n type-filter browser-storage?]}]
+  (let [match?        (matcher type-filter)
         ;; A hidden type is meant to be reached only by rolling the loot-table,
         ;; so it stays off the rail — except while it is the type on screen,
         ;; where it appears (in its config position) so the rail keeps showing
         ;; what the workbench holds.
-        visible       (filterv #(and (or (not (:hidden? %)) (= loot-selected (:id %)))
+        visible       (filterv #(and (or (not (:hidden? %)) (= selected (:id %)))
                                      (match? (:label %)))
                                loot-types)
         utilities     (filterv :utility? visible)
-        disciplines   (filterv (complement :utility?) visible)
-        social?       (match? "Group Social")]
+        disciplines   (filterv (complement :utility?) visible)]
     [:nav.rail
      [:div.roll-group
       [:input.roll__input
@@ -422,16 +419,12 @@
        :value       (str type-filter)
        :on          {:input [[:ui/set-type-filter [:event.target/value]]]}}]
      [:p.rail__eyebrow "Loot Types"]
-     (type-list "rail__list--loot" disciplines loot-selected "◆")
+     (type-list "rail__list--loot" disciplines selected "◆")
      [:p.rail__eyebrow.rail__eyebrow--utilities "Utilities"]
      [:ul.rail__list.rail__list--utils
-      ;; the group tracker is part of the app, not a plugin — always present
-      (when social?
-        [:li {:replicant/key "__social"}
-         (type-button (= :social page) [:ui/open-social] "✦" "Group Social" nil)])
       (for [{:keys [id label] :as spec} utilities]
         [:li {:replicant/key id}
-         (type-button (= id loot-selected) [:ui/select-type id] "✦" label (modifier spec))])]
+         (type-button (= id selected) [:ui/select-type id] "✦" label (modifier spec))])]
      [:button.rail__export {:on {:click [[:ui/export]]}}
       "Download state"]
      [:p.rail__hint

@@ -15,7 +15,6 @@
          :report-label  nil   ; button label supplied by the backend reporter
          :report-status nil   ; nil | :sending | :sent
          :editing?      false ; manually editing the current result in place
-         :page          :loot ; :loot | :social (the always-on group tracker)
-         :social        nil   ; tracker snapshot (from the backend, or local)
-         :browser-storage? false ; state lives in IndexedDB and travels with each request
-         :social-form   {}})) ; the add/update-character form fields
+         :manual        nil   ; the selected type's manual-state collection
+         :manual-key    ""    ; the key being typed into the blank "add" row
+         :browser-storage? false})) ; state lives in IndexedDB and travels with each request

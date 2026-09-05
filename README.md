@@ -23,7 +23,8 @@ All five are configured the same way in `config.edn`:
                               :symbol "generate" :free-symbol "loot_free"}
               {:type :jar     :id :custom  :jar "plugins/custom.jar"
                               :entrypoint my.plugin/generator}
-              {:type :builtin :id :relics}]
+              {:type :builtin :id :relics}
+              {:type :builtin :id :social}]
  :loot-table [{:id :uniques :weight 30} {:id :relics :weight 10}]}
 ```
 
@@ -44,11 +45,39 @@ chance. Whichever hidden type is on screen appears on the picker while it is the
 the rail always reflects what you're looking at. A hidden type that is in no
 `:loot-table` is unreachable; nothing stops you configuring that.
 
-Separate from plugins, the **Group Deception & Persuasion tracker** is part of the app
-itself: always available under Utilities, with its own page (add characters and their
-two bonuses, tick/untick who's present, roll 1d20 + the group bonus). Its state
-persists via the configured storage under the `:social/` attribute namespace, which
-can never clash with a plugin's own attributes.
+A plugin may declare **manual state** with `:store/manual` in its loot-spec: a table
+the DM fills in by hand rather than one the app generates. The UI renders a generic
+editor for it above the plugin's own form, and the plugin reads it back through the
+store like any other collection.
+
+```clojure
+{:id           :social
+ :label        "Group Social"
+ :utility?     true
+ :store/manual {:key-label "Character"
+                :fields    [{:id :deception :label "Deception" :type :decimal :default 0}
+                            {:id :persuasion :label "Persuasion" :type :decimal :default 0}
+                            {:id :present? :label "Present" :type :bool :default true}]}}
+```
+
+Each key is a row and `:fields` are its columns, declared as ordinary input fields and
+coerced to their types on the way in (a blank falls back to `:default`). With
+`:list? true` a row holds a *sequence* of those field maps instead of one, for a key
+that owns several records:
+
+```clojure
+:store/manual {:key-label "Character" :list? true
+               :fields [{:id :soul :label "Soul" :type :text}
+                        {:id :proc-chance :label "Proc chance" :type :decimal :default 0}]}
+```
+
+The state lives in the first of the plugin's `:store/collections` (its `:id` by
+default) and is stored, exported and hand-editable exactly like any other collection.
+
+The shipped **`:social` builtin** — the Group Deception & Persuasion tracker — is
+exactly this: a manual character table plus one action that rolls 1d20 + the group
+bonus over whoever is present. Add `{:type :builtin :id :social}` to `:plugins` to
+use it.
 
 You may provide **`config.json`** instead of `config.edn`; simply replace all keywords (e.g. `:weight`) and symbols (e.g. `my.plugin/generator`) with regular JSON strings. 
 
