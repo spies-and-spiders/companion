@@ -41,6 +41,19 @@
       (is (= "{{result}}" (:body item)))
       (is (= "A card" (:title item))))))
 
+(deftest json-history-decodes-to-keywords
+  (testing "the global setting and a plugin's override both arrive as keywords"
+    (let [f   (write-temp-json
+                (str "{\"history\":\"on-report\","
+                     "\"plugins\":[{\"type\":\"cli\",\"id\":\"weather\","
+                     "\"command\":[\"echo\"],\"history\":\"always\"}]}"))
+          cfg (config/load-config f)]
+      (is (= :on-report (:history cfg)))
+      (is (= :always (-> cfg :plugins first :history)))))
+  (testing "an unknown mode fails validation"
+    (let [f (write-temp-json "{\"history\":\"sometimes\",\"plugins\":[]}")]
+      (is (thrown? Exception (config/load-config f))))))
+
 (deftest rejects-invalid-json-config
   (testing "an unknown plugin type fails validation"
     (let [f (write-temp-json "{\"plugins\":[{\"type\":\"bogus\",\"id\":\"x\"}]}")]

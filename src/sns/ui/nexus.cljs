@@ -145,14 +145,16 @@
 
 (defn- result-effect
   "Run `req` and put the view-model it returns on the bench. `record-id` names
-   the loot type to file the result under in the history, or is nil for a call
-   (an action) that reworks the item already there rather than generating one."
-  [{:keys [dispatch]} system collections req record-id]
+   the loot type to file the result under in the history. `only-if-changed?` is
+   for an action, which reworks the item already on the bench: it earns a history
+   entry only when it actually changed something."
+  [{:keys [dispatch]} system collections req record-id only-if-changed?]
   (dispatch [[:fx/assoc-in [:loading?] true] [:fx/assoc-in [:error] nil]
              [:fx/assoc-in [:report-status] nil]])
   (stateful-request
     system collections req
-    (fn [vm] (dispatch (into (vec (history-fx @system record-id vm :always))
+    (fn [vm] (dispatch (into (vec (when-not (and only-if-changed? (= vm (:result @system)))
+                                    (history-fx @system record-id vm :always)))
                        [[:fx/assoc-in [:result] vm]
                         [:fx/assoc-in [:editing?] false]
                         [:fx/assoc-in [:loading?] false]])))
@@ -184,7 +186,7 @@
                         (result-effect ctx system (collections-for system id)
                                        {:method :post :url "/api/generate"
                                         :body   {:id id :inputs inputs}}
-                                       id)))
+                                       id false)))
 
 (nxr/register-effect! :fx/roll
                       (fn [{:keys [dispatch]} system inputs n]
@@ -214,7 +216,7 @@
                                        {:method :post
                                         :url    "/api/action"
                                         :body   {:id id :action action :params params :view-model view-model}}
-                                       nil)))
+                                       id true)))
 
 ;; A loot type's manually-managed collection: read on selection, and re-read
 ;; after every edit, so what is on screen is what the store holds. `mutations`

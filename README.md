@@ -90,7 +90,7 @@ drop one, **Clear** to empty the plugin's history. When `:history` says so, a
 
 | `:history`   | When a result is stored                       |
 |--------------|-----------------------------------------------|
-| `:always`    | Every generation (and every loot-table roll).  |
+| `:always`    | Every generation, loot-table roll, and action that changes the item. A hand-edited result adds a **Save to history** button, since only you know when an edit is finished. |
 | `:on-report` | Only when the result is reported.              |
 | `:button`    | Only when **Save to history** is pressed. The default. |
 | `:never`     | Not at all.                                    |

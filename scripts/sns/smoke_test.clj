@@ -227,6 +227,37 @@
     (expect-200! (request base-url :post "/api/state" {:id :social :mutations {"Smoke" nil}})
                  "state :social retract")))
 
+(defn- exercise-history!
+  "The result history collection: a row written against one loot type reads
+   back, and a nil row retracts it."
+  [base-url]
+  (println "  history :relics")
+  (let [entry   {:at 1 :view-model {:loot/title "Smoke"}}
+        wrote   (expect-200! (request base-url :post "/api/history"
+                                      {:mutations {"relics" [entry]}})
+                             "history write")
+        cleared (expect-200! (request base-url :post "/api/history"
+                                      {:mutations {"relics" nil}})
+                             "history clear")]
+    (when-not (= [entry] (get (:store/state wrote) "relics"))
+      (fail! "history row did not read back" {:body wrote}))
+    (when (contains? (:store/state cleared) "relics")
+      (fail! "cleared history key was not retracted" {:body cleared}))
+    (println "  history -> row written, read back, cleared")))
+
+(defn- exercise-browser-history!
+  "The same collection under `:browser`: it travels in with the request and the
+   write comes back for the client to store."
+  [base-url]
+  (let [entry {:at 2 :view-model {:loot/title "Smoke"}}
+        resp  (expect-200! (request base-url :post "/api/history"
+                                    {:state     {:history {"relics" []}}
+                                     :mutations {"relics" [entry]}})
+                           "history")]
+    (when-not (= [entry] (get-in resp [:store/mutations :history "relics"]))
+      (fail! "history write did not come back as a mutation" {:body resp}))
+    (println "  history -> row travelled both ways")))
+
 (defn- exercise-export!
   "Download the state ZIP and read its entries back. Exercises java.util.zip in
    the native image, which is the only place that can prove it survived."
@@ -297,8 +328,10 @@
   (if (= :browser storage-backend)
     (do (expect-200! (request base-url :get "/api/capabilities" nil) "capabilities")
         (exercise-browser-storage! base-url)
-        (exercise-browser-manual-state! base-url))
+        (exercise-browser-manual-state! base-url)
+        (exercise-browser-history! base-url))
     (do (run-plugin-suite! base-url ffi-available?)
+        (exercise-history! base-url)
         (exercise-export! base-url))))
 
 (defn- run-backend! [{:keys [bin-path lib-path port storage-backend] :as opts}]

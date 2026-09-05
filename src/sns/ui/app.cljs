@@ -13,7 +13,12 @@
 
 (defn- view [state]
   (let [spec         (current-spec state)
-        history-mode (or (:history spec) (:history-mode state))]
+        history-mode (or (:history spec) (:history-mode state))
+        rows         (get (:history state) (some-> (:selected state) name))
+        ;; What is on the bench but in no history entry: a hand-edit, or a
+        ;; result generated under a mode that does not store on its own.
+        unsaved?     (and (:result state)
+                          (not-any? #(= (:result state) (:view-model %)) rows))]
     [:div.app
      [:header.topbar
       [:div.brand [:span.brand__mark "✦"] [:span.brand__name "sns-companion"]]]
@@ -39,7 +44,8 @@
           [:button.action-btn
            {:on {:click [[:ui/toggle-edit]]}}
            (if (:editing? state) "Done editing" "Edit item")]
-          (when (= :button history-mode)
+          (when (or (= :button history-mode)
+                    (and (= :always history-mode) unsaved?))
             [:button.action-btn {:on {:click [[:ui/history-save]]}} "Save to history"])
           (when (:report? state)
             [:button.report__btn
@@ -49,8 +55,7 @@
                :sending "Sending…"
                :sent    "Sent ✓"
                (or (:report-label state) "Send"))])])
-       (render/history (:selected state)
-                       (get (:history state) (some-> (:selected state) name)))
+       (render/history (:selected state) rows)
        (when (and (nil? (:result state)) (nil? spec))
          [:div.empty
           [:p.empty__line "Choose a loot type, or make a loot roll."]])]]]))
