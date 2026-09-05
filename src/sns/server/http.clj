@@ -9,8 +9,8 @@
     [ring.util.http-response :refer [ok]]
     [ring.util.response :as response]
     [sns.server.engine :as engine]
+    [sns.server.store :as store]
     [sns.server.store.edn :as edn-store]
-    [sns.server.store.request :as request]
     [taoensso.telemere :as t])
   (:import
     (clojure.lang ExceptionInfo)
@@ -57,13 +57,12 @@
     (ok (engine/loot-specs eng))))
 
 (defn- with-mutations
-  "Return `view-model`, carrying any writes the plugin made under
-   `:store/mutations` for the client to apply. Only `:browser` storage records
-   them; every other backend has already persisted its own."
-  [eng view-model]
-  (cond-> view-model
-          (request/recorded-mutations (:store eng))
-          (assoc :store/mutations (request/recorded-mutations (:store eng)))))
+  "The writes declared on `response` are the client's to apply under `:browser`,
+   where the state lives in its IndexedDB. Every other backend has persisted them
+   already, so they are stripped rather than sent."
+  [eng response]
+  (cond-> response
+          (not (store/browser? (:config eng))) (dissoc :store/mutations)))
 
 (defn- generate-handler [eng]
   (fn [{{:keys [id inputs state]} :body-params}]
@@ -97,7 +96,7 @@
   [eng]
   (fn [{{:keys [id mutations state]} :body-params}]
     (let [eng (engine/with-state eng state)]
-      (ok (with-mutations eng {:store/state (engine/manual-state eng id mutations)})))))
+      (ok (with-mutations eng (engine/manual-state eng id mutations))))))
 
 (defn- zip-bytes
   "A ZIP holding one `<collection>.edn` per collection, written by the same

@@ -103,7 +103,8 @@ The UI renders this shape generically — a new loot type needs **no** UI code, 
                                                      :options ["fire" "cold"]}}}]}]
  :loot/actions  [{:action/label "Level up"
                   :action/event [:loot/action {:id :relics :action :level-up}]}]
- :loot/state    {…}}                             ; optional, opaque
+ :loot/state    {…}                              ; optional, opaque
+ :store/mutations {:relics {"r1" {…}}}}          ; optional — writes to apply
 ```
 
 **Titles and bodies are templates, not finished text.** Nothing is rendered on
@@ -137,6 +138,11 @@ and hand back with the next action (as `ctx`'s `:view-model`). Keep it to
 progression bookkeeping that has no place in the rendered item — an upgrade
 `:path`, a stored id. Everything the DM can *see* should be read back off the
 view-model itself.
+
+`:store/mutations` is how a stateful type writes: `{<collection> {<key>
+<value>}}`, a nil value retracting that key. The engine applies it *after* this
+view-model validates, so a plugin that returns something unusable changes
+nothing. See [docs/storage.md](docs/storage.md).
 
 or
 
@@ -257,7 +263,7 @@ reporter; `GET /api/capabilities` tells the UI whether to show the button.
 
 ### `Store` (optional — custom persistence)
 ```clojure
-(read-collection [this coll]) (mutate! [this mutations])
+(read-collection [this coll])   ; writes are declared, see below
 ```
 State is a set of named collections, each a map of key to value; a collection
 needs no declaration and reads as `{}` until written to. Three backends, chosen
@@ -266,9 +272,14 @@ file per collection under `:dir`, default `./state`, and the files are the
 source of truth — hand edits propagate live) and `:browser` (IndexedDB, with the
 state travelling on each request).
 
-Both methods take and return plain data, so plugins work unchanged whichever
-backend is configured. A loot type's `:store/collections` declares what it uses,
-defaulting to `[<plugin-id>]`. Available to `:builtin` and `:jar` plugins;
+Reads take and return plain data, so plugins work unchanged whichever backend is
+configured. Writes are not a method: a plugin puts them on its view-model under
+`:store/mutations` (`{<collection> {<key> <value>}}`, a nil value retracting) and
+the engine applies them once that view-model has validated — so a call that ends
+in an error cannot leave state changed behind it.
+
+A loot type's `:store/collections` declares what it uses, defaulting to
+`[<plugin-id>]`. Available to `:builtin` and `:jar` plugins;
 `:cli` and `:ffi` persist their own state.
 See [docs/storage.md](docs/storage.md).
 

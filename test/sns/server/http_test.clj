@@ -156,13 +156,30 @@
       (let [vm (body (post app "/api/generate" {:id :divine-dust}))]
         (is (not (contains? vm :store/mutations)))))))
 
+(deftest roll-carries-mutations-at-the-top-level
+  ;; A roll wraps the view-model, so its writes have to be lifted out of that
+  ;; wrapper — the client reads them off the response, not off the item.
+  (let [rolled  {:plugins    (:plugins config)
+                 :loot-table [{:id :relics :weight 100}]}
+        browser (http/app (engine/create (assoc rolled :storage {:backend :browser})))
+        server  (http/app (engine/create rolled {:store (edn-store/create {:backend :memory})}))]
+    (testing "under :browser they sit beside :view-model, not inside it"
+      (let [resp (body (post browser "/api/roll" {}))]
+        (is (= :relics (:id resp)))
+        (is (contains? (:store/mutations resp) :relics))
+        (is (not (contains? (:view-model resp) :store/mutations)))))
+    (testing "under a server-side backend they are stripped, having been persisted"
+      (let [resp (body (post server "/api/roll" {}))]
+        (is (not (contains? resp :store/mutations)))
+        (is (not (contains? (:view-model resp) :store/mutations)))))))
+
 (deftest export-round-trips-into-a-file-store
   ;; The acceptance criterion for export: the ZIP unzips into a directory a
   ;; :file deployment can be pointed at, and carries on from exactly there.
   (let [store (edn-store/create {:backend :memory})
         app   (http/app (engine/create config {:store store}))]
-    (p/mutate! store {:relics {"r1" {:name "Sunblade" :path [{:id :sharp}]}}
-                      :social {"Vex" {:deception 5 :persuasion 2 :present? true}}})
+    (edn-store/mutate! store {:relics {"r1" {:name "Sunblade" :path [{:id :sharp}]}}
+                              :social {"Vex" {:deception 5 :persuasion 2 :present? true}}})
     (let [resp (app {:request-method :get :uri "/api/export"})
           dir  (doto (io/file (System/getProperty "java.io.tmpdir")
                               (str "sns-export-" (System/nanoTime)))

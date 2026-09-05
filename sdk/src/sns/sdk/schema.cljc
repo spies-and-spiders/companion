@@ -128,7 +128,15 @@
                  ;; rendered item. The *displayed* values live in `:item/vars`
                  ;; and are the source of truth for everything else, so keep
                  ;; this to what genuinely cannot be read back off the item.
-                 [:loot/state {:optional true} any?]]
+                 [:loot/state {:optional true} any?]
+                 ;; Writes the plugin wants made. Declared rather than performed,
+                 ;; so the engine can apply them only once this view-model has
+                 ;; validated — a call that fails changes nothing.
+                 [:store/mutations {:optional true} ::mutations]]
+
+   ;; `{<collection> {<key> <value>}}`; a nil value retracts that key, and keys
+   ;; left out are untouched.
+   ::mutations [:map-of keyword? [:map-of any? any?]]
 
    ;; --- external plugin I/O contract (:cli over stdio, :ffi over a C ABI) ---
    ;; The "friendly", un-namespaced JSON an external plugin exchanges, mapped

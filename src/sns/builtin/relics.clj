@@ -6,9 +6,10 @@
    the browser against them. This exercises the full Store + Progression +
    LootAction loop.
 
-   Also the worked example of storing to the collection-based `Store`: each relic
-   is one entry in the `:relics` collection, keyed by its id, with the path a
-   plain vector. The static upgrade-graph `:mod` is looked up from the templates
+   Also the worked example of collection-based state: each relic is one entry in
+   the `:relics` collection, keyed by its id, with the path a plain vector, read
+   through the `Store` and written by declaring `:store/mutations` on the
+   view-model. The static upgrade-graph `:mod` is looked up from the templates
    below by name rather than persisted at all."
   (:require
     [randy.core :as r]
@@ -82,8 +83,12 @@
                           :else nil)]
         (update relic :path conj {:id (:id option)})))))
 
-(defn- save! [store {:keys [id name base path]}]
-  (p/mutate! store {coll {id {:name name :base base :path path}}}))
+(defn- persisting
+  "`view-model` carrying the write that stores `relic`. Declared rather than
+   performed, so a view-model that fails validation stores nothing."
+  [relic view-model]
+  (assoc view-model :store/mutations
+         {coll {(:id relic) (select-keys relic [:name :base :path])}}))
 
 (defn generator
   [_plugin]
@@ -91,11 +96,10 @@
     p/LootGenerator
     (loot-spec [_]
       {:id loot-id :label "Relic"})
-    (generate [_ {:keys [rng store progression]}]
+    (generate [_ {:keys [rng progression]}]
       (let [template (r/sample rng templates)
             relic    (assoc template :id (str (random-uuid)) :path [])]
-        (save! store relic)
-        (view-model progression relic)))
+        (persisting relic (view-model progression relic))))
     p/LootAction
     (handle-action [_ {:keys [store rng progression]} action {:keys [relic-id choice]}]
       (case action
@@ -103,7 +107,6 @@
         (let [relic (or (read-relic store relic-id)
                         (throw (ex-info "Unknown relic" {:relic-id relic-id})))]
           (if-let [updated (take-step rng progression relic choice)]
-            (do (save! store updated)
-                (view-model progression updated))
+            (persisting updated (view-model progression updated))
             ;; choice required but not supplied (or terminal): re-show current state
             (view-model progression relic)))))))

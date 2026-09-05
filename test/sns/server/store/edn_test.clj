@@ -18,29 +18,29 @@
   (testing "an absent collection reads as an empty map, needing no declaration"
     (is (= {} (p/read-collection store :relics))))
   (testing "written entries read straight back"
-    (p/mutate! store {:relics {"r1" {:name "Sunblade" :level 1}}})
+    (edn-store/mutate! store {:relics {"r1" {:name "Sunblade" :level 1}}})
     (is (= {"r1" {:name "Sunblade" :level 1}} (p/read-collection store :relics))))
   (testing "a second write merges rather than replacing the collection"
-    (p/mutate! store {:relics {"r2" {:name "Moonblade" :level 5}}})
+    (edn-store/mutate! store {:relics {"r2" {:name "Moonblade" :level 5}}})
     (is (= #{"r1" "r2"} (set (keys (p/read-collection store :relics))))))
   (testing "a nil value retracts just that key"
-    (p/mutate! store {:relics {"r1" nil}})
+    (edn-store/mutate! store {:relics {"r1" nil}})
     (is (= #{"r2"} (set (keys (p/read-collection store :relics))))))
   (testing "collections are independent"
-    (p/mutate! store {:social {"Vex" {:present? true}}})
+    (edn-store/mutate! store {:social {"Vex" {:present? true}}})
     (is (= #{"r2"} (set (keys (p/read-collection store :relics)))))
     (is (= {"Vex" {:present? true}} (p/read-collection store :social))))
   (testing "one call can mutate several collections"
-    (p/mutate! store {:relics {"r3" {:name "Starblade"}}
-                      :social {"Vex" nil}})
+    (edn-store/mutate! store {:relics {"r3" {:name "Starblade"}}
+                              :social {"Vex" nil}})
     (is (= #{"r2" "r3"} (set (keys (p/read-collection store :relics)))))
     (is (= {} (p/read-collection store :social))))
   (testing "keyword values survive (regression: a relic's upgrade choices)"
-    (p/mutate! store {:relics {"k" {:path [{:id :precise} {:id :elemental}]}}})
+    (edn-store/mutate! store {:relics {"k" {:path [{:id :precise} {:id :elemental}]}}})
     (is (= [:precise :elemental]
            (mapv :id (get-in (p/read-collection store :relics) ["k" :path])))))
   (testing "path order is preserved as written"
-    (p/mutate! store {:relics {"k" {:path [{:id :elemental} {:id :precise}]}}})
+    (edn-store/mutate! store {:relics {"k" {:path [{:id :elemental} {:id :precise}]}}})
     (is (= [:elemental :precise]
            (mapv :id (get-in (p/read-collection store :relics) ["k" :path]))))))
 
@@ -66,7 +66,7 @@
         store (doto (edn-store/create {:backend :file :dir dir}) p/setup!)
         file  (io/file dir "relics.edn")]
     (try
-      (p/mutate! store {:relics {"r1" {:name "Sunblade" :level 3}}})
+      (edn-store/mutate! store {:relics {"r1" {:name "Sunblade" :level 3}}})
       (testing "the file is readable EDN naming the entry by its own key"
         (let [text (slurp file)]
           (is (str/includes? text "\"r1\""))
@@ -76,7 +76,7 @@
         (is (= "Moonblade" (get-in (p/read-collection store :relics) ["r1" :name]))))
       (testing "a write after a hand edit keeps the edit"
         (spit file (str/replace (slurp file) ":level 3" ":level 9"))
-        (p/mutate! store {:relics {"r2" {:name "Starblade"}}})
+        (edn-store/mutate! store {:relics {"r2" {:name "Starblade"}}})
         (let [relics (p/read-collection store :relics)]
           (is (= 9 (get-in relics ["r1" :level])) "the external edit survived our write")
           (is (= "Starblade" (get-in relics ["r2" :name])))))

@@ -70,6 +70,14 @@
              (or value {})
              mutations))
 
+(defprotocol Writable
+  "Server-side only: applying writes. Plugins declare theirs on the view-model
+   and the engine applies them here once it has validated, so nothing can change
+   state without the view-model describing it having survived validation."
+  (mutate! [this mutations]
+    "Apply `mutations`, shaped `{<collection> {<key> <value>}}`. A nil value
+     retracts that key; keys left out are untouched. Returns nil."))
+
 (defprotocol Exportable
   "Server-side only: every collection a store holds, for the export endpoint.
    Not part of the SDK `Store` protocol — plugins have no business enumerating
@@ -88,6 +96,7 @@
         (let [[st v] (read-stable file)]
           (swap! cache assoc coll {:stamp st :value v})
           v))))
+  Writable
   (mutate! [_ mutations]
     (locking cache
       (doseq [[coll changes] mutations]
@@ -113,6 +122,7 @@
   (setup! [_])
   (read-collection [_ coll]
     (get @state coll {}))
+  Writable
   (mutate! [_ mutations]
     (swap! state (fn [s]
                    (reduce-kv (fn [acc coll changes]

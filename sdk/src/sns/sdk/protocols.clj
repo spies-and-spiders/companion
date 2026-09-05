@@ -50,23 +50,25 @@
     "Send `view-model` (`sns.sdk.schema/view-model`) to the destination; throws ex-info on failure."))
 
 (defprotocol Store
-  "Persistence for stateful plugins. State is a set of named collections, each a
-   map of key to value; a collection needs no declaration and reads as `{}` until
-   something is written to it. Available to in-process plugins only — `:cli` and
-   `:ffi` plugins persist their own state.
+  "Reads over persisted state, for stateful plugins. State is a set of named
+   collections, each a map of key to value; a collection needs no declaration and
+   reads as `{}` until something is written to it. Available to in-process
+   plugins only — `:cli` and `:ffi` plugins persist their own state.
 
-   Both methods take and return plain data, so the same calls work against a
-   local store or one whose state lives in the DM's browser. Declare the
-   collections you use with `:store/collections` in your `loot-spec`; it defaults
-   to a single collection named after the plugin's `:id`."
+   Writing is declarative and not part of this protocol: put the changes on your
+   view-model under `:store/mutations` and the engine applies them once the
+   view-model has validated, so a plugin cannot leave state changed by a call
+   that then fails. Declare the collections you use with `:store/collections` in
+   your `loot-spec`; it defaults to a single collection named after the plugin's
+   `:id`.
+
+   Reads take and return plain data, so the same call works against a local store
+   or one whose state lives in the DM's browser."
   (setup! [this]
     "Prepare the backend for use. Called once at startup, before any other
      method; construction itself must stay side-effect-free.")
   (read-collection [this coll]
-    "The whole collection `coll` (a keyword) as a map, or `{}` when absent.")
-  (mutate! [this mutations]
-    "Apply `mutations`, shaped `{<collection> {<key> <value>}}`. A nil value
-     retracts that key; keys left out are untouched. Returns nil."))
+    "The whole collection `coll` (a keyword) as a map, or `{}` when absent."))
 
 (defn- loot-id
   "The loot-type id a generator declares, used to route a view-model's actions
@@ -160,5 +162,4 @@
 (extend-type sns.sdk.Store
   Store
   (setup! [this] (.setup this))
-  (read-collection [this coll] (.readCollection this coll))
-  (mutate! [this mutations] (.mutate this mutations)))
+  (read-collection [this coll] (.readCollection this coll)))

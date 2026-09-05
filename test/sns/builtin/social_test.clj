@@ -37,15 +37,15 @@
       (let [vm (p/generate generator ctx)]
         (is (= "0/0 present" (:loot/subtitle vm)))
         (is (= {"Deception" "1d20 +0" "Persuasion" "1d20 +0"} (bonuses vm)))))
-    (p/mutate! store {:social {"Alice" {:deception 7 :persuasion 3 :present? true}
-                               "Bob"   {:deception 1 :persuasion -2 :present? true}}})
+    (edn-store/mutate! store {:social {"Alice" {:deception 7 :persuasion 3 :present? true}
+                                       "Bob"   {:deception 1 :persuasion -2 :present? true}}})
     (testing "the group bonus counts the top two twice"
       (let [vm (p/generate generator ctx)]
         (is (= "2/2 present" (:loot/subtitle vm)))
         ;; deception [7 1] -> (7+1+7+1)/4 = 4; persuasion [3 -2] -> (3-2+3-2)/4 = 0.5
         (is (= {"Deception" "1d20 +4" "Persuasion" "1d20 +0.5"} (bonuses vm)))))
     (testing "an absent character is excluded from the averages"
-      (p/mutate! store {:social {"Bob" {:deception 1 :persuasion -2 :present? false}}})
+      (edn-store/mutate! store {:social {"Bob" {:deception 1 :persuasion -2 :present? false}}})
       (let [vm (p/generate generator ctx)]
         (is (= "1/2 present" (:loot/subtitle vm)))
         (is (= "1d20 +7" (get (bonuses vm) "Deception")))))

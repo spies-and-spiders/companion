@@ -23,21 +23,38 @@ chosen in `config.edn` under `:storage`.
 In-process plugins only — `:builtin` and `:jar`. `:cli` and `:ffi` plugins
 exchange JSON over a process/ABI boundary and persist their own state.
 
-## Reading and writing
+## Reading
 
-Two methods, both taking and returning plain data:
+One method, taking and returning plain data:
 
 ```clojure
 (p/read-collection store :relics)
 ;; => {"r1" {:name "Sunblade" :base "longsword" :path [{:id :sharp}]}}
-
-(p/mutate! store {:relics {"r1" {:name "Sunblade" :path [{:id :sharp} {:id :flaming}]}
-                           "r9" nil}})   ; nil retracts that key
 ```
 
-A mutation merges: keys you don't mention are untouched, and one call can span
-several collections. Values are ordinary Clojure data — vectors keep their
+## Writing
+
+A plugin **declares** its writes on the view-model it returns; the engine applies
+them, and only once that view-model has validated:
+
+```clojure
+{:loot/title      "Sunblade"
+ :loot/sections   [...]
+ :store/mutations {:relics {"r1" {:name "Sunblade" :path [{:id :sharp} {:id :flaming}]}
+                            "r9" nil}}}   ; nil retracts that key
+```
+
+A mutation merges: keys you don't mention are untouched, and one declaration can
+span several collections. Values are ordinary Clojure data — vectors keep their
 order, keywords stay keywords, and nothing needs a schema.
+
+Declaring rather than performing is what makes a failed call leave nothing
+behind. A plugin that wrote as it went could persist a change and *then* return
+something the engine rejects: the DM sees an error while the state has already
+moved. There is no window here — the store is touched after validation or not at
+all. It also keeps generators pure enough to test by calling them, and it is the
+shape `:cli`/`:ffi` plugins need, since JSON on a pipe can carry a declaration
+but not a method call.
 
 ## Declaring collections
 
@@ -101,11 +118,12 @@ directory.
 
 State lives in the DM's IndexedDB and the server holds nothing. The client sends
 the collections a plugin declared with each request; the plugin runs on the
-server as usual, and its writes come back on the response under
-`:store/mutations` for the client to apply.
+server as usual, and the `:store/mutations` it declared travel on to the client
+to apply. Under every other backend the engine has already persisted them, so
+they are stripped from the response rather than sent.
 
-Plugins are unaffected by this — the same `read-collection` and `mutate!` calls
-work either way.
+Plugins are unaffected by this — the same `read-collection` call and the same
+declared `:store/mutations` work either way.
 
 The consequence to plan around is that state is **device-local**: a laptop and a
 tablet are two separate databases, and clearing site data destroys it. Use the
