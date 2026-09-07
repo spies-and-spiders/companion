@@ -3,6 +3,8 @@
    progression, and emits validated view-models. Templates travel to the
    browser unrendered, alongside the variables they interpolate."
   (:require
+    [clojure.edn :as edn]
+    [clojure.java.io :as io]
     [clojure.string :as str]
     [randy.core :as r]
     [sns.sdk.protocols :as p]
@@ -14,7 +16,20 @@
     [sns.server.store :as store]
     [sns.server.store.edn :as edn-store])
   (:import
+    (java.io PushbackReader)
     (java.util.random RandomGeneratorFactory)))
+
+(def ^:private default-words
+  (-> (io/resource "words.edn") io/reader PushbackReader. edn/read))
+
+(defn- build-words
+  "The vocabulary results are named from: the config's own list if it declares
+   one, otherwise the built-in list plus whatever `:extra-words` adds."
+  [{:keys [words extra-words]}]
+  (cond
+    (seq words) (vec words)
+    (seq extra-words) (vec (into (set default-words) extra-words))
+    :else default-words))
 
 (defn- allocation
   "Turn a weighted loot table into cumulative 1-100 upper bounds, so an entered
@@ -69,6 +84,7 @@
      (install-randoms! (:randoms config))
      {:config          config
       :registry        registry
+      :words           (build-words config)
       :store           store
       :reporter        (or reporter (reporter/from-config (:reporting config)))
       :progression     (progression/progression rng)
@@ -217,6 +233,15 @@
   (cond-> engine
           (store/browser? config) (assoc :store (edn-store/->MemoryStore (atom (or state {}))))))
 
+(defn- with-words
+  "Two words naming this result, drawn once by the engine so a plugin never has
+   to and every surface showing the result — UI, history, reporter — shows the
+   same pair. `carry` keeps an existing pair across a follow-up action."
+  [{:keys [words]} carry vm]
+  (if-some [w (or (:loot/words vm) carry (when (seq words) (vec (r/sample-without-replacement 2 words))))]
+    (assoc vm :loot/words w)
+    vm))
+
 (defn generate
   "Generate loot of type `id` with `inputs`, returning a validated view-model."
   ([engine id] (generate engine id {}))
@@ -228,6 +253,7 @@
      (randoms/with-rng rng
        (->> (ctx engine inputs)
             (p/generate generator)
+            (with-words engine nil)
             (schema/assert! ::schema/view-model)
             (persist! (:store engine)))))))
 
@@ -290,5 +316,6 @@
       (throw (ex-info "Loot type does not support actions" {:id id})))
     (randoms/with-rng rng
       (->> (p/handle-action generator (assoc (ctx engine nil) :view-model view-model) action params)
+           (with-words engine (:loot/words view-model))
            (schema/assert! ::schema/view-model)
            (persist! (:store engine))))))

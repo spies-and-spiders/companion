@@ -134,6 +134,15 @@
 (defn- action [{:action/keys [label event]}]
   [:button.action {:on {:click [event]}} label])
 
+(defn- words-badge
+  "The engine-drawn handle for this result, folded into a hover-revealed mark so
+   it stays out of the way of the loot itself."
+  [words]
+  (when (seq words)
+    [:span.words {:title (str/join " " words)}
+     [:span.words__mark "W"]
+     [:span.words__text (str/join " " words)]]))
+
 (defn result
   "Render a view-model. The whole article is keyed on the title so a fresh loot
    result re-mounts and replays the materialise animation."
@@ -141,6 +150,7 @@
   (when vm
     [:article.sigil {:replicant/key (:loot/title vm)}
      [:div.sigil__frame
+      (words-badge (:loot/words vm))
       (when (:loot/subtitle vm)
         [:p.sigil__eyebrow (template/render (:loot/subtitle vm) (:loot/vars vm))])
       [:h2.sigil__title (template/render (:loot/title vm) (:loot/vars vm))]
@@ -440,10 +450,30 @@
   [{:loot/keys [title vars]}]
   (or (not-empty (str/trim (str (template/render title vars)))) "Untitled"))
 
+(def ^:private preview-length 60)
+
+(defn- history-body
+  "The head of the result's first item, rendered. Plenty of loot types title
+   every result the same way (\"Reliquary\"), where the body is the only thing
+   that tells two rows apart."
+  [{:loot/keys [vars sections]}]
+  (let [{:item/keys [body] :as item} (first (mapcat :section/items sections))]
+    (when-let [text (some-> body (template/render (merge vars (:item/vars item))) str str/trim not-empty)]
+      (cond-> text
+              (< preview-length (count text)) (-> (subs 0 preview-length) (str "..."))))))
+
+(defn- history-preview
+  "The hovered row's result, rendered as it appears on the bench — the whole
+   item, for when the one-line row is not enough to recognise it. Actions are
+   dropped: this is a look at a stored result, not the bench copy of it."
+  [vm]
+  (when vm
+    [:div.history__preview (result (dissoc vm :loot/actions))]))
+
 (defn history
   "The stored results for the selected loot type, newest first. Clicking one
-   puts it back on the bench."
-  [selected entries]
+   puts it back on the bench; hovering one previews it in full below the list."
+  [selected entries hovered]
   (when (seq entries)
     [:section.history
      [:div.history__head
@@ -452,11 +482,18 @@
      [:ul.history__list
       (map-indexed
         (fn [idx {:keys [at view-model]}]
-          [:li.history__row {:replicant/key (str selected "-" at "-" idx)}
+          [:li.history__row {:replicant/key (str selected "-" at "-" idx)
+                             :on            {:mouseenter [[:ui/history-hover idx]]
+                                             :mouseleave [[:ui/history-hover nil]]}}
            [:button.history__entry {:on {:click [[:ui/history-restore idx]]}}
             [:span.history__time (.toLocaleString (js/Date. at))]
-            [:span.history__name (history-label view-model)]]
+            [:span.history__name (history-label view-model)]
+            (when-let [body (history-body view-model)]
+              [:span.history__body body])
+            (when (seq (:loot/words view-model))
+              [:span.history__words (str/join " " (:loot/words view-model))])]
            [:button.history__remove {:type "button"
                                      :on   {:click [[:ui/history-delete idx]]}}
             "✕"]])
-        entries)]]))
+        entries)]
+     (history-preview (when hovered (:view-model (nth (vec entries) hovered nil))))]))

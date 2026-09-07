@@ -128,6 +128,10 @@
                  [:loot/vars {:optional true} ::item-vars]
                  [:loot/sections {:optional true} [:sequential ::section]]
                  [:loot/actions {:optional true} [:sequential ::action]]
+                 ;; The anonymous handle this result travels under, drawn by the
+                 ;; engine from the config's word list rather than by a plugin,
+                 ;; so every surface that shows a result shows the same pair.
+                 [:loot/words {:optional true} [:sequential string?]]
                  ;; Opaque, plugin-owned state the engine and UI carry untouched
                  ;; and hand back with the next action — progression bookkeeping
                  ;; (an upgrade `:path`, a stored id) that has no place in the
@@ -356,15 +360,15 @@
                            [:backend [:= :discord]]
                            [:webhook-url string?]
                            [:discord-username {:optional true} string?]
-                           [:avatar-url {:optional true} string?]
-                           [:words {:optional true} [:sequential string?]]
-                           [:extra-words {:optional true} [:sequential string?]]]]]
+                           [:avatar-url {:optional true} string?]]]]
 
    ::config [:map
              [:server {:optional true} ::server]
              [:storage {:optional true} ::storage]
              [:plugins [:sequential ::plugin]]
              [:randoms {:optional true} ::randoms]
+             [:words {:optional true} [:sequential string?]]
+             [:extra-words {:optional true} [:sequential string?]]
              [:reporting {:optional true} ::reporting]
              [:history {:optional true} ::history]
              [:loot-table {:optional true} [:sequential ::loot-entry]]]})

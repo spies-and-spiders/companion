@@ -64,3 +64,10 @@
   (testing "creating a reporter without a webhook URL throws"
     (is (thrown? Exception (discord/create "")))
     (is (thrown? Exception (discord/create nil)))))
+
+(deftest payload-spoilers-the-view-models-words
+  (testing "the words the engine drew become the spoilered content"
+    (is (= "||quiet ember||"
+           (:content (discord/payload {} (assoc vm :loot/words ["quiet" "ember"]))))))
+  (testing "a view-model without words posts embeds only"
+    (is (not (contains? (discord/payload {} vm) :content)))))

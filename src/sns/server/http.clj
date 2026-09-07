@@ -53,7 +53,7 @@
          (handler e req))})))
 
 (defn- loot-types-handler [eng]
-  (fn [_req]
+  (fn loot-types [_req]
     (ok (engine/loot-specs eng))))
 
 (defn- with-mutations
@@ -65,26 +65,26 @@
           (not (store/browser? (:config eng))) (dissoc :store/mutations)))
 
 (defn- generate-handler [eng]
-  (fn [{{:keys [id inputs state]} :body-params}]
+  (fn generate [{{:keys [id inputs state]} :body-params}]
     (let [eng (engine/with-state eng state)]
       (ok (with-mutations eng (engine/generate eng id (or inputs {})))))))
 
 (defn- roll-handler [eng]
-  (fn [{{:keys [inputs n state]} :body-params}]
+  (fn roll [{{:keys [inputs n state]} :body-params}]
     (let [eng (engine/with-state eng state)]
       (ok (with-mutations eng (engine/roll eng (or inputs {}) n))))))
 
 (defn- action-handler [eng]
-  (fn [{{:keys [id action params view-model state]} :body-params}]
+  (fn handle-action [{{:keys [id action params view-model state]} :body-params}]
     (let [eng (engine/with-state eng state)]
       (ok (with-mutations eng (engine/handle-action eng id action params view-model))))))
 
 (defn- capabilities-handler [eng]
-  (fn [_req]
+  (fn capabilities [_req]
     (ok (engine/capabilities eng))))
 
 (defn- report-handler [eng]
-  (fn [{{:keys [view-model]} :body-params}]
+  (fn report [{{:keys [view-model]} :body-params}]
     (engine/report! eng view-model)
     (ok)))
 
@@ -94,7 +94,7 @@
    like every other stateful call: state in, mutations out, so the same handler
    serves a server-side store and one living in the DM's browser."
   [eng]
-  (fn [{{:keys [id mutations state]} :body-params}]
+  (fn manual-state [{{:keys [id mutations state]} :body-params}]
     (let [eng (engine/with-state eng state)]
       (ok (with-mutations eng (engine/manual-state eng id mutations))))))
 
@@ -102,7 +102,7 @@
   "The result history, read and written like any other collection so it follows
    the configured storage backend."
   [eng]
-  (fn [{{:keys [mutations state]} :body-params}]
+  (fn history [{{:keys [mutations state]} :body-params}]
     (let [eng (engine/with-state eng state)]
       (ok (with-mutations eng (engine/history eng mutations))))))
 
@@ -120,7 +120,7 @@
     (.toByteArray out)))
 
 (defn- export-handler [eng]
-  (fn [_req]
+  (fn export-state [_req]
     (when-not (:store eng)
       (throw (ex-info "Browser storage exports from the client, not the server" {})))
     {:status  200

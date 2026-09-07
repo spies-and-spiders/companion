@@ -12,6 +12,7 @@
          :results       {}    ; last view-model per loot-type id (session-only)
          :history       {}    ; the store's history collection: id name -> [{:at :view-model}]
          :history-mode  :button ; when generated results join the history
+         :history-hover nil   ; index of the history row under the cursor
          :error         nil
          :loading?      false
          :report?       false ; whether a reporter (e.g. Discord) is configured

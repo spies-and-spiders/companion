@@ -144,6 +144,13 @@
            :skills       ["Athletics" "Deception" "Insight" "Stealth"]
            :damage-types ["acid" "cold" "fire" "lightning" "necrotic" "radiant"]}
 
+ ;; --- result words ----------------------------------------------------------
+ ;; Every generated result is tagged with two words drawn from this vocabulary,
+ ;; shown in the UI behind the encircled W and spoilered into a Discord post.
+ ;; A built-in word list is used when neither key is set; :words replaces it
+ ;; outright, :extra-words adds to it.
+ ;; :extra-words ["mimic" "gelatinous"]
+
  ;; --- reporting -------------------------------------------------------------
  ;; Optional. Enables the per-item "Send to Discord" button, posting the rolled
  ;; loot to a webhook as a rich embed.

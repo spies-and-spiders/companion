@@ -67,8 +67,8 @@
   (setup! [this]
     "Prepare the backend for use. Called once at startup, before any other
      method; construction itself must stay side-effect-free.")
-  (read-collection [this coll]
-    "The whole collection `coll` (a keyword) as a map, or `{}` when absent."))
+  (read-collection [this coll-id]
+    "The whole collection `coll-id` (a keyword) as a map, or `{}` when absent."))
 
 (defn- loot-id
   "The loot-type id a generator declares, used to route a view-model's actions
@@ -162,4 +162,4 @@
 (extend-type sns.sdk.Store
   Store
   (setup! [this] (.setup this))
-  (read-collection [this coll] (.readCollection this coll)))
+  (read-collection [this coll-id] (.readCollection this coll-id)))

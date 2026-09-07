@@ -55,7 +55,7 @@
                :sending "Sending…"
                :sent    "Sent ✓"
                (or (:report-label state) "Send"))])])
-       (render/history (:selected state) rows)
+       (render/history (:selected state) rows (:history-hover state))
        (when (and (nil? (:result state)) (nil? spec))
          [:div.empty
           [:p.empty__line "Choose a loot type, or make a loot roll."]])]]]))

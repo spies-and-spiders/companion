@@ -18,12 +18,12 @@
     (testing "generate returns a validated view-model"
       (is (= {:loot/title    "Divine Dust"
               :loot/subtitle "A pinch of divine residue"}
-             (engine/generate eng :divine-dust))))
+             (dissoc (engine/generate eng :divine-dust) :loot/words))))
     (testing "roll picks from the loot-table, returning the chosen id and view-model"
       (is (= {:id         :divine-dust
               :view-model {:loot/title    "Divine Dust"
                            :loot/subtitle "A pinch of divine residue"}}
-             (engine/roll eng))))
+             (update (engine/roll eng) :view-model dissoc :loot/words))))
     (testing "an unknown loot type is rejected"
       (is (thrown? Exception (engine/generate eng :nonexistent))))))
 
@@ -282,3 +282,18 @@
     (testing "declared writes come back on the view-model for the client to apply"
       (let [vm (engine/generate (engine/with-state eng {:things {"a" {:n 1}}}) :writer)]
         (is (= {:things {"b" {:n 2}}} (:store/mutations vm)))))))
+
+(deftest words-are-drawn-by-the-engine
+  (let [eng (engine/create test-config)]
+    (testing "every result carries two words from the built-in vocabulary"
+      (let [words (:loot/words (engine/generate eng :divine-dust))]
+        (is (= 2 (count words)))
+        (is (every? string? words))
+        (is (apply not= words) "the pair is drawn without replacement")))
+    (testing "a config-declared vocabulary replaces the built-in one"
+      (let [eng (engine/create (assoc test-config :words ["alpha" "beta"]))]
+        (is (= #{"alpha" "beta"} (set (:loot/words (engine/generate eng :divine-dust)))))))
+    (testing ":extra-words widens the built-in vocabulary rather than replacing it"
+      (let [eng (engine/create (assoc test-config :extra-words ["zzz-extra"]))]
+        (is (< 2 (count (:words eng))))
+        (is (some #{"zzz-extra"} (:words eng)))))))

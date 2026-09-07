@@ -406,6 +406,10 @@
                               (into (subvec rows 0 idx) (subvec rows (inc idx)))]]))))
 
 ;; A nil row retracts the key, so clearing leaves nothing behind in the store.
+(nxr/register-action! :ui/history-hover
+                      (fn [_state idx]
+                        [[:fx/assoc-in [:history-hover] idx]]))
+
 (nxr/register-action! :ui/history-clear
                       (fn [{:keys [selected]}]
                         [[:fx/history selected nil]]))

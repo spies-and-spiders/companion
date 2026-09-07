@@ -311,7 +311,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 
 /* --- result history -------------------------------------------------------- */
 
-.history { margin-top: 1.6rem; }
+.history { position: relative; margin-top: 1.6rem; }
 .history__head { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; }
 .history__list {
   list-style: none;
@@ -336,7 +336,35 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   flex: none;
   font-family: var(--mono); font-size: 0.66rem; color: var(--muted);
 }
-.history__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history__name { flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the head of the first item — what tells apart rows a plugin titles alike */
+.history__body {
+  flex: 1 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 0.8rem; color: var(--muted);
+}
+.history__words {
+  margin-left: auto; flex: none;
+  font-family: var(--mono); font-size: 0.66rem; color: var(--gilt);
+}
+/* the hovered row, rendered in full as a popup above the list — out of flow, so
+   revealing it never resizes the page and pulls the cursor off the row. A
+   sibling of the list rather than a child, so its scroller cannot clip it. */
+.history__preview {
+  position: absolute; z-index: 5;
+  bottom: calc(100% + 0.45rem); left: 0; right: 0;
+  max-height: 50vh; overflow: hidden;
+  pointer-events: none;
+  filter: drop-shadow(0 8px 20px rgb(0 0 0 / 0.55));
+}
+.history__preview .sigil { animation: none; }
+/* while a preview is up, dim whatever is on the bench so the two do not read as
+   one item. `> .sigil` is the bench copy only — the preview's own is nested. */
+.workbench > .sigil { transition: opacity 0.15s ease; }
+.workbench:has(.history__preview) > .sigil { opacity: 0.25; }
+/* the bench copy is roomy; a popup wants to fit above the list */
+.history__preview .sigil__frame { padding: 1.1rem 1.3rem; }
+.history__preview .sigil__title { font-size: 1.5rem; margin-bottom: 0.8rem; }
 .history__remove {
   flex: none;
   padding: 0 0.6rem;
@@ -430,7 +458,7 @@ textarea.edit__control { min-height: 4.5rem; resize: vertical; }
 
 /* --- the sigil (signature surface) ----------------------------------------- */
 
-.sigil { animation: materialise 0.45s ease both; }
+.sigil { animation: materialise 0.45s ease; }
 
 .sigil__frame {
   position: relative;
@@ -449,6 +477,29 @@ textarea.edit__control { min-height: 4.5rem; resize: vertical; }
 }
 .sigil__frame::before { top: -1px; left: -1px; border-top: 2px solid; border-left: 2px solid; }
 .sigil__frame::after  { bottom: -1px; right: -1px; border-bottom: 2px solid; border-right: 2px solid; }
+
+/* the result's word handle: an encircled W pinned to the corner, revealing the
+   pair in a bubble above it on hover */
+.words { position: absolute; top: 0.9rem; right: 1.1rem; }
+.words__mark {
+  width: 1.5rem; height: 1.5rem;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--gilt-dim); border-radius: 50%;
+  font-family: var(--mono); font-size: 0.7rem; color: var(--gilt);
+  cursor: default;
+}
+/* out of flow, so revealing it never moves the mark */
+.words__text {
+  position: absolute; bottom: calc(100% + 0.45rem); right: 0;
+  padding: 0.3rem 0.55rem;
+  background: var(--ink-2);
+  border: 1px solid var(--gilt-dim); border-radius: var(--radius);
+  font-family: var(--mono); font-size: 0.72rem; color: var(--gilt);
+  white-space: nowrap; pointer-events: none;
+  opacity: 0; transition: opacity 0.15s ease;
+}
+.words:hover .words__mark { border-color: var(--gilt); }
+.words:hover .words__text { opacity: 1; }
 
 .sigil__eyebrow {
   margin: 0 0 0.5rem;

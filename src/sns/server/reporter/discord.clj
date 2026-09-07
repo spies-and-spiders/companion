@@ -1,26 +1,13 @@
 (ns sns.server.reporter.discord
   "A `Reporter` that posts a loot view-model to a Discord webhook as a rich embed."
   (:require
-    [clojure.edn :as edn]
-    [clojure.java.io :as io]
     [clojure.string :as str]
     [hato.client :as hc]
     [jsonista.core :as j]
-    [randy.core :as r]
-    [sns.sdk.protocols :as p])
-  (:import
-    (java.io PushbackReader)))
+    [sns.sdk.protocols :as p]))
 
 (def ^:private default-username "\uD83D\uDCB0 SNS Companion \uD83D\uDCB0")
-(def ^:private default-words (-> (io/resource "words.edn")
-                                 io/reader
-                                 PushbackReader.
-                                 edn/read))
 (def ^:private gilt 0xC8A24C) ; embed accent, matching the UI theme
-
-(defn- loot-message-unique-name [words]
-  (->> (r/sample-without-replacement 2 words)
-       (str/join \space)))
 
 (defn- chips [metadata]
   (str/join " " (map #(str "`" % "`") metadata)))
@@ -55,26 +42,22 @@
                      (seq desc) (assoc :description desc))]
             (seq meta) (conj {:description (str "-# Metadata\n" (str/join "\n" meta))}))))
 
-(defn- payload [{:keys [avatar-url discord-username words]} view-model]
-  {:content    (str "||" (loot-message-unique-name words) "||")
-   :avatar_url avatar-url
-   :username   (or discord-username default-username)
-   :embeds     (view-model->embeds view-model)})
-
-(defn- build-words [words extra-words]
-  (cond
-    (seq words) words
-    (seq extra-words) (vec (into (set default-words) extra-words))
-    :else default-words))
+(defn payload
+  "The webhook body. The spoilered content is the result's engine-drawn
+   `:loot/words`, so the reader sees the same handle the UI showed."
+  [{:keys [avatar-url discord-username]} view-model]
+  (cond-> {:avatar_url avatar-url
+           :username   (or discord-username default-username)
+           :embeds     (view-model->embeds view-model)}
+          (seq (:loot/words view-model))
+          (assoc :content (str "||" (str/join \space (:loot/words view-model)) "||"))))
 
 (defn create
   "Build a Discord `Reporter` posting to `webhook-url`."
-  [{:keys [webhook-url extra-words] :as config}]
+  [{:keys [webhook-url] :as config}]
   (when (str/blank? webhook-url)
     (throw (ex-info "Discord reporting requires a :webhook-url" {})))
-  (let [client (hc/build-http-client {:connect-timeout 10000})
-        config (-> (update config :words build-words extra-words)
-                   (dissoc :extra-words))]
+  (let [client (hc/build-http-client {:connect-timeout 10000})]
     (reify p/Reporter
       (report-label [_] "Send to Discord")
       (report! [_ view-model]

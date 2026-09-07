@@ -23,8 +23,8 @@ public interface Store {
     default void setup() {}
 
     /**
-     * Return the whole collection {@code coll} (a keyword) as a map, or an empty
+     * Return the whole collection {@code collId} (a keyword) as a map, or an empty
      * map when absent.
      */
-    Object readCollection(Object coll);
+    Object readCollection(Object collId);
 }
