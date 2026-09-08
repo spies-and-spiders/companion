@@ -1,20 +1,23 @@
 (ns sns.builtin.plugin-io
-  "Shared friendly <-> view-model mapping for external plugins (`:cli` over
-   stdio, `:ffi` over a C ABI). The un-namespaced JSON authors work in
-   ({\"title\",\"subtitle\",\"sections\",\"actions\"}; items with
-   {\"title\",\"body\",\"metadata\"}) is validated against `::plugin-output` and
-   mapped to the namespaced view-model here, so external authors never deal with
-   `:loot/...` keys.
+  "Shared request/output plumbing for external plugins (`:cli` over stdio, `:ffi`
+   over a C ABI, `:wasm` over WASI stdio). All three exchange the *same* JSON as
+   a `:jar` plugin exchanges objects: the namespaced view-model
+   (`sns.sdk.schema/view-model`). Namespaced keys survive JSON as they are
+   (`\"loot/title\"` reads back as `:loot/title`); `decode` then coerces the
+   enum and keyword *values* an author writes as strings.
 
    Actions round-trip: a returned `action` becomes a `:loot/action` event the UI
    dispatches back to the engine, which re-invokes the same plugin with an
    `action`/`params` request (rather than `inputs`), so an external plugin can
    drive stateful follow-ups (e.g. levelling up) entirely in its own language.
+   The action request also carries the current, possibly DM-edited `view-model`,
+   exactly as `LootAction/handle-action` receives it — that is what carries
+   `:loot/state` back, and what makes the displayed values the source of truth.
 
    State round-trips the same way. An external plugin never reaches the store —
    the engine reads the collections it declared and sends them as `state`, and
-   the `mutations` it returns are applied on this side. So a plugin that wants
-   persistent state writes JSON, not EDN, and never learns which backend is
+   the `store/mutations` it returns are applied on this side. So a plugin that
+   wants persistent state writes JSON, not EDN, and never learns which backend is
    configured."
   (:require
     [jsonista.core :as j]
@@ -23,18 +26,13 @@
 
 (def ^:private mapper j/keyword-keys-object-mapper)
 
-(defn- ->item [{:keys [title body metadata]}]
-  (cond-> {:item/body body}
-          title (assoc :item/title title)
-          (seq metadata) (assoc :item/metadata (vec metadata))))
-
-(defn- ->section [{:keys [heading items]}]
-  (cond-> {:section/items (mapv ->item items)}
-          heading (assoc :section/heading heading)))
-
 (defn- ->action
-  "Map a friendly `{:label :action :params}` to a namespaced view-model action
-   whose event routes back to plugin `id` via `handle-action`."
+  "Wire an author's `{:label :action :params}` to a view-model action whose event
+   routes back to plugin `id` via `handle-action`. External plugins do not write
+   `:action/event` themselves: the browser dispatches it as-is, and `id` is
+   assigned in config — the same command can be registered under several — so the
+   adapter is what knows it. The SDK's `Models.Action` gives `:jar` authors the
+   same three fields."
   [id {:keys [label action params]}]
   {:action/label label
    :action/event [:loot/action {:id id :action (keyword action) :params (or params {})}]})
@@ -46,16 +44,6 @@
    the manual-state editor."
   [mutations]
   (update-vals mutations #(update-keys % name)))
-
-(defn ->view-model
-  "Convert a friendly (un-namespaced) map into a view-model. Actions are wired
-   back to plugin `id`, and declared `mutations` become the engine's to apply."
-  [id {:keys [title subtitle sections actions mutations]}]
-  (cond-> {:loot/title title}
-          subtitle (assoc :loot/subtitle subtitle)
-          (seq sections) (assoc :loot/sections (mapv ->section sections))
-          (seq actions) (assoc :loot/actions (mapv #(->action id %) actions))
-          (seq mutations) (assoc :store/mutations (->mutations mutations))))
 
 (defn spec-storage
   "The `:store/...` keys an external plugin's config contributes to its
@@ -81,14 +69,29 @@
           (seq colls)
           (assoc :state (into {} (map (juxt identity #(p/read-collection (:store ctx) %))) colls))))
 
+(defn action-request
+  "The request body for an action call. `view-model` is the result the UI had on
+   screen, DM edits included; a plugin rebuilds its item from that rather than
+   from a copy frozen into `params`."
+  [ctx action params]
+  (cond-> {:action action :params params}
+          (:view-model ctx) (assoc :view-model (:view-model ctx))))
+
 (defn encode-request
   "Serialise a request context (the map handed to the plugin) to JSON."
   [ctx]
   (j/write-value-as-string ctx))
 
 (defn read-output
-  "Parse a plugin's friendly JSON output, validate it against `::plugin-output`,
-   and map it to a view-model wired back to plugin `id`. A contract breach throws
-   in the author's own keys, before mapping."
+  "Parse a plugin's JSON output, validate it against `::plugin-output`, and map
+   the two parts that are not the author's to write: actions get the event
+   routing them back to plugin `id`, and mutation keys the author wrote as JSON
+   strings are put back. Validating first means a contract breach throws in the
+   author's own keys, before mapping."
   [id json]
-  (->view-model id (schema/assert! ::schema/plugin-output (j/read-value json mapper))))
+  (let [out (->> (j/read-value json mapper)
+                 (schema/decode ::schema/plugin-output)
+                 (schema/assert! ::schema/plugin-output))]
+    (cond-> out
+            (seq (:loot/actions out))    (update :loot/actions #(mapv (partial ->action id) %))
+            (seq (:store/mutations out)) (update :store/mutations ->mutations))))

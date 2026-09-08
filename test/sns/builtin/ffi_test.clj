@@ -41,8 +41,8 @@
 
     :else
     (let [lib (compile-example)
-          gen (ffi/generator {:id :ffi-loot :library lib :symbol "generate" :free-symbol "loot_free"})]
-      (testing "generate maps the friendly C output to a valid view-model"
+          gen (ffi/generator {:id :ffi-loot :ffi {:library lib :symbol "generate" :free-symbol "loot_free"}})]
+      (testing "generate reads the C view-model output back as a valid view-model"
         (let [vm (p/generate gen {:inputs {}})]
           (is (schema/validate ::schema/view-model vm))
           (is (= "Rusty Dagger" (:loot/title vm)))
@@ -65,7 +65,7 @@
       (testing "repeated lookups of one library path share a single handle"
         (is (identical? (#'ffi/library-lookup lib) (#'ffi/library-lookup lib))))
       (testing "two plugins on the same library each generate correctly"
-        (let [a (ffi/generator {:id :ffi-a :library lib :symbol "generate" :free-symbol "loot_free"})
-              b (ffi/generator {:id :ffi-b :library lib :symbol "generate" :free-symbol "loot_free"})]
+        (let [a (ffi/generator {:id :ffi-a :ffi {:library lib :symbol "generate" :free-symbol "loot_free"}})
+              b (ffi/generator {:id :ffi-b :ffi {:library lib :symbol "generate" :free-symbol "loot_free"}})]
           (is (= "Rusty Dagger" (:loot/title (p/generate a {:inputs {}}))))
           (is (= "Rusty Dagger" (:loot/title (p/generate b {:inputs {}})))))))))

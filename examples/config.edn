@@ -32,16 +32,17 @@
  ;;   :browser — IndexedDB in the DM's browser; the server holds nothing. State
  ;;              is device-local, so use the export button to take it with you.
  ;;
- ;; Only :file reads :dir; see docs/storage.md.
+ ;; Settings only one backend understands nest under that backend's key; only
+ ;; :file has any (:dir). See docs/storage.md.
  :storage {:backend :file
-           :dir     "./state"}
+           :file    {:dir "./state"}}
 
  ;; --- plugins ---------------------------------------------------------------
  ;; The loot types available in the UI. Five kinds:
  ;;
  ;;   :builtin — a generator shipped in this app: the :id alone selects it
- ;;              (:divine-dust, :relics, :social). An optional :entrypoint
- ;;              Clojure var overrides the lookup.
+ ;;              (:divine-dust, :relics, :social). An optional
+ ;;              :builtin {:entrypoint <var>} overrides the lookup.
  ;;   :data    — a code-free loot type defined entirely in an EDN/JSON spec
  ;;              file (:source is a filesystem path, e.g. relative to config.edn),
  ;;              or written straight into this file under :inline (which wins
@@ -51,10 +52,15 @@
  ;;   :ffi     — call a C-ABI symbol in a shared library, exchanging the same
  ;;              JSON as :cli. Works in the native image (unlike :jar). See
  ;;              examples/ffi-plugin/ (C, Go, and Rust).
+ ;;   :wasm    — run a WASI module on GraalWASM, exchanging the same JSON as
+ ;;              :cli over its stdio: in-process and native-image-capable like
+ ;;              :ffi, but sandboxed and one build for every platform.
  ;;   :jar     — a generator from an external library jar on disk. Only
  ;;              available when running the app via java -jar
  ;;
  ;; Every plugin needs a unique :id; that id is what the :loot-table references.
+ ;; Keys every plugin shares (:id, :label, :utility?, :hidden?, …) sit at the top
+ ;; level; the ones only one :type understands nest under that type's own key.
  ;;
  ;; Any plugin may add :hidden? true to keep itself out of the UI's loot-type
  ;; picker, so it can only turn up by rolling the :loot-table. (It still appears
@@ -66,20 +72,20 @@
               ;; editor for, plus one action rolling 1d20 + the group bonus.
               ;; Any plugin can declare such a table with :store/manual.
            {:type :builtin :id :social}
-           {:type :data :id :uniques :source "data/uniques.edn"}
-           {:type :data :id :rings :source "data/rings.edn"}
+           {:type :data :id :uniques :data {:source "data/uniques.edn"}}
+           {:type :data :id :rings :data {:source "data/rings.edn"}}
               ;; The same DSL, written inline: handy for a short table you don't
               ;; want in its own file. :hidden? keeps it off the picker, so an
               ;; omen only ever arrives as a surprise off the loot-table below.
            {:type    :data
             :id      :omens
             :hidden? true
-            :inline  {:label "Omen"
-                      :items [{:text "A crow lands on the wagon."}
-                              {:text "The lanterns gutter without wind."}]
-                      :title "{{text}}"}}
-              ;; A loot generator in any language. :command is the program plus
-              ;; args; the engine pipes the request context as JSON on stdin and
+            :data    {:inline {:label "Omen"
+                               :items [{:text "A crow lands on the wagon."}
+                                       {:text "The lanterns gutter without wind."}]
+                               :title "{{text}}"}}}
+              ;; A loot generator in any language. :cli's :command is the program
+              ;; plus args; the engine pipes the request context as JSON on stdin and
               ;; reads a friendly view-model as JSON on stdout. :label is what the
               ;; UI shows (defaults to the id). Add :utility? true to group it
               ;; under Utilities instead of Loot Types (and bar it from the
@@ -88,7 +94,7 @@
             :id       :weather
             :utility? true
             :label    "Weather"
-            :command  ["python3" "examples/cli-plugin/weather.py"]}
+            :cli      {:command ["python3" "examples/cli-plugin/weather.py"]}}
               ;; A C-ABI shared library, exchanging the same JSON as :cli but in
               ;; process (so it works in the native image, unlike :jar). Build one
               ;; of the examples first, e.g. from examples/ffi-plugin/:
@@ -96,26 +102,26 @@
               ;; then point :library at it. :symbol is the generator; :free-symbol
               ;; (optional) is called on the returned pointer once its bytes are
               ;; read. Same :label/:utility?/:hidden? options as any other plugin.
-           #_{:type        :ffi
-              :id          :ffi-loot
-              :library     "plugins/libloot.dylib"
-              :symbol      "generate"
-              :free-symbol "loot_free"}
-              ;; A generator from an external jar. Put the jar on disk and name
+           #_{:type :ffi
+              :id   :ffi-loot
+              :ffi  {:library     "plugins/libloot.dylib"
+                     :symbol      "generate"
+                     :free-symbol "loot_free"}}
+              ;; A generator from an external jar at :jar's :path, which names
               ;; its generator: either an :entrypoint Clojure var, or — for
               ;; plugins written in Java/Kotlin/Scala with no Clojure — a :class
               ;; with a 0-arity constructor implementing the SPI interfaces.
               ;; The jar is added to the runtime classpath at startup. (If your
               ;; host forbids classpath mutation, put the jar on the JVM -cp
               ;; instead.)
-           #_{:type       :jar
-              :id         :homebrew
-              :jar        "plugins/homebrew-loot.jar"
-              :entrypoint my.homebrew.loot/generator}
-           #_{:type  :jar
-              :id    :homebrew-java
-              :jar   "plugins/homebrew-java.jar"
-              :class "my.homebrew.JavaLoot"}]
+           #_{:type :jar
+              :id   :homebrew
+              :jar  {:path       "plugins/homebrew-loot.jar"
+                     :entrypoint my.homebrew.loot/generator}}
+           #_{:type :jar
+              :id   :homebrew-java
+              :jar  {:path  "plugins/homebrew-java.jar"
+                     :class "my.homebrew.JavaLoot"}}]
 
  ;; --- randoms ---------------------------------------------------------------
  ;; Optional. Named lists any plugin can draw a value from. A plugin *declares*
@@ -156,15 +162,15 @@
  ;; loot to a webhook as a rich embed.
  ;;
  ;; :webhook-url is a secret — read it from the environment via #env rather than
- ;; committing it. :discord-username and :avatar-url are optional overrides for
- ;; how the bot message appears.
+ ;; committing it. :username and :avatar-url are optional overrides for how the
+ ;; bot message appears.
  ;;
  ;; Note that #env tags are not supported from .json config files, so these values
  ;; would need to be inlined
- :reporting {:backend          :discord
-             :webhook-url      #env DISCORD_WEBHOOK_URL
-             :discord-username "Loot Goblin"
-             :avatar-url       #env DISCORD_AVATAR_URL}
+ :reporting {:backend :discord
+             :discord {:webhook-url #env DISCORD_WEBHOOK_URL
+                       :username    "Loot Goblin"
+                       :avatar-url  #env DISCORD_AVATAR_URL}}
 
  ;; --- loot table ------------------------------------------------------------
  ;; The weighted draw used by the "random loot" button. Each :id must match a

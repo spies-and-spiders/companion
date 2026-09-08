@@ -11,8 +11,8 @@
   (testing "file backend is built from config"
     (is (some? (store/from-config
                  {:backend :file
-                  :dir     (str (io/file (System/getProperty "java.io.tmpdir")
-                                         (str "sns-cfg-" (System/nanoTime))))}))))
+                  :file    {:dir (str (io/file (System/getProperty "java.io.tmpdir")
+                                               (str "sns-cfg-" (System/nanoTime))))}}))))
   (testing ":browser has no server-side store — its state arrives per request"
     (is (nil? (store/from-config {:backend :browser}))))
   (testing "an unknown backend is rejected rather than silently ignored"

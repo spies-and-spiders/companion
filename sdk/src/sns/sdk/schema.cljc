@@ -74,6 +74,13 @@
                    [:fields [:sequential ::field]]]
 
    ;; --- view-model (the only contract the UI renderer understands) ---
+   ;; `:action/event` is a UI action vector, dispatched as-is by the browser, so
+   ;; only in-process plugins write one directly (see `sns.builtin.relics`) — they
+   ;; are already trusted and know the `:id` they were registered under. Anything
+   ;; crossing a boundary supplies `label`/`action`/`params` instead (the SDK's
+   ;; `Models.Action`, or `::plugin-action` as JSON) and its adapter builds the
+   ;; event, which both keeps a plugin to its own `:loot/action` route and fills
+   ;; in the config-assigned id it has no way to know.
    ::action [:map
              [:action/label string?]
              [:action/event vector?]]
@@ -148,20 +155,36 @@
    ;; left out are untouched.
    ::mutations [:map-of keyword? [:map-of any? any?]]
 
-   ;; --- external plugin I/O contract (:cli over stdio, :ffi over a C ABI) ---
-   ;; The "friendly", un-namespaced JSON an external plugin exchanges, mapped
-   ;; to/from the namespaced view-model in sns.builtin.plugin-io. External authors
-   ;; work in these keys, never the :loot/... view-model.
+   ;; --- external plugin I/O contract (:cli, :ffi, :wasm) ---
+   ;; External plugins exchange the same view-model a `:jar` plugin does, as
+   ;; JSON: namespaced keys survive intact (`"loot/title"` reads back as
+   ;; `:loot/title`), so there is one output contract, not two. Only the request
+   ;; is modelled here — the output *is* `::view-model`.
 
    ;; What the engine sends the plugin, as one of two shapes (never both): a
-   ;; generate call carries `inputs`, an action call carries `action`/`params`.
-   ;; Modelled as a union so codegen emits two request types and the
-   ;; generate-vs-action split is structural. Not runtime-validated — the engine
-   ;; produces it.
+   ;; generate call carries `inputs`, an action call carries `action`/`params`
+   ;; plus the `view-model` the UI had on screen (DM edits included, and the
+   ;; carrier of `:loot/state`). Modelled as a union so codegen emits two request
+   ;; types and the generate-vs-action split is structural. Not runtime-validated
+   ;; — the engine produces it.
    ;; `state` carries the collections the plugin declared with
    ;; `:store/collections`/`:store/manual`, read for it by the engine — an
    ;; external plugin never touches the store itself, and writes back by
-   ;; returning `mutations`.
+   ;; returning `store/mutations` on its view-model.
+   ;; The view-model as an external plugin *writes* it — identical but for
+   ;; `:loot/actions`, which carry the three fields of `::plugin-action` rather
+   ;; than a built `:action/event` (see `::action`). Validated before mapping, so
+   ;; a contract breach reports in the author's own keys; the engine asserts the
+   ;; mapped result against `::view-model` regardless.
+   ::plugin-action [:map
+                    [:label string?]
+                    [:action string?]
+                    [:params {:optional true} [:map-of keyword? any?]]]
+
+   ::plugin-output [:merge
+                    ::view-model
+                    [:map [:loot/actions {:optional true} [:sequential ::plugin-action]]]]
+
    ::plugin-request [:or
                      [:map
                       [:inputs [:map-of keyword? any?]]
@@ -169,33 +192,8 @@
                      [:map
                       [:action string?]
                       [:params {:optional true} [:map-of keyword? any?]]
+                      [:view-model {:optional true} ::view-model]
                       [:state {:optional true} [:map-of keyword? [:map-of any? any?]]]]]
-
-   ;; What the plugin returns. `action` is a bare name the adapter keywordises to
-   ;; route the follow-up back to the same plugin.
-   ::plugin-item [:map
-                  [:title {:optional true} string?]
-                  [:body string?]
-                  [:metadata {:optional true} [:sequential string?]]]
-
-   ::plugin-section [:map
-                     [:heading {:optional true} string?]
-                     [:items [:sequential ::plugin-item]]]
-
-   ::plugin-action [:map
-                    [:label string?]
-                    [:action string?]
-                    [:params {:optional true} [:map-of keyword? any?]]]
-
-   ::plugin-output [:map
-                    [:title string?]
-                    [:subtitle {:optional true} string?]
-                    [:sections {:optional true} [:sequential ::plugin-section]]
-                    [:actions {:optional true} [:sequential ::plugin-action]]
-                    ;; Writes to apply, `{<collection> {<key> <value>}}` with a
-                    ;; null retracting. The engine applies them once this output
-                    ;; has validated, so a plugin that errors changes nothing.
-                    [:mutations {:optional true} ::mutations]]
 
    ;; --- upgrade-graph DSL (mod state + progression) ---
    ;; `::option` and `::upgrades` are mutually recursive, so the recursive edges
@@ -273,30 +271,33 @@
 
    ::storage [:map
               [:backend [:enum :file :memory :browser]]
-              ;; :file only — the directory holding one EDN file per collection.
-              [:dir {:optional true} string?]]
+              ;; Backend-specific settings nest under the backend's own key.
+              [:file {:optional true} [:map [:dir {:optional true} string?]]]]
 
    ;; Dispatch coerces `:type` to a keyword so a JSON config (where it is the
    ;; string "data" etc.) routes to the right branch during decoding.
    ;; `:hidden?` works on every plugin type — it is applied by the engine rather
    ;; than the generator, so even a compiled :jar plugin can be hidden.
    ::plugin [:multi {:dispatch (fn [p] (some-> (:type p) keyword))}
+                 ;; Keys every plugin shares stay at the top level; the ones
+                 ;; only its :type understands nest under that type's key.
                  ;; A :data plugin's spec comes either from a :source file or
                  ;; written :inline (which wins when both are given).
-             [:data [:and
-                     [:map
-                      [:type [:= :data]]
-                      [:id keyword?]
-                      [:hidden? {:optional true} boolean?]
-                      [:source {:optional true} string?]
-                      [:inline {:optional true} ::data-spec]]
-                     [:fn {:error/message "a :data plugin needs a :source or an :inline spec"}
-                      (fn [p] (boolean (or (:source p) (:inline p))))]]]
+             [:data [:map
+                     [:type [:= :data]]
+                     [:id keyword?]
+                     [:hidden? {:optional true} boolean?]
+                     [:data [:and
+                             [:map
+                              [:source {:optional true} string?]
+                              [:inline {:optional true} ::data-spec]]
+                             [:fn {:error/message "a :data plugin needs a :source or an :inline spec"}
+                              (fn [d] (boolean (or (:source d) (:inline d))))]]]]]
              [:cli [:map
                     [:type [:= :cli]]
                     [:id keyword?]
                     [:hidden? {:optional true} boolean?]
-                    [:command [:sequential string?]]
+                    [:cli [:map [:command [:sequential string?]]]]
                     [:utility? {:optional true} boolean?]
                     [:history {:optional true} ::history]
                     [:label {:optional true} string?]
@@ -307,6 +308,25 @@
                         ;; into the spec and sends the collected values as
                         ;; `inputs`.
                     [:inputs {:optional true} [:sequential ::field]]]]
+                 ;; A :wasm plugin is a WASI command module run on GraalWASM,
+                 ;; sharing the stdio JSON contract with :cli. `:args` are its
+                 ;; program arguments and `:dirs` maps guest paths it may read to
+                 ;; host directories (none means no filesystem). Works in native
+                 ;; images (unlike :jar), in-process (unlike :cli).
+             [:wasm [:map
+                     [:type [:= :wasm]]
+                     [:id keyword?]
+                     [:hidden? {:optional true} boolean?]
+                     [:wasm [:map
+                             [:module string?]
+                             [:args {:optional true} [:sequential string?]]
+                             [:dirs {:optional true} [:map-of [:or keyword? string?] string?]]]]
+                     [:utility? {:optional true} boolean?]
+                     [:history {:optional true} ::history]
+                     [:label {:optional true} string?]
+                     [:store/collections {:optional true} [:sequential keyword?]]
+                     [:store/manual {:optional true} ::manual-state]
+                     [:inputs {:optional true} [:sequential ::field]]]]
                  ;; An :ffi plugin calls a C-ABI symbol in a shared library
                  ;; (.so/.dylib/.dll): `(char* request_json) -> char* output_json`.
                  ;; If `free-symbol` is given it is called on the returned pointer
@@ -316,9 +336,10 @@
                     [:type [:= :ffi]]
                     [:id keyword?]
                     [:hidden? {:optional true} boolean?]
-                    [:library string?]
-                    [:symbol string?]
-                    [:free-symbol {:optional true} string?]
+                    [:ffi [:map
+                           [:library string?]
+                           [:symbol string?]
+                           [:free-symbol {:optional true} string?]]]
                     [:utility? {:optional true} boolean?]
                     [:history {:optional true} ::history]
                     [:label {:optional true} string?]
@@ -328,21 +349,22 @@
                  ;; A :jar plugin names its generator either as a Clojure
                  ;; :entrypoint factory var or as a :class with a 0-arity
                  ;; constructor (for pure-JVM-language plugins).
-             [:jar [:and
-                    [:map
-                     [:type [:= :jar]]
-                     [:id keyword?]
-                     [:hidden? {:optional true} boolean?]
-                     [:jar string?]
-                     [:entrypoint {:optional true} symbol?]
-                     [:class {:optional true} string?]]
-                    [:fn {:error/message "a :jar plugin needs an :entrypoint or a :class"}
-                     (fn [p] (boolean (or (:entrypoint p) (:class p))))]]]
+             [:jar [:map
+                    [:type [:= :jar]]
+                    [:id keyword?]
+                    [:hidden? {:optional true} boolean?]
+                    [:jar [:and
+                           [:map
+                            [:path string?]
+                            [:entrypoint {:optional true} symbol?]
+                            [:class {:optional true} string?]]
+                           [:fn {:error/message "a :jar plugin needs an :entrypoint or a :class"}
+                            (fn [j] (boolean (or (:entrypoint j) (:class j))))]]]]]
              [:builtin [:map
                         [:type [:= :builtin]]
                         [:id keyword?]
                         [:hidden? {:optional true} boolean?]
-                        [:entrypoint {:optional true} symbol?]]]]
+                        [:builtin {:optional true} [:map [:entrypoint {:optional true} symbol?]]]]]]
 
    ::loot-entry [:map [:id keyword?] [:weight {:optional true} number?]]
 
@@ -358,9 +380,10 @@
    ::reporting [:multi {:dispatch (fn [r] (some-> (:backend r) keyword))}
                 [:discord [:map
                            [:backend [:= :discord]]
-                           [:webhook-url string?]
-                           [:discord-username {:optional true} string?]
-                           [:avatar-url {:optional true} string?]]]]
+                           [:discord [:map
+                                      [:webhook-url string?]
+                                      [:username {:optional true} string?]
+                                      [:avatar-url {:optional true} string?]]]]]]
 
    ::config [:map
              [:server {:optional true} ::server]

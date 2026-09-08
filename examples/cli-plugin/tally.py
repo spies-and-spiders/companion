@@ -23,10 +23,11 @@ count = (tally.get(who) or {}).get("count", 0) + 1
 
 rows = sorted({**tally, who: {"count": count}}.items())
 print(json.dumps({
-    "title": f"{who} × {count}",
-    "sections": [{"heading": "Tally",
-                  "items": [{"title": name, "body": str(row.get("count", 0))}
-                            for name, row in rows]}],
+    "loot/title": f"{who} × {count}",
+    "loot/sections": [{"section/heading": "Tally",
+                       "section/items": [{"item/title": name,
+                                          "item/body": str(row.get("count", 0))}
+                                         for name, row in rows]}],
     # Declared, not written: the engine applies this once the output validates.
-    "mutations": {"tally": {who: {"count": count}}},
+    "store/mutations": {"tally": {who: {"count": count}}},
 }))

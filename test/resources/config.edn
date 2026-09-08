@@ -1,8 +1,8 @@
 {:storage    {:backend :memory}
  :plugins    [{:type :builtin :id :divine-dust}
-              {:type :builtin :id :relics :entrypoint sns.builtin.relics/generator}
-              {:type :data :id :uniques :source "data/uniques.edn"}
-              {:type :data :id :rings :source "data/rings.edn"}]
+              {:type :builtin :id :relics :builtin {:entrypoint sns.builtin.relics/generator}}
+              {:type :data :id :uniques :data {:source "data/uniques.edn"}}
+              {:type :data :id :rings :data {:source "data/rings.edn"}}]
  :loot-table [{:id :divine-dust :weight 40}
               {:id :uniques :weight 25}
               {:id :rings :weight 20}

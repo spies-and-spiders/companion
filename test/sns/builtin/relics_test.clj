@@ -7,7 +7,7 @@
     [sns.server.store.edn :as edn-store]))
 
 (def ^:private config
-  {:plugins    [{:type :builtin :id :relics :entrypoint 'sns.builtin.relics/generator}]
+  {:plugins    [{:type :builtin :id :relics :builtin {:entrypoint 'sns.builtin.relics/generator}}]
    :loot-table [{:id :relics :weight 100}]})
 
 (defn- path-length
@@ -51,7 +51,7 @@
   ;; item. Uses the file backend that the default config ships with.
   (let [dir (str (io/file (System/getProperty "java.io.tmpdir")
                           (str "sns-relics-" (System/nanoTime))))
-        s   (edn-store/create {:backend :file :dir dir})]
+        s   (edn-store/create {:backend :file :file {:dir dir}})]
     (try
       (let [eng    (engine/create config {:store s})
             vm     (engine/generate eng :relics)

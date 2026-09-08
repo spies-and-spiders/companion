@@ -3,8 +3,10 @@
 
 The engine passes the request context as JSON on stdin:
     {"inputs": {...}}
-and expects a friendly (un-namespaced) view-model as JSON on stdout:
-    {"title", "subtitle", "sections": [{"heading", "items": [{"title","body","metadata"}]}]}
+and expects a view-model as JSON on stdout — the same one a :jar plugin returns:
+    {"loot/title", "loot/subtitle",
+     "loot/sections": [{"section/heading", "section/items": [
+       {"item/title", "item/body", "item/metadata"}]}]}
 
 Register it in config.edn with:
     {:type :cli :id :weather :label "Weather"
@@ -26,10 +28,11 @@ def main():
     _ctx = json.load(sys.stdin) if not sys.stdin.isatty() else {}
     title, body, metadata = random.choice(CONDITIONS)
     json.dump({
-        "title": title,
-        "subtitle": "Weather",
-        "sections": [{"heading": "Conditions",
-                      "items": [{"body": body, "metadata": metadata}]}],
+        "loot/title": title,
+        "loot/subtitle": "Weather",
+        "loot/sections": [{"section/heading": "Conditions",
+                           "section/items": [{"item/body": body,
+                                              "item/metadata": metadata}]}],
     }, sys.stdout)
 
 

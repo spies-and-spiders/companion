@@ -450,17 +450,13 @@
   [{:loot/keys [title vars]}]
   (or (not-empty (str/trim (str (template/render title vars)))) "Untitled"))
 
-(def ^:private preview-length 60)
-
 (defn- history-body
   "The head of the result's first item, rendered. Plenty of loot types title
    every result the same way (\"Reliquary\"), where the body is the only thing
-   that tells two rows apart."
+   that tells two rows apart. Overlong bodies are cut off by the column."
   [{:loot/keys [vars sections]}]
   (let [{:item/keys [body] :as item} (first (mapcat :section/items sections))]
-    (when-let [text (some-> body (template/render (merge vars (:item/vars item))) str str/trim not-empty)]
-      (cond-> text
-              (< preview-length (count text)) (-> (subs 0 preview-length) (str "..."))))))
+    (some-> body (template/render (merge vars (:item/vars item))) str str/trim not-empty)))
 
 (defn- history-preview
   "The hovered row's result, rendered as it appears on the bench — the whole
@@ -488,10 +484,10 @@
            [:button.history__entry {:on {:click [[:ui/history-restore idx]]}}
             [:span.history__time (.toLocaleString (js/Date. at))]
             [:span.history__name (history-label view-model)]
-            (when-let [body (history-body view-model)]
-              [:span.history__body body])
-            (when (seq (:loot/words view-model))
-              [:span.history__words (str/join " " (:loot/words view-model))])]
+            ;; always rendered, empty or not: they hold the grid columns that
+            ;; keep every row's text lined up
+            [:span.history__body (history-body view-model)]
+            [:span.history__words (str/join " " (:loot/words view-model))]]
            [:button.history__remove {:type "button"
                                      :on   {:click [[:ui/history-delete idx]]}}
             "✕"]])

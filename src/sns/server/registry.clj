@@ -9,12 +9,13 @@
     [sns.builtin.ffi :as ffi]
     [sns.builtin.relics :as relics]
     [sns.builtin.social :as social]
+    [sns.builtin.wasm :as wasm]
     [sns.server.classpath :as classpath]))
 
 (def builtins
   "Factories for the generators shipped with the app, keyed by the :id a
    `:builtin` plugin registers under. Eagerly required, so config needs no
-   `:entrypoint` (and no Clojure symbols) to use them."
+   `:builtin` `:entrypoint` (and no Clojure symbols) to use them."
   {:divine-dust dust/generator
    :relics      relics/generator
    :social      social/generator})
@@ -29,16 +30,16 @@
   "Construct a `LootGenerator` from a single plugin config entry."
   :type)
 
-(defmethod build-generator :builtin [{:keys [id entrypoint] :as plugin}]
+(defmethod build-generator :builtin [{:keys [id builtin] :as plugin}]
   ;; With an :entrypoint, resolve it as a factory fn: (entrypoint plugin) ->
   ;; LootGenerator. Without one, the :id names a registered builtin.
-  (if entrypoint
+  (if-let [entrypoint (:entrypoint builtin)]
     ((resolve-fn entrypoint) plugin)
     (if-let [factory (get builtins id)]
       (factory plugin)
       (throw (ex-info "Unknown builtin plugin" {:id id :known (vec (keys builtins))})))))
 
-(defmethod build-generator :data [{:keys [id source inline]}]
+(defmethod build-generator :data [{:keys [id] {:keys [source inline]} :data}]
   ;; An :inline spec takes precedence over a :source file
   (if inline
     (data/generator id inline)
@@ -50,12 +51,15 @@
 (defmethod build-generator :ffi [plugin]
   (ffi/generator plugin))
 
-(defmethod build-generator :jar [{:keys [jar entrypoint] :as plugin}]
+(defmethod build-generator :wasm [plugin]
+  (wasm/generator plugin))
+
+(defmethod build-generator :jar [{{:keys [path entrypoint] class-name :class} :jar :as plugin}]
   ;; Add the external jar to the classpath, then resolve its generator: a
   ;; `:class` is constructed via its 0-arity constructor, otherwise the
   ;; `:entrypoint` factory var is resolved exactly like a builtin.
-  (let [loader (classpath/add-jar! jar)]
-    (if-let [class-name (:class plugin)]
+  (let [loader (classpath/add-jar! path)]
+    (if class-name
       (classpath/construct loader class-name)
       ((resolve-fn entrypoint) plugin))))
 

@@ -70,8 +70,8 @@
   (testing "a generator defined in an external jar is loaded and invoked"
     (let [jar (build-plugin-jar!)
           gen (registry/build-generator
-                {:type       :jar                       :id :test-jar :jar jar
-                 :entrypoint 'testplugin.loot/generator})]
+                {:type :jar                                               :id :test-jar
+                 :jar  {:path jar :entrypoint 'testplugin.loot/generator}})]
       (is (= {:id :test-jar :label "Test Jar"} (p/loot-spec gen)))
       (is (= "From a JAR" (:loot/title (p/generate gen {})))))))
 
@@ -79,10 +79,10 @@
   (testing "several plugins may name the same jar, which is loaded only once"
     (let [jar (build-plugin-jar!)
           reg (registry/build
-                {:plugins [{:type       :jar                       :id :test-jar :jar jar
-                            :entrypoint 'testplugin.loot/generator}
-                           {:type       :jar                             :id :test-jar-2 :jar jar
-                            :entrypoint 'testplugin.loot/other-generator}]})]
+                {:plugins [{:type :jar                                               :id :test-jar
+                            :jar  {:path jar :entrypoint 'testplugin.loot/generator}}
+                           {:type :jar                                                     :id :test-jar-2
+                            :jar  {:path jar :entrypoint 'testplugin.loot/other-generator}}]})]
       (is (= "From a JAR" (:loot/title (p/generate (:test-jar reg) {}))))
       (is (= "Also from a JAR" (:loot/title (p/generate (:test-jar-2 reg) {}))))
       (is (identical? (classpath/add-jar! jar) (classpath/add-jar! jar))
@@ -92,12 +92,12 @@
   (testing "a :class plugin is constructed via its 0-arity constructor"
     (let [jar (build-java-plugin-jar!)
           gen (registry/build-generator
-                {:type :jar :id :java-jar :jar jar :class "testplugin.JavaLoot"})]
+                {:type :jar :id :java-jar :jar {:path jar :class "testplugin.JavaLoot"}})]
       (is (= {:id :java-jar :label "Java Jar"} (p/loot-spec gen)))
       (is (= "From Java" (:loot/title (p/generate gen {})))))))
 
 (deftest missing-jar-throws
   (is (thrown? Exception
                (registry/build-generator
-                 {:type       :jar            :id :nope :jar "/no/such/plugin.jar"
-                  :entrypoint 'nope/generator}))))
+                 {:type :jar                                                      :id :nope
+                  :jar  {:path "/no/such/plugin.jar" :entrypoint 'nope/generator}}))))

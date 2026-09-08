@@ -9,7 +9,7 @@
   (testing "nil when reporting is not configured"
     (is (nil? (reporter/from-config nil))))
   (testing "a discord reporter when configured"
-    (let [r (reporter/from-config {:backend :discord :webhook-url "https://example/x"})]
+    (let [r (reporter/from-config {:backend :discord :discord {:webhook-url "https://example/x"}})]
       (is (satisfies? p/Reporter r))
       (is (= "Send to Discord" (p/report-label r)))))
   (testing "an unknown backend is rejected"
@@ -21,7 +21,7 @@
     (report! [_ vm] (reset! sink vm) nil)))
 
 (def ^:private base-config
-  {:plugins    [{:type :builtin :id :divine-dust :entrypoint 'sns.builtin.dust/generator}]
+  {:plugins    [{:type :builtin :id :divine-dust :builtin {:entrypoint 'sns.builtin.dust/generator}}]
    :loot-table [{:id :divine-dust :weight 1}]})
 
 (deftest capabilities-reflect-reporter

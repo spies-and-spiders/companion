@@ -50,12 +50,12 @@
 (deftest file-backend
   (let [dir (temp-dir)]
     (try
-      (round-trips (edn-store/create {:backend :file :dir dir}))
+      (round-trips (edn-store/create {:backend :file :file {:dir dir}}))
       (testing "one file per collection, named for it"
         (is (= #{"relics.edn" "social.edn"}
                (set (map #(.getName %) (.listFiles (io/file dir)))))))
       (testing "state survives a fresh store on the same dir"
-        (let [reopened (doto (edn-store/create {:backend :file :dir dir}) p/setup!)]
+        (let [reopened (doto (edn-store/create {:backend :file :file {:dir dir}}) p/setup!)]
           (is (= "Moonblade" (get-in (p/read-collection reopened :relics) ["r2" :name])))))
       (finally (cleanup! dir)))))
 
@@ -63,7 +63,7 @@
   ;; The point of the file backend: a DM edits state in a text editor while the
   ;; app is running, and the next read sees it.
   (let [dir   (temp-dir)
-        store (doto (edn-store/create {:backend :file :dir dir}) p/setup!)
+        store (doto (edn-store/create {:backend :file :file {:dir dir}}) p/setup!)
         file  (io/file dir "relics.edn")]
     (try
       (edn-store/mutate! store {:relics {"r1" {:name "Sunblade" :level 3}}})

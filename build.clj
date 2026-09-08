@@ -59,11 +59,38 @@
                            (concat (json/read-str (slurp existing))
                                    (json/read-str (#'uber/stream->string in))))}}})
 
+(def ^:private graal-lib-dir "target/lib")
+
+(def ^:private graal-excludes
+  "GraalWASM (and the Truffle/polyglot stack under it, for `:wasm` plugins) stays
+   out of the uberjar: every one of those artifacts carries a native-image
+   directive forcing itself onto the module path, which an uberjar cannot satisfy
+   — flattening drops the module descriptors. They are copied to `target/lib`
+   instead and reached through the uberjar manifest's Class-Path, so `java -jar`
+   still works and native-image gets them as real (modular) jars."
+  ["^org/graalvm/.*"
+   "^com/oracle/truffle/.*"
+   "^com/oracle/svm/.*"
+   "META-INF/native-image/org\\.graalvm\\..*"
+   "META-INF/services/org\\.graalvm\\..*"
+   "META-INF/services/com\\.oracle\\.truffle\\..*"
+   "^META-INF/versions/[0-9]+/(org/graalvm|com/oracle/(truffle|svm))/.*"])
+
 (def ^:private helidon-conflict-handlers
   {"META-INF/helidon/service.loader"              :append-dedupe
    "META-INF/helidon/feature-metadata.properties" :append-dedupe
    "META-INF/helidon/config-metadata.json"        append-json
    "META-INF/helidon/service-registry.json"       append-json})
+
+(defn- graal-jars
+  "The GraalWASM/Truffle/polyglot jars in `basis`, excluded from the uberjar and
+   shipped beside it."
+  [basis]
+  (into []
+        (comp (filter (fn [[lib _]] (str/starts-with? (namespace lib) "org.graalvm")))
+              (mapcat (fn [[_ {:keys [paths]}]] paths))
+              (filter #(str/ends-with? % ".jar")))
+        (:libs basis)))
 
 (defn clean [_]
   (b/delete {:path "target"}))
@@ -122,7 +149,10 @@
 
 (defn uber [{:keys [aliases]}]
   (clean nil)
-  (let [namespaces (sns-namespaces ["src" "sdk/src"])]
+  (let [namespaces (sns-namespaces ["src" "sdk/src"])
+        jars       (graal-jars (basis aliases))]
+    (doseq [jar jars]
+      (b/copy-file {:src jar :target (str graal-lib-dir "/" (.getName (io/file jar)))}))
     (b/copy-dir {:src-dirs   ["src" "resources" "sdk/src"]
                  :target-dir class-dir})
     (b/compile-clj {:basis      (basis aliases)
@@ -132,5 +162,7 @@
              :uber-file         uber-file
              :basis             (basis aliases)
              :main              entrypoint
+             :exclude           graal-excludes
+             :manifest          {"Class-Path" (str/join " " (map #(str "lib/" (.getName (io/file %))) jars))}
              :conflict-handlers helidon-conflict-handlers})
-    (println "Built" uber-file)))
+    (println "Built" uber-file (str "(+ " (count jars) " jars in " graal-lib-dir ")"))))

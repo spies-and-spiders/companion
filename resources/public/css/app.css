@@ -318,12 +318,14 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   margin: 0.6rem 0 0; padding: 0;
   /* capped so a long history scrolls instead of pushing the bench off-screen */
   max-height: 16rem; overflow-y: auto;
-  display: flex; flex-direction: column; gap: 0.35rem;
+  /* one grid for every row, so the columns line up down the list */
+  display: grid; grid-template-columns: auto fit-content(35%) minmax(0, 1fr) auto auto;
+  row-gap: 0.35rem; column-gap: 0.7rem;
 }
-.history__row { display: flex; align-items: stretch; gap: 0.35rem; }
+.history__row { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; }
 .history__entry {
-  flex: 1;
-  display: flex; align-items: baseline; gap: 0.7rem;
+  display: grid; grid-column: 1 / -2; grid-template-columns: subgrid;
+  align-items: baseline;
   padding: 0.45rem 0.7rem;
   background: transparent;
   border: var(--rule);
@@ -332,19 +334,16 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   text-align: left;
 }
 .history__entry:hover { border-color: var(--gilt); background: var(--ink-2); }
-.history__time {
-  flex: none;
-  font-family: var(--mono); font-size: 0.66rem; color: var(--muted);
-}
-.history__name { flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history__time { font-family: var(--mono); font-size: 0.66rem; color: var(--muted); }
+.history__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* the head of the first item — what tells apart rows a plugin titles alike */
 .history__body {
-  flex: 1 1 auto; min-width: 0;
+  min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: 0.8rem; color: var(--muted);
 }
 .history__words {
-  margin-left: auto; flex: none;
+  text-align: right;
   font-family: var(--mono); font-size: 0.66rem; color: var(--gilt);
 }
 /* the hovered row, rendered in full as a popup above the list — out of flow, so
@@ -366,7 +365,6 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .history__preview .sigil__frame { padding: 1.1rem 1.3rem; }
 .history__preview .sigil__title { font-size: 1.5rem; margin-bottom: 0.8rem; }
 .history__remove {
-  flex: none;
   padding: 0 0.6rem;
   background: transparent;
   border: var(--rule);

@@ -18,13 +18,13 @@
     (let [f   (write-temp-json
                 (str "{\"storage\":{\"backend\":\"file\"},"
                      "\"plugins\":[{\"type\":\"builtin\",\"id\":\"dust\","
-                     "\"entrypoint\":\"sns.builtin.dust/generator\"},"
-                     "{\"type\":\"data\",\"id\":\"uniques\",\"source\":\"data/uniques.edn\"}],"
+                     "\"builtin\":{\"entrypoint\":\"sns.builtin.dust/generator\"}},"
+                     "{\"type\":\"data\",\"id\":\"uniques\",\"data\":{\"source\":\"data/uniques.edn\"}}],"
                      "\"loot-table\":[{\"id\":\"dust\",\"weight\":40},{\"id\":\"uniques\"}]}"))
           cfg (config/load-config f)]
       (is (= :file (-> cfg :storage :backend)))
       (is (= [:builtin :data] (mapv :type (:plugins cfg))))
-      (is (= 'sns.builtin.dust/generator (-> cfg :plugins first :entrypoint)))
+      (is (= 'sns.builtin.dust/generator (-> cfg :plugins first :builtin :entrypoint)))
       (is (= [:dust :uniques] (mapv :id (:plugins cfg))))
       (is (= [40 nil] (mapv :weight (:loot-table cfg)))))))
 
@@ -33,11 +33,11 @@
             decoded to keywords, and `{{result}}` read as a field reference to
             `:{{result}}`, which no entry has, so every such item rendered blank"
     (let [f   (write-temp-json
-                (str "{\"plugins\":[{\"type\":\"data\",\"id\":\"cards\",\"inline\":"
+                (str "{\"plugins\":[{\"type\":\"data\",\"id\":\"cards\",\"data\":{\"inline\":"
                      "{\"label\":\"Cards\",\"items\":[{\"result\":\"Draw 2.\"}],"
                      "\"title\":\"Tarot\",\"sections\":[{\"each\":\"items\","
-                     "\"item\":{\"title\":\"A card\",\"body\":\"{{result}}\"}}]}}]}"))
-          item (-> (config/load-config f) :plugins first :inline :sections first :item)]
+                     "\"item\":{\"title\":\"A card\",\"body\":\"{{result}}\"}}]}}}]}"))
+          item (-> (config/load-config f) :plugins first :data :inline :sections first :item)]
       (is (= "{{result}}" (:body item)))
       (is (= "A card" (:title item))))))
 
@@ -46,7 +46,7 @@
     (let [f   (write-temp-json
                 (str "{\"history\":\"on-report\","
                      "\"plugins\":[{\"type\":\"cli\",\"id\":\"weather\","
-                     "\"command\":[\"echo\"],\"history\":\"always\"}]}"))
+                     "\"cli\":{\"command\":[\"echo\"]},\"history\":\"always\"}]}"))
           cfg (config/load-config f)]
       (is (= :on-report (:history cfg)))
       (is (= :always (-> cfg :plugins first :history)))))
@@ -78,7 +78,7 @@
     ;; :reporting secrets resolve from #env at runtime; substitute placeholders
     ;; so the check is hermetic (doesn't depend on those vars being set).
     (let [cfg (-> (aero/read-config (io/file "examples/config.edn"))
-                  (update :reporting merge {:webhook-url "https://example.test/webhook"
-                                            :avatar-url  "https://example.test/avatar.png"}))
+                  (update-in [:reporting :discord] merge {:webhook-url "https://example.test/webhook"
+                                                          :avatar-url  "https://example.test/avatar.png"}))
           err (schema/explain ::schema/config cfg)]
       (is (nil? err) (some-> err me/humanize pr-str)))))

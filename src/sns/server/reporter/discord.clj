@@ -45,9 +45,9 @@
 (defn payload
   "The webhook body. The spoilered content is the result's engine-drawn
    `:loot/words`, so the reader sees the same handle the UI showed."
-  [{:keys [avatar-url discord-username]} view-model]
+  [{:keys [avatar-url username]} view-model]
   (cond-> {:avatar_url avatar-url
-           :username   (or discord-username default-username)
+           :username   (or username default-username)
            :embeds     (view-model->embeds view-model)}
           (seq (:loot/words view-model))
           (assoc :content (str "||" (str/join \space (:loot/words view-model)) "||"))))

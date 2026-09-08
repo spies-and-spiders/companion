@@ -7,10 +7,12 @@
 //    :symbol "generate" :free-symbol "loot_free"}
 //
 // `generate` receives the request JSON ({"inputs",...} for a roll,
-// {"action","params",...} for a follow-up) and returns a Rust-allocated C string
-// the engine reads and then frees via `loot_free`. Like the C example this stays
-// dependency-free and only branches on whether an action is present; a real
-// plugin would parse the request and build the output with serde_json.
+// {"action","params","view-model",...} for a follow-up) and returns a
+// Rust-allocated C string holding a view-model — the same one a :jar plugin
+// returns — which the engine reads and then frees via `loot_free`. Like the C
+// example this stays dependency-free and only branches on whether an action is
+// present; a real plugin would parse the request and build the output with
+// serde_json.
 
 use std::ffi::{c_char, CStr, CString};
 
@@ -22,9 +24,9 @@ use std::ffi::{c_char, CStr, CString};
 pub unsafe extern "C" fn generate(request: *const c_char) -> *mut c_char {
     let request = CStr::from_ptr(request).to_string_lossy();
     let body = if request.contains("\"action\"") {
-        r#"{"title":"Sharpened Blade","sections":[{"items":[{"body":"The blade is now +1 keener."}]}]}"#
+        r#"{"loot/title":"Sharpened Blade","loot/sections":[{"section/items":[{"item/body":"The blade is now +1 keener."}]}]}"#
     } else {
-        r#"{"title":"Rusty Dagger","sections":[{"heading":"Loot","items":[{"title":"Rusty Dagger","body":"A worn blade.","metadata":["common"]}]}],"actions":[{"label":"Sharpen","action":"sharpen","params":{"by":1}}]}"#
+        r#"{"loot/title":"Rusty Dagger","loot/sections":[{"section/heading":"Loot","section/items":[{"item/title":"Rusty Dagger","item/body":"A worn blade.","item/metadata":["common"]}]}],"loot/actions":[{"label":"Sharpen","action":"sharpen","params":{"by":1}}]}"#
     };
     // into_raw hands ownership to the engine; loot_free reclaims it below.
     CString::new(body).unwrap().into_raw()

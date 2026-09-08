@@ -12,8 +12,8 @@
     (java.util.zip ZipInputStream)))
 
 (def ^:private config
-  {:plugins    [{:type :builtin :id :divine-dust :entrypoint 'sns.builtin.dust/generator}
-                {:type :builtin :id :relics :entrypoint 'sns.builtin.relics/generator}]
+  {:plugins    [{:type :builtin :id :divine-dust :builtin {:entrypoint 'sns.builtin.dust/generator}}
+                {:type :builtin :id :relics :builtin {:entrypoint 'sns.builtin.relics/generator}}]
    :loot-table [{:id :divine-dust :weight 100}]})
 
 (defn- post [app uri data]
@@ -228,7 +228,7 @@
                   (recur (conj names name)))
                 (is (= #{"relics.edn" "social.edn"} names))))))
         (testing "a :file store over the unzipped directory sees the same state"
-          (let [restored (doto (edn-store/create {:backend :file :dir (str dir)}) p/setup!)]
+          (let [restored (doto (edn-store/create {:backend :file :file {:dir (str dir)}}) p/setup!)]
             (is (= (p/read-collection store :relics) (p/read-collection restored :relics)))
             (is (= (p/read-collection store :social) (p/read-collection restored :social)))
             (is (= [{:id :sharp}] (get-in (p/read-collection restored :relics) ["r1" :path]))

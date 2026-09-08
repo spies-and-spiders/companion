@@ -63,7 +63,7 @@ schemas: prep ## Generate schemas.json (config) + plugin-{request,output}.schema
 graalvm: prep frontend ## Build GraalVM Native Image
 	clojure -T:build uber :aliases '[:graalvm]'
 	native-image -jar $(UBERJAR) \
-	    -classpath target/classes \
+	    -classpath "target/classes:$$(ls target/lib/*.jar | tr '\n' ':')" \
 	    -o $(NATIVE_IMAGE) \
 	    $(NATIVE_OPT) \
 	    --no-fallback \

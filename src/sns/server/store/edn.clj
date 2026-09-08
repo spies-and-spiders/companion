@@ -134,10 +134,10 @@
   (all-state [_] @state))
 
 (defn create
-  "A `Store`. `:file` keeps one EDN file per collection under `:dir` (default
-   `./state`); anything else stays in memory. Construction is side-effect-free —
-   `setup!` creates the directory."
-  [{:keys [backend dir]}]
+  "A `Store`. `:file` keeps one EDN file per collection under `:file`'s `:dir`
+   (default `./state`); anything else stays in memory. Construction is
+   side-effect-free — `setup!` creates the directory."
+  [{:keys [backend] {:keys [dir]} :file}]
   (if (= :file backend)
     (->FileStore (io/file (or dir "./state")) (atom {}))
     (->MemoryStore (atom {}))))

@@ -10,5 +10,5 @@
   [{:keys [backend] :as cfg}]
   (when cfg
     (case backend
-      :discord (discord/create cfg)
+      :discord (discord/create (:discord cfg))
       (throw (ex-info "Unknown reporting backend" {:backend backend})))))

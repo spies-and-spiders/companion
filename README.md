@@ -11,18 +11,24 @@ There are five types of loot plugins, all used to define custom loot:
 | **`:data`**    | A .json or .edn file that defines the loot that is to be randomly sampled. This cannot support stateful loot.                                                                                      |
 | **`:cli`**     | Shell out to a program in any language, communicating via JSON. CLI plugins that wish to use state must implement their own persistence strategy and state management.                             |
 | **`:ffi`**     | Call a C-ABI symbol in a shared library (.so/.dylib/.dll), exchanging the same JSON as `:cli`. In-process (so it can hold state) and works in the native image, unlike `:jar` — at the cost of process isolation and a per-platform build. |
+| **`:wasm`**    | Run a WASI module on GraalWASM, exchanging the same JSON as `:cli` over its stdio. In-process and works in the native image like `:ffi`, but sandboxed (it sees only the directories you map) and one portable build for every platform. |
 | **`:jar`**     | An external JAR implementing the protocols or interfaces provided. This provides the best integration into the Companion, but requires the use of a JVM language (e.g. Java/Kotlin/Clojure/Scala) **and a JVM build (not the native image)**. |
 
-All five are configured the same way in `config.edn`:
+All five are configured the same way in `config.edn`. Keys every plugin shares
+(`:type`, `:id`, `:label`, `:utility?`, `:hidden?`, …) sit at the top level; the
+ones only one `:type` understands nest under that type's own key — the same rule
+`:storage` and `:reporting` follow for their backend:
 ```clojure
-{:storage    {:backend :file :dir "./state"}
- :plugins    [{:type :data    :id :uniques :source "data/uniques.edn"}
+{:storage    {:backend :file :file {:dir "./state"}}
+ :plugins    [{:type :data    :id :uniques :data {:source "data/uniques.edn"}}
               {:type :cli     :id :weather :label "Weather"
-                              :command ["python3" "examples/cli-plugin/weather.py"]}
-              {:type :ffi     :id :ffi-loot :library "plugins/libloot.dylib"
-                              :symbol "generate" :free-symbol "loot_free"}
-              {:type :jar     :id :custom  :jar "plugins/custom.jar"
-                              :entrypoint my.plugin/generator}
+                              :cli {:command ["python3" "examples/cli-plugin/weather.py"]}}
+              {:type :ffi     :id :ffi-loot
+                              :ffi {:library "plugins/libloot.dylib"
+                                    :symbol "generate" :free-symbol "loot_free"}}
+              {:type :jar     :id :custom
+                              :jar {:path "plugins/custom.jar"
+                                    :entrypoint my.plugin/generator}}
               {:type :builtin :id :relics}
               {:type :builtin :id :social}]
  :loot-table [{:id :uniques :weight 30} {:id :relics :weight 10}]}
@@ -33,7 +39,7 @@ All five are configured the same way in `config.edn`:
 A plugin may declare itself a **utility** — a session tool rather than loot. Utilities
 are grouped separately in the UI and rejected from the `:loot-table` at startup.
 Builtin/`:jar` plugins set `:utility? true` in their loot-spec (Java: the `LootSpec`
-record's `utility` component); `:data` specs set it in the spec file; `:cli`/`:ffi`
+record's `utility` component); `:data` specs set it in the spec file; `:cli`/`:ffi`/`:wasm`
 plugins set it on the config entry.
 
 A plugin may also be marked **hidden** with `:hidden? true` on its config entry — this
@@ -96,12 +102,12 @@ drop one, **Clear** to empty the plugin's history. When `:history` says so, a
 | `:never`     | Not at all.                                    |
 
 Set it globally in config, and override it per plugin in that plugin's loot-spec
-(`:data` specs set it in the spec file; `:cli`/`:ffi` plugins on their config entry,
+(`:data` specs set it in the spec file; `:cli`/`:ffi`/`:wasm` plugins on their config entry,
 as with `:utility?`):
 
 ```clojure
 {:history :on-report
- :plugins [{:type :data :id :uniques :source "data/uniques.edn"}]}
+ :plugins [{:type :data :id :uniques :data {:source "data/uniques.edn"}}]}
 ```
 
 `history` is reserved: don't name a plugin's own `:store/collections` after it.
@@ -285,7 +291,7 @@ Config-driven via `:reporting` (mirrors `:storage`), and **optional** — when n
 is configured the UI hides its per-item report button. One built-in backend:
 
 ```clojure
-:reporting {:backend :discord :webhook-url #env DISCORD_WEBHOOK_URL}
+:reporting {:backend :discord :discord {:webhook-url #env DISCORD_WEBHOOK_URL}}
 ```
 
 `POST /api/report` `{:view-model …}` forwards the (validated) view-model to the
@@ -298,7 +304,7 @@ reporter; `GET /api/capabilities` tells the UI whether to show the button.
 State is a set of named collections, each a map of key to value; a collection
 needs no declaration and reads as `{}` until written to. Three backends, chosen
 by config `:storage {:backend ...}`: `:memory` (the default), `:file` (one EDN
-file per collection under `:dir`, default `./state`, and the files are the
+file per collection under `:file {:dir ...}`, default `./state`, and the files are the
 source of truth — hand edits propagate live) and `:browser` (IndexedDB, with the
 state travelling on each request).
 
@@ -310,7 +316,7 @@ in an error cannot leave state changed behind it.
 
 A loot type's `:store/collections` declares what it uses, defaulting to
 `[<plugin-id>]`. Available to `:builtin` and `:jar` plugins;
-`:cli` and `:ffi` persist their own state.
+`:cli`, `:ffi` and `:wasm` persist their own state.
 See [docs/storage.md](docs/storage.md).
 
 ---
@@ -550,32 +556,53 @@ loot is not yet wired — use `:builtin`/`:jar` for stateful loot.)
 
 ---
 
-## The external plugin contract (`:cli` and `:ffi`)
+## The external plugin contract (`:cli`, `:ffi`, `:wasm`)
 
-`:cli` and `:ffi` plugins speak the **same friendly, un-namespaced JSON** — only
-the transport differs. The engine sends a **request** and reads back an **output**:
+External plugins exchange the **same view-model** a `:jar` plugin returns, as
+JSON — only the transport differs. Namespaced keys survive JSON as they are, so
+`"loot/title"` reads back as `:loot/title` and there is one output contract to
+learn, not two. The engine sends a **request** and reads back a **view-model**:
 
 ```json
-// request → plugin        // output ← plugin
-{"inputs": {...}}           {"title": "Fogfall", "subtitle": "Weather",
-                             "sections": [{"heading": "Sky", "items": [
-                               {"body": "…", "metadata": ["obscured"]}]}]}
+// request → plugin        // view-model ← plugin
+{"inputs": {...}}           {"loot/title": "Fogfall", "loot/subtitle": "Weather",
+                             "loot/sections": [{"section/heading": "Sky",
+                               "section/items": [
+                                 {"item/body": "…",
+                                  "item/metadata": ["obscured"]}]}]}
 ```
 
-A plugin that needs persistent state gets it too — see
-[State](#state-storecollections-storemanual) below.
+Everything [the view-model](#the-view-model-what-every-loot-type-returns)
+supports is available, including `item/vars` — so an external plugin emits
+*templates* with editable, typed values, exactly as a builtin does, rather than
+finished prose:
 
-- **`:cli`** runs your `:command`, writing the request to **stdin** and reading the
-  output from **stdout**. A non-zero exit is an error, and whatever the command
+```json
+{"loot/title": "Ember Ring",
+ "loot/sections": [{"section/items": [
+   {"item/body": "Deals +{{ dmg }} fire damage.",
+    "item/vars": {"dmg": {"value": 3, "type": "int"}}}]}]}
+```
+
+The one exception is `loot/actions`, covered below.
+
+- **`:cli`** runs your `:cli {:command [...]}`, writing the request to **stdin** and reading the
+  view-model from **stdout**. A non-zero exit is an error, and whatever the command
   wrote to **stderr** becomes the error the DM sees. See
   `examples/cli-plugin/weather.py`.
-- **`:ffi`** calls `:symbol` in `:library` — a C-ABI function
+- **`:ffi`** calls `:ffi`'s `:symbol` in its `:library` — a C-ABI function
   `char* generate(const char* request_json)` returning a malloc'd output string.
   If `:free-symbol` is set (e.g. `loot_free`) it is called on the returned pointer
   once the bytes are read; otherwise the library owns that memory. The same C ABI
   is reachable from any language that can export it — see `examples/ffi-plugin/`
   for equivalent plugins in C (`loot.c`), Go (`loot.go`), and Rust (`loot.rs`),
   each with its one-line build command at the top.
+- **`:wasm`** runs a WASI command module on GraalWASM, in-process: the request goes
+  to its **stdin** and the view-model comes back on **stdout**, as for `:cli`, but
+  with no subprocess and no ABI to hand-roll. Under `:wasm`, `:module` is the file,
+  `:args` are its program arguments and
+  `:dirs` maps guest paths to host directories — a module with no `:dirs` gets no
+  filesystem at all. Unlike `:jar` it runs in the native image too.
 
 An external plugin has no loot-spec of its own, so it declares the form fields it
 needs on its **config entry**, in the same shape as a loot-spec's `:inputs`; the
@@ -585,58 +612,70 @@ engine renders the form and sends the collected values as the request's `inputs`
 ```json
 {"type": "cli", "id": "insight", "label": "Insight Checks", "utility?": true,
  "inputs": [{"id": "socialBonus", "label": "Speaker's social bonus", "type": "int"}],
- "command": ["./5e-cli", "-data", "data", "insight"]}
+ "cli": {"command": ["./5e-cli", "-data", "data", "insight"]}}
 ```
 
 The output is validated before it is mapped, so a contract breach fails with an
-error in *your* keys (e.g. a missing `body`) rather than the namespaced view-model.
-Both directions are modelled in `schemas.json` as `sns.sdk.schema.plugin-request`
-and `sns.sdk.schema.plugin-output`, and emitted rooted as
+error in *your* keys (e.g. a missing `item/body`). Both directions are modelled in
+`schemas.json` as `sns.sdk.schema.plugin-request` and
+`sns.sdk.schema.plugin-output`, and emitted rooted as
 `plugin-request.schema.json` / `plugin-output.schema.json` so codegen tools
 (quicktype, typify, go-jsonschema) can generate request/output structs for a plugin
 written in another language. The request is a union of the two modes — a generate
-call (`inputs`) or an action call (`action` + `params`) — so codegen yields both,
-and the generate-vs-action split is structural rather than a convention you infer.
-In brief: output `title` is required; `subtitle`,
-`sections`, and `actions` optional. Each section needs `items` (`heading` optional);
-each item needs `body` (`title` and a `metadata` array of strings optional); each
-action needs `label` and `action` (`params` object optional).
+call (`inputs`) or an action call (`action` + `params` + `view-model`) — so codegen
+yields both, and the generate-vs-action split is structural rather than a
+convention you infer.
 
 ### Actions (stateful follow-ups)
 
 A plugin can drive follow-up actions (e.g. "level up") in its own language. Emit
-`actions` in the output:
+`loot/actions` in the output. This is the one part of the view-model you do **not**
+write in full: `:action/event` is a UI action vector the browser dispatches as-is,
+and it carries the `id` your plugin was registered under — which the plugin has no
+way to know, since the same command can be registered several times. So you supply
+the three fields the SDK's `Models.Action` gives a `:jar` author, and the adapter
+builds the event:
+
 ```json
-{"title": "Aegis", "actions": [{"label": "Sharpen", "action": "sharpen",
-                                 "params": {"by": 1}}]}
+{"loot/title": "Aegis",
+ "loot/actions": [{"label": "Sharpen", "action": "sharpen", "params": {"by": 1}}]}
 ```
+
 The engine turns each into a button; clicking it re-invokes the **same command /
-symbol** with an action request (note `action`/`params` instead of `inputs`):
+symbol / module** with an action request (note `action`/`params` instead of
+`inputs`):
+
 ```json
-{"action": "sharpen", "params": {"by": 1}}
+{"action": "sharpen", "params": {"by": 1},
+ "view-model": {"loot/title": "Aegis", "…": "…"}}
 ```
-The plugin returns a fresh output (which may itself carry the next round of
-`actions`). Branch on whether `action` is present in the request to tell a generate
-from an action.
+
+`view-model` is the result the UI had on screen, **DM edits included**. Rebuild
+your item from that rather than from a copy frozen into `params`, so what the DM
+can see is what the action operates on — and put anything the item cannot express
+(an upgrade path, a stored id) under `loot/state`, which the engine and UI carry
+through untouched. The plugin returns a fresh view-model (which may itself carry
+the next round of `loot/actions`). Branch on whether `action` is present in the
+request to tell a generate from an action.
 
 ### State (`store/collections`, `store/manual`)
 
 An external plugin never touches the store. It **declares** the collections it
 uses on its config entry; the engine reads them and sends them as the request's
-`state`, and applies the `mutations` the plugin returns:
+`state`, and applies the `store/mutations` the plugin returns:
 
 ```json
-// request → plugin                    // output ← plugin
-{"inputs": {"rounds": 5},               {"title": "3 flares over 5 rounds",
- "state": {"crystals": {                 "mutations": {"crystals": {
+// request → plugin                    // view-model ← plugin
+{"inputs": {"rounds": 5},               {"loot/title": "3 flares over 5 rounds",
+ "state": {"crystals": {                 "store/mutations": {"crystals": {
    "Quincy": {"chance": 27}}}}             "Quincy": {"chance": 32},
                                            "Viktor": null}}}
 ```
 
-`mutations` is `{<collection>: {<key>: <value>}}`, a `null` retracting that key.
-The engine applies it only once the output has validated, so a plugin that errors
-changes nothing. Every backend works the same way, including `:browser` — the
-plugin never learns which is configured, and never parses or writes EDN.
+`store/mutations` is `{<collection>: {<key>: <value>}}`, a `null` retracting that
+key. The engine applies it only once the output has validated, so a plugin that
+errors changes nothing. Every backend works the same way, including `:browser` —
+the plugin never learns which is configured, and never parses or writes EDN.
 
 Declare state one of two ways on the config entry:
 
@@ -648,7 +687,7 @@ Declare state one of two ways on the config entry:
 
 ```json
 {"type": "cli", "id": "crystals", "label": "Crystal Flares", "utility?": true,
- "command": ["./5e-cli", "crystal", "procs"],
+ "cli": {"command": ["./5e-cli", "crystal", "procs"]},
  "inputs": [{"id": "rounds", "label": "Combat rounds", "type": "int", "default": 10}],
  "store/manual": {"key-label": "Character",
                   "fields": [{"id": "chance", "label": "Flare chance (%)", "type": "int",
@@ -660,6 +699,7 @@ Declare state one of two ways on the config entry:
 A plugin that declares neither is sent no `state` and costs no reads.
 
 ---
+
 
 ## Writing a `:jar` plugin
 
@@ -675,13 +715,13 @@ Depend on this module, implement `LootGenerator`, and expose a factory:
     (generate  [_ ctx] {:loot/title "Hello from a jar"})))
 ```
 
-Build a jar, point `:jar`/`:entrypoint` at it, and it loads at startup.
+Build a jar, point `:jar {:path ... :entrypoint ...}` at it, and it loads at startup.
 
 A plugin with no Clojure in it (e.g. pure Java/Kotlin) can skip the factory var:
 implement the `sns.sdk.LootGenerator` interface on a class with a 0-arity
-constructor and point `:jar`/`:class` at it instead:
+constructor and name it with `:class` instead:
 
 ```clojure
-{:type :jar :id :custom :jar "plugins/custom.jar" :class "my.plugin.CustomLoot"}
+{:type :jar :id :custom :jar {:path "plugins/custom.jar" :class "my.plugin.CustomLoot"}}
 ```
 

@@ -133,7 +133,10 @@
                         (history-request ctx system nil)))
 
 (nxr/register-effect! :fx/history
-                      (fn [ctx system id rows]
+                      (fn [{:keys [dispatch] :as ctx} system id rows]
+                        ;; on state before the write goes out, so the list and the
+                        ;; "Save to history" button do not flicker for a round-trip
+                        (dispatch [[:fx/assoc-in [:history (name id)] rows]])
                         (history-request ctx system {(name id) rows})))
 
 (defn- history-fx

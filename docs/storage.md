@@ -13,7 +13,7 @@ chosen in `config.edn` under `:storage`.
 
 ```clojure
 ;; config.edn
-:storage {:backend :file :dir "./state"}   ; ./state/relics.edn, ./state/social.edn, …
+:storage {:backend :file :file {:dir "./state"}}   ; ./state/relics.edn, ./state/social.edn, …
 :storage {:backend :memory}
 :storage {:backend :browser}
 ```
@@ -133,7 +133,7 @@ declared `:store/mutations` work either way.
 The consequence to plan around is that state is **device-local**: a laptop and a
 tablet are two separate databases, and clearing site data destroys it. Use the
 export button to download a ZIP of every collection; unzip it into a directory
-and point a local deployment at it with `{:backend :file :dir "…"}` to carry on
+and point a local deployment at it with `{:backend :file :file {:dir "…"}}` to carry on
 from there. There is no import back into the browser.
 
 The button builds the archive wherever the state is — in the page for

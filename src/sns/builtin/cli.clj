@@ -1,12 +1,12 @@
 (ns sns.builtin.cli
   "Adapter for `:cli` plugins: shell out to an external command, writing the
-   request context as JSON to stdin and reading a *friendly* JSON view-model from
-   stdout. Lets DMs write loot generators in any language. The friendly <->
-   view-model mapping and output validation live in `sns.builtin.plugin-io`,
-   shared with the `:ffi` adapter.
+   request context as JSON to stdin and reading a JSON view-model from stdout.
+   Lets DMs write loot generators in any language. The request/output plumbing
+   lives in `sns.builtin.plugin-io`, shared with the `:ffi` and `:wasm` adapters.
 
-   Generation writes `{:inputs}` to stdin; an action writes `{:action :params}` —
-   the presence of `action` tells the script which it is."
+   Generation writes `{:inputs}` to stdin; an action writes
+   `{:action :params :view-model}` — the presence of `action` tells the script
+   which it is."
   (:require
     [clojure.java.shell :as shell]
     [clojure.string :as str]
@@ -14,8 +14,8 @@
     [sns.sdk.protocols :as p]))
 
 (defn- run
-  "Run `command` with `ctx` written as JSON on stdin, returning the friendly
-   stdout JSON mapped to a view-model. A non-zero exit is treated as an error,
+  "Run `command` with `ctx` written as JSON on stdin, returning its stdout parsed
+   as a view-model. A non-zero exit is treated as an error,
    carrying the command's stderr in the message so the UI (which shows only the
    message) explains what the plugin actually objected to."
   [id command ctx]
@@ -28,13 +28,13 @@
 
 (defn generator
   "Build a `LootGenerator`/`LootAction` from a `:cli` plugin config entry, running
-   its `:command` (a vector of program + args). `:utility?` marks a session tool
+   its `:cli` `:command` (a vector of program + args). `:utility?` marks a session tool
    rather than loot (grouped separately in the UI, barred from the :loot-table),
    and `:inputs` declares the form fields whose values are sent as the request's
    `inputs`. `:store/collections`/`:store/manual` declare state: what they name is
    read and sent as `state`, and the `mutations` the script returns are applied
    by the engine."
-  [{:keys [id command label utility? history inputs] :as plugin}]
+  [{:keys [id label utility? history inputs] {:keys [command]} :cli :as plugin}]
   (let [spec  (merge (cond-> {:id id :label (or label (name id))}
                              utility? (assoc :utility? true)
                              history (assoc :history history)
@@ -48,4 +48,4 @@
         (run id command (io/with-state ctx colls {:inputs (:inputs ctx)})))
       p/LootAction
       (handle-action [_ ctx action params]
-        (run id command (io/with-state ctx colls {:action action :params params}))))))
+        (run id command (io/with-state ctx colls (io/action-request ctx action params)))))))

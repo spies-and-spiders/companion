@@ -6,8 +6,9 @@
        an editor;
      - `plugin-request.schema.json` / `plugin-output.schema.json` — each rooted at
        a single plugin I/O type, so codegen tools (quicktype, typify,
-       go-jsonschema) emit clean structs for authors writing `:cli`/`:ffi` plugins
-       in another language.
+       go-jsonschema) emit clean structs for authors writing `:cli`/`:ffi`/`:wasm`
+       plugins in another language. The output *is* the view-model, the same one
+       a `:jar` plugin returns.
    Run via `clojure -M -m sns.server.schema-gen` (or `make schemas`)."
   (:require
     [jsonista.core :as j]

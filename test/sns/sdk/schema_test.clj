@@ -66,47 +66,47 @@
 (deftest config-schema
   (testing "config with mixed plugin types validates"
     (is (schema/validate ::schema/config
-                         {:storage    {:backend :file :dir "./state"}
-                          :plugins    [{:type :data :id :uniques :source "data/uniques.edn"}
-                                       {:type :cli :id :weather :command ["python3" "gen.py"]}
-                                       {:type :builtin :id :relics :entrypoint 'sns.builtin.relics/generator}]
+                         {:storage    {:backend :file :file {:dir "./state"}}
+                          :plugins    [{:type :data :id :uniques :data {:source "data/uniques.edn"}}
+                                       {:type :cli :id :weather :cli {:command ["python3" "gen.py"]}}
+                                       {:type :builtin :id :relics :builtin {:entrypoint 'sns.builtin.relics/generator}}]
                           :loot-table [{:id :uniques :weight 30}]})))
-  (testing "a :builtin plugin needs no :entrypoint"
+  (testing "a :builtin plugin needs no :builtin config"
     (is (schema/validate ::schema/config
                          {:plugins [{:type :builtin :id :relics}]})))
   (testing "a :jar plugin may name a :class instead of an :entrypoint"
     (is (schema/validate ::schema/config
-                         {:plugins [{:type :jar :id :x :jar "p.jar" :class "my.Loot"}]}))
+                         {:plugins [{:type :jar :id :x :jar {:path "p.jar" :class "my.Loot"}}]}))
     (is (not (schema/validate ::schema/config
-                              {:plugins [{:type :jar :id :x :jar "p.jar"}]}))))
+                              {:plugins [{:type :jar :id :x :jar {:path "p.jar"}}]}))))
   (testing "a :data plugin may carry an :inline spec instead of a :source"
     (is (schema/validate ::schema/config
-                         {:plugins [{:type   :data
-                                     :id     :omens
-                                     :inline {:label "Omen" :items [{:text "a crow"}] :title "{{text}}"}}]}))
+                         {:plugins [{:type :data
+                                     :id   :omens
+                                     :data {:inline {:label "Omen" :items [{:text "a crow"}] :title "{{text}}"}}}]}))
     (is (not (schema/validate ::schema/config
-                              {:plugins [{:type :data :id :omens}]}))))
+                              {:plugins [{:type :data :id :omens :data {}}]}))))
   (testing "decoding a JSON config coerces an :inline spec's keyword positions"
     (let [decoded (schema/decode ::schema/config
-                                 {:plugins [{:type   "data"
-                                             :id     "omens"
-                                             :inline {:label    "Omen"
-                                                      :inputs   [{:id "who" :label "Who" :type "text"}]
-                                                      :items    [{:text "a crow"}]
-                                                      :sections [{:each "items"
-                                                                  :item {:body "{{text}}" :metadata "tags"}}]}}]})
+                                 {:plugins [{:type "data"
+                                             :id   "omens"
+                                             :data {:inline {:label    "Omen"
+                                                             :inputs   [{:id "who" :label "Who" :type "text"}]
+                                                             :items    [{:text "a crow"}]
+                                                             :sections [{:each "items"
+                                                                         :item {:body "{{text}}" :metadata "tags"}}]}}}]})
           plugin  (-> decoded :plugins first)]
       (is (= :data (:type plugin)))
-      (is (= :items (-> plugin :inline :sections first :each)))
-      (is (= :tags (-> plugin :inline :sections first :item :metadata)))
-      (is (= [:who :text] (-> plugin :inline :inputs first ((juxt :id :type)))))
+      (is (= :items (-> plugin :data :inline :sections first :each)))
+      (is (= :tags (-> plugin :data :inline :sections first :item :metadata)))
+      (is (= [:who :text] (-> plugin :data :inline :inputs first ((juxt :id :type)))))
       (testing "and the decoded config validates"
         (is (schema/validate ::schema/config decoded)))))
   (testing "any plugin type may be marked :hidden?"
     (is (schema/validate ::schema/config
-                         {:plugins [{:type :data :id :tarot :source "tarot.edn" :hidden? true}
-                                    {:type :cli :id :w :command ["gen"] :hidden? true}
-                                    {:type :jar :id :x :jar "p.jar" :class "my.Loot" :hidden? true}
+                         {:plugins [{:type :data :id :tarot :data {:source "tarot.edn"} :hidden? true}
+                                    {:type :cli :id :w :cli {:command ["gen"]} :hidden? true}
+                                    {:type :jar :id :x :jar {:path "p.jar" :class "my.Loot"} :hidden? true}
                                     {:type :builtin :id :relics :hidden? true}]})))
   (testing "an unknown plugin type is rejected"
     (is (not (schema/validate ::schema/config
