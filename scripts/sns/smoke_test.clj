@@ -1,7 +1,7 @@
 (ns sns.smoke-test
   "Boots a built native-image binary and drives its HTTP API for real, across
-   every plugin type (:builtin, :data, :cli, :ffi) and both persistent storage
-   backends (:file, :memory).
+   every plugin type (:builtin, :data, :cli, :ffi, :wasm) and both persistent
+   storage backends (:file, :memory).
 
    Exists because bugs like the `bigdec` string->reflection crash (fixed in
    dd6fc1a) are invisible to both the test suite (runs on the JVM, where
@@ -91,6 +91,23 @@
         (println "  skipping :ffi plugin - failed to build the example (no C toolchain?):" err)
         nil))))
 
+(defn- build-wasm-plugin!
+  "Compiles examples/wasm-plugin/loot.go to a WASI command module, returning its
+   path, or nil when this runner has no Go. Needs no C toolchain — the wasip1
+   target is pure Go — so unlike the :ffi example it builds wherever `go` does."
+  [out-path]
+  (println "Building WASM example plugin (Go) ->" out-path)
+  (let [env (assoc (into {} (System/getenv))
+                   "GOOS" "wasip1" "GOARCH" "wasm" "CGO_ENABLED" "0")
+        {:keys [exit err]} (shell/sh "go" "build" "-o" out-path
+                                     "examples/wasm-plugin/loot.go"
+                                     :env env)]
+    (if (zero? exit)
+      out-path
+      (do
+        (println "  skipping :wasm plugin - failed to build the example (no Go?):" err)
+        nil))))
+
 (defn- temp-dir! [prefix]
   (str (Files/createTempDirectory prefix (make-array FileAttribute 0))))
 
@@ -102,25 +119,35 @@
     "python3"
     "python"))
 
-(defn- write-config! [{:keys [port storage-backend state-dir lib-path]}]
-  (let [ffi-plugin {:type   :ffi       :id          :ffi-loot   :library lib-path
-                    :symbol "generate" :free-symbol "loot_free"}
+(defn- write-config! [{:keys [port storage-backend state-dir lib-path module-path]}]
+  (let [wasm-plugin {:type  :wasm
+                     :id    :wasm-loot
+                     :label "Whetstone"
+                     :wasm  {:module module-path}}
+        ffi-plugin {:type :ffi
+                    :id   :ffi-loot
+                    :ffi  {:library     lib-path
+                           :symbol      "generate"
+                           :free-symbol "loot_free"}}
         config {:server     {:host "127.0.0.1" :port port}
                 :storage    (cond-> {:backend storage-backend}
-                                    (= :file storage-backend) (assoc :dir state-dir))
+                                    (= :file storage-backend) (assoc :file {:dir state-dir}))
                 :plugins    (cond-> [{:type :builtin :id :divine-dust}
                                      {:type :builtin :id :relics}
                                      {:type :builtin :id :social}
-                                     {:type :data :id :uniques :source "data/uniques.edn"}
-                                     {:type :data :id :rings :source "data/rings.edn"}
+                                     {:type :data :id :uniques :data {:source "data/uniques.edn"}}
+                                     {:type :data :id :rings :data {:source "data/rings.edn"}}
                                      ;; :chill-factor is unused by weather.py itself; it exists so
                                      ;; the smoke test can feed a numeric string through the
                                      ;; engine's :decimal input coercion (`->decimal` in
                                      ;; sns.server.engine) - the exact code path that broke in a
                                      ;; native image via reflection inside `bigdec` (dd6fc1a).
-                                     {:type    :cli                                                       :id :weather :utility? true :label "Weather"
-                                      :command [(python-command) "examples/cli-plugin/weather.py"]
-                                      :inputs  [{:id :chill-factor :label "Chill Factor" :type :decimal}]}
+                                     {:type     :cli
+                                      :id       :weather
+                                      :utility? true
+                                      :label    "Weather"
+                                      :cli      {:command [(python-command) "examples/cli-plugin/weather.py"]}
+                                      :inputs   [{:id :chill-factor :label "Chill Factor" :type :decimal}]}
                                      ;; A :cli plugin with declared state: the
                                      ;; engine reads its collection into the
                                      ;; request and applies the mutations it
@@ -130,11 +157,12 @@
                                       :id           :tally
                                       :utility?     true
                                       :label        "Tally"
-                                      :command      [(python-command) "examples/cli-plugin/tally.py"]
+                                      :cli          {:command [(python-command) "examples/cli-plugin/tally.py"]}
                                       :inputs       [{:id :who :label "Who" :type :text}]
                                       :store/manual {:key-label "Name"
                                                      :fields    [{:id :count :label "Count" :type :int :default 0}]}}]
-                                    lib-path (conj ffi-plugin))
+                                    lib-path    (conj ffi-plugin)
+                                    module-path (conj wasm-plugin))
                 :loot-table (cond-> [{:id :divine-dust} {:id :relics} {:id :uniques} {:id :rings}]
                                     lib-path (conj {:id :ffi-loot}))}
         f (io/file (temp-dir! "sns-smoke-config") "config.edn")]
@@ -190,6 +218,27 @@
     (if-not event
       (println "  (no action offered this roll for" id "- skipping action check)")
       (exercise-action! base-url id (:action/event event)))))
+
+(defn- exercise-wasm!
+  "The `:wasm` round trip, and the only place an action is sent back the
+   view-model the DM is looking at. The module must build on the value on screen
+   (7 -> 8) rather than the one it generated (0 -> 1), and carry its own
+   `:loot/state` forward — neither of which finished prose could express."
+  [base-url]
+  (let [gen        (exercise-generate! base-url :wasm-loot)
+        edited     (assoc-in gen [:loot/sections 0 :section/items 0 :item/vars :keen :value] 7)
+        [_ params] (-> gen :loot/actions first :action/event)]
+    (println "  action :wasm-loot" (:action params))
+    (let [after (expect-200! (request base-url :post "/api/action"
+                                      (assoc params :view-model edited))
+                             "action :wasm-loot")
+          keen  (-> after :loot/sections first :section/items first :item/vars :keen :value)]
+      (when-not (= 8 keen)
+        (fail! "the wasm plugin did not build on the edited view-model" {:keen keen}))
+      (when-not (= 2 (:tier (:loot/state after)))
+        (fail! "the wasm plugin's :loot/state did not travel both ways"
+               {:state (:loot/state after)}))
+      (println "  action :wasm-loot :sharpen -> built on the DM's edit (7 -> 8), state advanced"))))
 
 (defn- exercise-cli-state!
   "A `:cli` plugin's state round trip: what it writes on one call it must read
@@ -311,7 +360,7 @@
       (fail! "manual-state edit did not come back as a mutation" {:body resp}))
     (println "  state :social -> manual edit travelled both ways")))
 
-(defn- run-plugin-suite! [base-url ffi-available?]
+(defn- run-plugin-suite! [base-url {:keys [lib-path module-path]}]
   (expect-200! (request base-url :get "/api/capabilities" nil) "capabilities")
   (exercise-generate! base-url :divine-dust)
   (exercise-generate! base-url :uniques)
@@ -320,21 +369,24 @@
   (exercise-statefully! base-url :relics)
   (exercise-manual-state! base-url)
   (exercise-cli-state! base-url)
-  (if ffi-available?
+  (if lib-path
     (exercise-statefully! base-url :ffi-loot)
-    (println "  (skipping :ffi-loot - no shared library built on this runner)")))
+    (println "  (skipping :ffi-loot - no shared library built on this runner)"))
+  (if module-path
+    (exercise-wasm! base-url)
+    (println "  (skipping :wasm-loot - no module built on this runner)")))
 
-(defn- run-suite! [base-url ffi-available? storage-backend]
+(defn- run-suite! [base-url opts storage-backend]
   (if (= :browser storage-backend)
     (do (expect-200! (request base-url :get "/api/capabilities" nil) "capabilities")
         (exercise-browser-storage! base-url)
         (exercise-browser-manual-state! base-url)
         (exercise-browser-history! base-url))
-    (do (run-plugin-suite! base-url ffi-available?)
+    (do (run-plugin-suite! base-url opts)
         (exercise-history! base-url)
         (exercise-export! base-url))))
 
-(defn- run-backend! [{:keys [bin-path lib-path port storage-backend] :as opts}]
+(defn- run-backend! [{:keys [bin-path port storage-backend] :as opts}]
   (println "=== backend:" storage-backend "===")
   (let [base-url (str "http://127.0.0.1:" port)
         state-dir (when (= :file storage-backend) (temp-dir! "sns-smoke-state"))
@@ -342,7 +394,7 @@
         proc (start-server! bin-path config-path)]
     (try
       (wait-for-ready! base-url proc)
-      (run-suite! base-url (some? lib-path) storage-backend)
+      (run-suite! base-url opts storage-backend)
       (finally
         (stop-server! proc)))))
 
@@ -356,11 +408,13 @@
   (try
     (when-not (.canExecute (io/file bin-path))
       (fail! (str bin-path " does not exist or is not executable") nil))
-    (let [target (str (io/file (temp-dir! "sns-smoke-lib") (str "libloot." (lib-extension))))
-          lib-path (build-ffi-plugin! target)]
-      (run-backend! {:bin-path bin-path :lib-path lib-path :port 18089 :storage-backend :file})
-      (run-backend! {:bin-path bin-path :lib-path lib-path :port 18090 :storage-backend :memory})
-      (run-backend! {:bin-path bin-path :lib-path lib-path :port 18091 :storage-backend :browser}))
+    (let [build-dir   (temp-dir! "sns-smoke-lib")
+          lib-path    (build-ffi-plugin! (str (io/file build-dir (str "libloot." (lib-extension)))))
+          module-path (build-wasm-plugin! (str (io/file build-dir "loot.wasm")))
+          opts        {:bin-path bin-path :lib-path lib-path :module-path module-path}]
+      (run-backend! (assoc opts :port 18089 :storage-backend :file))
+      (run-backend! (assoc opts :port 18090 :storage-backend :memory))
+      (run-backend! (assoc opts :port 18091 :storage-backend :browser)))
     (println "Smoke test passed.")
     (System/exit 0)
     (catch Exception e

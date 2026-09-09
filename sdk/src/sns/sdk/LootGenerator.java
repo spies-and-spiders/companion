@@ -8,17 +8,14 @@ import java.util.Map;
  * extends the protocol onto this interface, so implementing it is sufficient.
  *
  * <p>Data shapes are exchanged as {@link Models} records; the engine context
- * ({@code ctx}) is passed through as an opaque {@link Object} (a Clojure map of
- * {@code {:rng :store :render :progression :config :inputs}}).
+ * ({@code ctx}) is passed through as a map keyed by the bare names of
+ * {@code {:rng :store :progression :config :inputs}}.
  */
 public interface LootGenerator {
 
     /** Static, data-only description of this loot type. */
     Models.LootSpec lootSpec();
 
-    /**
-     * Produce loot. {@code ctx} is the engine context map {@code {:rng :store
-     * :render :progression :config :inputs}}.
-     */
+    /** Produce loot. */
     Models.ViewModel generate(Map<String, Object> ctx);
 }

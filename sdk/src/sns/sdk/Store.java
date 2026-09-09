@@ -4,7 +4,7 @@ package sns.sdk;
  * Reads over persisted state, for stateful plugins. State is a set of named
  * collections, each a map of key to value; a collection needs no declaration and
  * reads as an empty map until something is written to it. Available to
- * in-process plugins only; CLI and FFI plugins persist their own state. Mirrors
+ * in-process plugins only; CLI, FFI and WASM plugins persist their own state. Mirrors
  * the {@code sns.sdk.protocols/Store} protocol.
  *
  * <p>Writing is declarative and not part of this interface: put the changes on

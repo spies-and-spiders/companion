@@ -35,7 +35,9 @@
    same three fields."
   [id {:keys [label action params]}]
   {:action/label label
-   :action/event [:loot/action {:id id :action (keyword action) :params (or params {})}]})
+   :action/event [:loot/action {:id     id
+                                :action (keyword action)
+                                :params (or params {})}]})
 
 (defn- ->mutations
   "Every JSON object key arrives keywordised. A collection name is a keyword on
@@ -74,7 +76,8 @@
    screen, DM edits included; a plugin rebuilds its item from that rather than
    from a copy frozen into `params`."
   [ctx action params]
-  (cond-> {:action action :params params}
+  (cond-> {:action action
+           :params params}
           (:view-model ctx) (assoc :view-model (:view-model ctx))))
 
 (defn encode-request

@@ -308,11 +308,11 @@
                         ;; into the spec and sends the collected values as
                         ;; `inputs`.
                     [:inputs {:optional true} [:sequential ::field]]]]
-                 ;; A :wasm plugin is a WASI command module run on GraalWASM,
-                 ;; sharing the stdio JSON contract with :cli. `:args` are its
-                 ;; program arguments and `:dirs` maps guest paths it may read to
-                 ;; host directories (none means no filesystem). Works in native
-                 ;; images (unlike :jar), in-process (unlike :cli).
+             ;; A :wasm plugin is a WASI command module run on GraalWASM,
+             ;; sharing the stdio JSON contract with :cli. `:args` are its
+             ;; program arguments and `:dirs` maps guest paths it may read to
+             ;; host directories (none means no filesystem). Works in native
+             ;; images (unlike :jar), in-process (unlike :cli).
              [:wasm [:map
                      [:type [:= :wasm]]
                      [:id keyword?]

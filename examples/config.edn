@@ -54,7 +54,8 @@
  ;;              examples/ffi-plugin/ (C, Go, and Rust).
  ;;   :wasm    — run a WASI module on GraalWASM, exchanging the same JSON as
  ;;              :cli over its stdio: in-process and native-image-capable like
- ;;              :ffi, but sandboxed and one build for every platform.
+ ;;              :ffi, but sandboxed and one build for every platform. See
+ ;;              examples/wasm-plugin/loot.go.
  ;;   :jar     — a generator from an external library jar on disk. Only
  ;;              available when running the app via java -jar
  ;;
@@ -107,6 +108,23 @@
               :ffi  {:library     "plugins/libloot.dylib"
                      :symbol      "generate"
                      :free-symbol "loot_free"}}
+              ;; A WASI module, exchanging the same JSON as :cli over its stdio
+              ;; but in process — so it works in the native image (unlike :jar)
+              ;; with no subprocess (unlike :cli) and no ABI to hand-roll
+              ;; (unlike :ffi). One build runs on every platform. Build the
+              ;; example first, from examples/wasm-plugin/:
+              ;;   GOOS=wasip1 GOARCH=wasm go build -o loot.wasm loot.go
+              ;; then point :module at it. Same :label/:utility?/:hidden?
+              ;; options as any other plugin.
+           #_{:type :wasm
+              :id   :wasm-loot
+              :wasm {:module "plugins/loot.wasm"
+                        ;; Both optional. :args are the module's program
+                        ;; arguments; :dirs maps a guest path to a host
+                        ;; directory, and a module with no :dirs gets no
+                        ;; filesystem at all — it sees only what you map.
+                     :args   ["enchant"]
+                     :dirs   {"/data" "./data"}}}
               ;; A generator from an external jar at :jar's :path, which names
               ;; its generator: either an :entrypoint Clojure var, or — for
               ;; plugins written in Java/Kotlin/Scala with no Clojure — a :class

@@ -36,17 +36,37 @@
 (def ^:private java-plugin-source
   "package testplugin;
 
+   import java.util.List;
    import java.util.Map;
+   import sns.sdk.LootAction;
    import sns.sdk.LootGenerator;
    import sns.sdk.Models;
 
-   public class JavaLoot implements LootGenerator {
+   public class JavaLoot implements LootGenerator, LootAction {
        public Models.LootSpec lootSpec() {
            return new Models.LootSpec(\"java-jar\", \"Java Jar\");
        }
 
+       private static Models.ViewModel blade(int keen) {
+           return new Models.ViewModel(
+               \"From Java\", null,
+               List.of(new Models.Section(null,
+                   List.of(new Models.Item(null, \"+{{ keen }} keener\", null,
+                       Map.of(\"keen\", new Models.ItemVar(keen, \"int\")))))),
+               List.of(new Models.Action(\"Sharpen\", \"sharpen\", Map.of())),
+               null, null, Map.of(\"tier\", keen), null);
+       }
+
        public Models.ViewModel generate(Map<String, Object> ctx) {
-           return new Models.ViewModel(\"From Java\");
+           return blade(0);
+       }
+
+       public Models.ViewModel handleAction(Map<String, Object> ctx, String action,
+                                            Map<String, Object> params) {
+           Models.ViewModel shown = (Models.ViewModel) ctx.get(\"view-model\");
+           Number keen = (Number) shown.sections().get(0).items().get(0)
+                                       .vars().get(\"keen\").value();
+           return blade(keen.intValue() + 1);
        }
    }")
 
@@ -95,6 +115,22 @@
                 {:type :jar :id :java-jar :jar {:path jar :class "testplugin.JavaLoot"}})]
       (is (= {:id :java-jar :label "Java Jar"} (p/loot-spec gen)))
       (is (= "From Java" (:loot/title (p/generate gen {})))))))
+
+(deftest java-plugin-actions-read-the-displayed-view-model
+  (testing "a Java :class plugin returns vars and state, and its action is handed
+            the DM-edited view-model back as a Models.ViewModel"
+    (let [jar (build-java-plugin-jar!)
+          gen (registry/build-generator
+                {:type :jar :id :java-jar :jar {:path jar :class "testplugin.JavaLoot"}})
+          vm  (p/generate gen {})]
+      (is (= {:keen {:value 0 :type :int}}
+             (-> vm :loot/sections first :section/items first :item/vars)))
+      (is (= 0 (get (:loot/state vm) "tier")))
+      (testing "the DM's edit, not the generated value, is what the action builds on"
+        (let [edited (assoc-in vm [:loot/sections 0 :section/items 0 :item/vars :keen :value] 7)
+              after  (p/handle-action gen {:view-model edited} :sharpen {})]
+          (is (= 8 (-> after :loot/sections first :section/items first :item/vars :keen :value)))
+          (is (= 8 (get (:loot/state after) "tier"))))))))
 
 (deftest missing-jar-throws
   (is (thrown? Exception

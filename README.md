@@ -602,7 +602,9 @@ The one exception is `loot/actions`, covered below.
   with no subprocess and no ABI to hand-roll. Under `:wasm`, `:module` is the file,
   `:args` are its program arguments and
   `:dirs` maps guest paths to host directories — a module with no `:dirs` gets no
-  filesystem at all. Unlike `:jar` it runs in the native image too.
+  filesystem at all. Unlike `:jar` it runs in the native image too, and unlike
+  `:ffi` one module runs on every platform. See `examples/wasm-plugin/loot.go`,
+  which shows `item/vars` and `loot/state` across an action.
 
 An external plugin has no loot-spec of its own, so it declares the form fields it
 needs on its **config entry**, in the same shape as a loot-spec's `:inputs`; the
@@ -724,4 +726,10 @@ constructor and name it with `:class` instead:
 ```clojure
 {:type :jar :id :custom :jar {:path "plugins/custom.jar" :class "my.plugin.CustomLoot"}}
 ```
+
+The `Models` records cover the schemas in full, so the Java path loses nothing a
+Clojure one can express: `Models.Item` carries `vars`, and `Models.ViewModel`
+carries `vars`, `state` and `mutations`. Implement `sns.sdk.LootAction` for
+follow-ups — its `ctx.get("view-model")` is the displayed, possibly DM-edited
+result as a `Models.ViewModel`.
 
