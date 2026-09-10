@@ -1,8 +1,10 @@
 (ns sns.builtin.cli-test
   (:require
     [clojure.test :refer [deftest is testing]]
+    [randy.core :as r]
     [sns.builtin.cli :as cli]
     [sns.sdk.protocols :as p]
+    [sns.sdk.randoms :as randoms]
     [sns.sdk.schema :as schema]
     [sns.server.store.edn :as edn-store]))
 
@@ -176,3 +178,31 @@
       (is (schema/validate ::schema/view-model vm))
       (is (= {:crystals {"Quincy" {:flares 3} "Viktor" nil}} (:store/mutations vm))
           "collection names keywordise; the keys within a collection do not"))))
+
+(deftest declared-random-vars-are-drawn
+  (testing "an external plugin names a preset and the engine draws it, exactly as
+            an in-process plugin's :vars are drawn"
+    (defmethod randoms/preset ::dmg-type [_ _] ["fire" "cold"])
+    (try
+      (let [cmd ["bash" "-c"
+                 (str "cat >/dev/null; "
+                      "printf '%s' '{\"loot/title\":\"Affix\",\"loot/sections\":[{\"section/items\":["
+                      "{\"item/body\":\"+2 {{ dmg-type }} damage\","
+                      "\"item/vars\":{\"dmg-type\":{\"random\":\"" (subs (str ::dmg-type) 1) "\"}}}]}]}'")]
+            gen (cli/generator {:id :affix :cli {:command cmd} :label "Affix"})
+            vm  (randoms/with-rng @r/default-rng (p/generate gen {:inputs {}}))
+            v   (-> vm :loot/sections first :section/items first :item/vars :dmg-type)]
+        (is (schema/validate ::schema/view-model vm))
+        (is (contains? #{"fire" "cold"} (:value v)))
+        (is (= ["fire" "cold"] (:options v)) "the preset's vocabulary rides along, for the DM's combobox"))
+      (finally (remove-method randoms/preset ::dmg-type)))))
+
+(deftest resolved-vars-pass-through-untouched
+  (testing "a plugin that already sends a value keeps it"
+    (let [cmd ["bash" "-c"
+               (str "cat >/dev/null; "
+                    "printf '%s' '{\"loot/title\":\"Ring\",\"loot/sections\":[{\"section/items\":["
+                    "{\"item/body\":\"+{{ dmg }}\",\"item/vars\":{\"dmg\":{\"value\":3,\"type\":\"int\"}}}]}]}'")]
+          gen (cli/generator {:id :ring :cli {:command cmd} :label "Ring"})
+          vm  (p/generate gen {:inputs {}})]
+      (is (= {:value 3 :type :int} (-> vm :loot/sections first :section/items first :item/vars :dmg))))))

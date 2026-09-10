@@ -22,7 +22,9 @@
   (:require
     [jsonista.core :as j]
     [sns.sdk.protocols :as p]
-    [sns.sdk.schema :as schema]))
+    [sns.sdk.randoms :as randoms]
+    [sns.sdk.schema :as schema]
+    [sns.sdk.vars :as vars]))
 
 (def ^:private mapper j/keyword-keys-object-mapper)
 
@@ -86,14 +88,17 @@
   (j/write-value-as-string ctx))
 
 (defn read-output
-  "Parse a plugin's JSON output, validate it against `::plugin-output`, and map
+  "Parse a plugin's JSON output, draw any vars it declared rather than resolved
+   (the engine draws them for every plugin, but validation here comes first, so
+   they must be finished by then), validate it against `::plugin-output`, and map
    the two parts that are not the author's to write: actions get the event
    routing them back to plugin `id`, and mutation keys the author wrote as JSON
-   strings are put back. Validating first means a contract breach throws in the
-   author's own keys, before mapping."
+   strings are put back. Validating before mapping means a contract breach throws
+   in the author's own keys."
   [id json]
   (let [out (->> (j/read-value json mapper)
                  (schema/decode ::schema/plugin-output)
+                 (vars/resolve-view-model randoms/*rng*)
                  (schema/assert! ::schema/plugin-output))]
     (cond-> out
             (seq (:loot/actions out))    (update :loot/actions #(mapv (partial ->action id) %))

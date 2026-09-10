@@ -27,6 +27,29 @@
     (testing "an unknown loot type is rejected"
       (is (thrown? Exception (engine/generate eng :nonexistent))))))
 
+(defn unresolved-vars-generator
+  "An in-process plugin that names a preset instead of drawing the value, the
+   way an external one may."
+  [_plugin]
+  (reify p/LootGenerator
+    (loot-spec [_] {:id :unresolved :label "Unresolved"})
+    (generate [_ _]
+      {:loot/title    "{{ colour }}"
+       :loot/vars     {:colour {:random :literal :options ["puce"]}}
+       :loot/sections [{:section/items [{:item/body "{{ shade }}"
+                                         :item/vars {:shade {:random :literal :options ["ochre"]}
+                                                     :fixed {:value "as sent"}}}]}]})))
+
+(deftest resolves-declared-vars-for-in-process-plugins
+  (let [eng (engine/create {:plugins [{:type    :builtin                                 :id :unresolved
+                                       :builtin {:entrypoint `unresolved-vars-generator}}]})
+        vm  (engine/generate eng :unresolved)]
+    (is (= {:colour {:value "puce" :random :literal :options ["puce"] :args {:options ["puce"]}}}
+           (:loot/vars vm)))
+    (is (= {:shade {:value "ochre" :random :literal :options ["ochre"] :args {:options ["ochre"]}}
+            :fixed {:value "as sent"}}
+           (-> vm :loot/sections first :section/items first :item/vars)))))
+
 (deftest loot-table-without-weights-is-uniform
   (testing "a loot-table entry may omit :weight (defaults to 1, sampled uniformly)"
     (let [eng (engine/create

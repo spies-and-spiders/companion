@@ -584,6 +584,19 @@ finished prose:
     "item/vars": {"dmg": {"value": 3, "type": "int"}}}]}]}
 ```
 
+A var may also be **declared rather than resolved** — `{"random": "<preset>"}`,
+the same shape a `:data` entry or a mod's `:vars` use — and the engine draws it
+with the request's rng before validating, so an external plugin names a preset
+from `:randoms` instead of shipping its own copy of the vocabulary:
+
+```json
+{"item/body": "+2 {{ dmg-type }} damage",
+ "item/vars": {"dmg-type": {"random": "dmg-type"}}}
+```
+
+The drawn value comes back with the preset's `:options` attached, so the DM edits
+it as a combobox exactly as for an in-process plugin.
+
 The one exception is `loot/actions`, covered below.
 
 - **`:cli`** runs your `:cli {:command [...]}`, writing the request to **stdin** and reading the

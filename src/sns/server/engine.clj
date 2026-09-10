@@ -10,6 +10,7 @@
     [sns.sdk.protocols :as p]
     [sns.sdk.randoms :as randoms]
     [sns.sdk.schema :as schema]
+    [sns.sdk.vars :as vars]
     [sns.server.progression :as progression]
     [sns.server.registry :as registry]
     [sns.server.reporter :as reporter]
@@ -254,6 +255,7 @@
        (->> (ctx engine inputs)
             (p/generate generator)
             (with-words engine nil)
+            (vars/resolve-view-model rng)
             (schema/assert! ::schema/view-model)
             (persist! (:store engine)))))))
 
@@ -317,5 +319,6 @@
     (randoms/with-rng rng
       (->> (p/handle-action generator (assoc (ctx engine nil) :view-model view-model) action params)
            (with-words engine (:loot/words view-model))
+           (vars/resolve-view-model rng)
            (schema/assert! ::schema/view-model)
            (persist! (:store engine))))))

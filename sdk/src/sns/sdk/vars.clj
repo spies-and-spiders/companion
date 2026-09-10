@@ -86,6 +86,24 @@
                {}
                vars)))
 
+(defn- resolve-vars-at
+  "Resolve `m`'s vars under `k`, leaving `m` alone when it declares none — an
+   absent key must stay absent rather than become nil."
+  [rng m k]
+  (cond-> m
+          (seq (get m k)) (update k (partial resolve-vars rng))))
+
+(defn resolve-view-model
+  "Draw the `{:random ...}` declarations a view-model carries, at the loot level
+   and in each item, so a plugin can name a preset instead of drawing the value
+   itself. Idempotent, so finished `{:value ...}` vars are untouched."
+  [rng vm]
+  (cond-> (resolve-vars-at rng vm :loot/vars)
+          (seq (:loot/sections vm))
+          (update :loot/sections
+                  (partial mapv #(update % :section/items
+                                         (partial mapv (fn [item] (resolve-vars-at rng item :item/vars))))))))
+
 (defn redraw
   "Re-draw `id`'s value, for an action that deliberately rerolls a var. A var
    that wasn't drawn from a preset has nothing to redraw and is left alone."
