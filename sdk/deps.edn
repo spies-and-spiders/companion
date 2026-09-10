@@ -1,5 +1,5 @@
 {:paths ["src" "target/classes"]
- :deps  {org.clojure/clojure         {:mvn/version "1.12.5"}
+ :deps  {org.clojure/clojure         {:mvn/version "1.12.6"}
          metosin/malli               {:mvn/version "0.20.1"}
          com.github.dekelpilli/randy {:mvn/version "0.0.43"}}
 
