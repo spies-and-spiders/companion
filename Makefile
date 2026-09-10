@@ -9,6 +9,16 @@ UBERJAR := target/companion.jar
 
 NATIVE_OPT ?= $(if $(CI),-Os,-Ob)
 
+# Windows: native-image is a .cmd, which the sh make shells out to won't resolve
+# off PATH, and the classpath separator is ';'.
+ifeq ($(OS),Windows_NT)
+NATIVE_IMAGE_BIN := native-image.cmd
+CP_SEP := ;
+else
+NATIVE_IMAGE_BIN := native-image
+CP_SEP := :
+endif
+
 .PHONY: help
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -62,11 +72,10 @@ schemas: prep ## Generate schemas.json (config) + plugin-{request,output}.schema
 .PHONY: graalvm
 graalvm: prep frontend ## Build GraalVM Native Image
 	clojure -T:build uber :aliases '[:graalvm]'
-	native-image -jar $(UBERJAR) \
-	    -classpath "target/classes:$$(ls target/lib/*.jar | tr '\n' ':')" \
+	$(NATIVE_IMAGE_BIN) -jar $(UBERJAR) \
+	    -classpath "target/classes$(CP_SEP)$$(ls target/lib/*.jar | tr '\n' '$(CP_SEP)')" \
 	    -o $(NATIVE_IMAGE) \
 	    $(NATIVE_OPT) \
-	    --no-fallback \
 	    --features=clj_easy.graal_build_time.InitClojureClasses
 
 BIN ?= $(NATIVE_IMAGE)
