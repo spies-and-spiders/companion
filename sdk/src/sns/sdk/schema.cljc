@@ -394,7 +394,8 @@
              [:extra-words {:optional true} [:sequential string?]]
              [:reporting {:optional true} ::reporting]
              [:history {:optional true} ::history]
-             [:loot-table {:optional true} [:sequential ::loot-entry]]]})
+             [:loot-table {:optional true} [:sequential ::loot-entry]]
+             [:loot-die-size {:optional true} pos-int?]]})
 
 (def registry
   "Combined registry: malli defaults + util schemas (for `:merge`) + ours."

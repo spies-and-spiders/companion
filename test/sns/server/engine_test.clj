@@ -84,6 +84,27 @@
       (is (= :b (:id (engine/roll eng {} 35))))
       (is (= :c (:id (engine/roll eng {} 100)))))))
 
+(deftest custom-loot-die-size
+  (let [plugins [{:type :builtin :id :a :builtin {:entrypoint 'sns.builtin.dust/generator}}
+                 {:type :builtin :id :b :builtin {:entrypoint 'sns.builtin.dust/generator}}]
+        eng     (engine/create
+                  {:plugins       plugins
+                   :loot-die-size 20
+                   :loot-table    [{:id :a :weight 3} {:id :b :weight 1}]})]
+    (testing "the allocation is scaled to the configured die"
+      (is (= :a (:id (engine/roll eng {} 15))))
+      (is (= :b (:id (engine/roll eng {} 16))))
+      (is (= :b (:id (engine/roll eng {} 20)))))
+    (testing "rolls past the die are rejected"
+      (is (thrown? Exception (engine/roll eng {} 21))))
+    (testing "the die size reaches the UI via capabilities"
+      (is (= 20 (:loot-die-size (engine/capabilities eng)))))
+    (testing "a table with more entries than the die has sides fails at startup"
+      (is (thrown? Exception
+                   (engine/create {:plugins       plugins
+                                   :loot-die-size 1
+                                   :loot-table    [{:id :a} {:id :b}]}))))))
+
 (def ^:private utility-plugin
   ;; The command never runs during engine creation — only its loot-spec is read.
   {:type :cli :id :tools :cli {:command ["true"]} :utility? true})

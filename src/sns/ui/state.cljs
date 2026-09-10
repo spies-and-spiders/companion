@@ -5,7 +5,7 @@
   (atom {:loot-types    []    ; specs from the backend (drives picker + forms)
          :selected      nil   ; currently chosen loot-type id
          :type-filter   ""    ; picker search box (filters loot types + utilities)
-         :roll-n        ""     ; optional d100 roll (blank = random)
+         :roll-n        ""     ; optional loot-die roll (blank = random)
          :inputs        {}    ; collected input-form values
          :drag          nil   ; in-progress list-input reorder: {:field :from}
          :result        nil   ; the latest view-model
@@ -21,4 +21,5 @@
          :editing?      false ; manually editing the current result in place
          :manual        nil   ; the selected type's manual-state collection
          :manual-key    ""    ; the key being typed into the blank "add" row
-         :browser-storage? false})) ; state lives in IndexedDB and travels with each request
+         :browser-storage? false ; state lives in IndexedDB and travels with each request
+         :loot-die-size 100}))  ; sides on the loot die (from the backend's config)

@@ -50,10 +50,11 @@
 (nxr/register-effect! :fx/load-capabilities
                       (fn [{:keys [dispatch]} _system]
                         (api/request {:url "/api/capabilities"}
-                                     (fn [{:keys [report? report-label browser-storage? history]}]
+                                     (fn [{:keys [report? report-label browser-storage? history loot-die-size]}]
                                        (dispatch [[:fx/assoc-in [:report?] (boolean report?)]
                                                   [:fx/assoc-in [:report-label] report-label]
                                                   [:fx/assoc-in [:browser-storage?] (boolean browser-storage?)]
+                                                  [:fx/assoc-in [:loot-die-size] (or loot-die-size 100)]
                                                   [:fx/assoc-in [:history-mode] (or history :button)]
                                                   ;; only now is it known whether the
                                                   ;; history lives in this browser
@@ -329,7 +330,7 @@
                         [[:fx/assoc-in [:roll-n] value]]))
 
 (defn- roll-fx [{:keys [inputs roll-n]}]
-  ;; A blank field rolls randomly; a number rolls that d100 result against the
+  ;; A blank field rolls randomly; a number rolls that die result against the
   ;; table's allocation (validated server-side).
   (let [n (when-not (str/blank? roll-n)
             (let [parsed (js/parseInt roll-n 10)]

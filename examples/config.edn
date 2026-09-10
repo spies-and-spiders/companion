@@ -194,9 +194,12 @@
  ;; The weighted draw used by the "random loot" button. Each :id must match a
  ;; plugin above; :weight is the relative chance (defaults to 1 when omitted).
  ;; Utility plugins are not loot and cannot appear here.
- :loot-table [{:id :divine-dust :weight 40}
-              {:id :uniques :weight 25}
-              {:id :rings :weight 20}
-              {:id :relics :weight 15}
+ ;; :loot-die-size is the die the DM rolls against this table (default 100); the
+ ;; table cannot hold more entries than the die has sides.
+ :loot-die-size 100
+ :loot-table    [{:id :divine-dust :weight 40}
+                 {:id :uniques :weight 25}
+                 {:id :rings :weight 20}
+                 {:id :relics :weight 15}
               ;; :omens is :hidden?, so this is the only way it ever comes up.
-              {:id :omens :weight 5}]}
+                 {:id :omens :weight 5}]}

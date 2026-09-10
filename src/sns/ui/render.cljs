@@ -399,7 +399,7 @@
       (or (str/blank? q)
           (str/includes? (str/lower-case (str label)) q)))))
 
-(defn picker [{:keys [loot-types selected roll-n type-filter browser-storage?]}]
+(defn picker [{:keys [loot-types selected roll-n type-filter browser-storage? loot-die-size]}]
   (let [match?        (matcher type-filter)
         ;; A hidden type is meant to be reached only by rolling the loot-table,
         ;; so it stays off the rail — except while it is the type on screen,
@@ -415,14 +415,14 @@
       [:input.roll__input
        {:type        "number"
         :min         "1"
-        :max         "100"
-        :placeholder "d100"
+        :max         (str loot-die-size)
+        :placeholder (str "d" loot-die-size)
         :value       (str roll-n)
         :on          {:input   [[:ui/set-roll-input [:event.target/value]]]
                       :keydown [[:ui/roll-on-enter [:event/key]]]}}]
       [:button.roll {:on {:click [[:ui/roll]]}}
        (if (str/blank? (str roll-n)) "Roll Loot" (str "Roll " roll-n))]]
-     [:p.rail__hint "Enter 1–100 to roll on the table, or leave blank for random."]
+     [:p.rail__hint (str "Enter 1–" loot-die-size " to roll on the table, or leave blank for random.")]
      [:input.rail__search
       {:type        "search"
        :placeholder "Search plugins…"

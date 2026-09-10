@@ -34,7 +34,9 @@ ones only one `:type` understands nest under that type's own key — the same ru
  :loot-table [{:id :uniques :weight 30} {:id :relics :weight 10}]}
 ```
 
-`:loot-table` is the weighted d100 "roll". Entries may omit `:weight` (defaults to 1, i.e. uniform).
+`:loot-table` is the weighted die "roll". Entries may omit `:weight` (defaults to 1, i.e. uniform).
+The die defaults to a d100; set `:loot-die-size` to roll a different one. The table cannot have
+more entries than the die has sides — the app refuses to start if it does.
 
 A plugin may declare itself a **utility** — a session tool rather than loot. Utilities
 are grouped separately in the UI and rejected from the `:loot-table` at startup.

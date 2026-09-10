@@ -56,23 +56,24 @@
     (let [app  (http/app (engine/create config {:store (edn-store/create {:backend :memory})}))
           resp (app {:request-method :get :uri "/api/capabilities"})]
       (is (= 200 (:status resp)))
-      (is (= {:browser-storage? false} (body resp)))))
+      (is (= {:browser-storage? false :loot-die-size 100} (body resp)))))
   (testing "with a reporter -> report? surfaced"
     (let [app  (http/app (engine/create config {:store    (edn-store/create {:backend :memory})
                                                 :reporter (recording-reporter (atom nil))}))
           resp (app {:request-method :get :uri "/api/capabilities"})]
       (is (= {:browser-storage? false
+              :loot-die-size    100
               :report?          true
               :report-label     "Send to Discord"} (body resp)))))
   (testing ":history is surfaced only when the config sets it"
     (let [app  (http/app (engine/create (assoc config :history :on-report)
                                         {:store (edn-store/create {:backend :memory})}))
           resp (app {:request-method :get :uri "/api/capabilities"})]
-      (is (= {:browser-storage? false :history :on-report} (body resp)))))
+      (is (= {:browser-storage? false :loot-die-size 100 :history :on-report} (body resp)))))
   (testing ":browser storage -> the client ships state with each request"
     (let [app  (http/app (engine/create (assoc config :storage {:backend :browser})))
           resp (app {:request-method :get :uri "/api/capabilities"})]
-      (is (= {:browser-storage? true} (body resp))))))
+      (is (= {:browser-storage? true :loot-die-size 100} (body resp))))))
 
 (deftest report-endpoint
   (let [sink (atom nil)

@@ -32,19 +32,18 @@
     (seq extra-words) (vec (into (set default-words) extra-words))
     :else default-words))
 
-(defn- allocation
-  "Turn a weighted loot table into cumulative 1-100 upper bounds, so an entered
-   d100 roll resolves to a loot type. Weights are normalised to the total and
-   scaled to 100, so the entered number is always on a 1-100 scale regardless of
-   the raw weight total (and each type occupies a proportional slice). The final
-   entry always reaches 100."
-  [table]
+(def ^:private default-loot-die-size 100)
+
+(defn- loot-die-size [config]
+  (or (:loot-die-size config) default-loot-die-size))
+
+(defn- allocation [table size]
   (let [total (transduce (map #(or (:weight %) 1)) + 0 table)]
     (:entries
       (reduce (fn [{:keys [acc entries]} {:keys [id weight]}]
                 (let [acc (+ acc (or weight 1))]
                   {:acc     acc
-                   :entries (conj entries {:id id :max (long (Math/ceil (* 100.0 (/ acc total))))})}))
+                   :entries (conj entries {:id id :max (long (Math/ceil (* (double size) (/ acc total))))})}))
               {:acc 0 :entries []}
               table))))
 
@@ -58,8 +57,13 @@
 
 (defn- validate-table!
   "Every loot-table entry must reference a registered, rollable loot type;
-   utilities are session tools, not loot, so they can't be rolled."
-  [registry table]
+   utilities are session tools, not loot, so they can't be rolled. The table
+   also has to fit on the loot die, or some entry could never be rolled."
+  [registry table size]
+  (when (> (count table) size)
+    (throw (ex-info "Loot-table has more entries than the loot die has sides; raise :loot-die-size"
+                    {:entries       (count table)
+                     :loot-die-size size})))
   (doseq [{:keys [id]} table]
     (let [generator (or (get registry id)
                         (throw (ex-info "Loot-table references an unknown loot type"
@@ -74,12 +78,13 @@
   ([config] (create config {}))
   ([config {:keys [store reporter rng]}]
    (let [table (:loot-table config)
+         size (loot-die-size config)
          registry (registry/build config)
          rng (or rng (.create (RandomGeneratorFactory/of "L64X128MixRandom")))
          store (or store (store/from-config (:storage config)))]
      (some-> store p/setup!)
      (when (seq table)
-       (validate-table! registry table))
+       (validate-table! registry table size))
      ;; Config-declared random presets, usable from any plugin's vars as
      ;; `{:random :<preset>}`.
      (install-randoms! (:randoms config))
@@ -95,8 +100,9 @@
       :loot-sampler    (when (seq table)
                          (r/alias-method-sampler (mapv :id table)
                                                  (mapv #(or (:weight %) 1) table)))
-      ;; The same weights, laid out as a d100 lookup for number-driven rolls.
-      :loot-allocation (when (seq table) (allocation table))})))
+      ;; The same weights, laid out as a die lookup for number-driven rolls.
+      :loot-die-size   size
+      :loot-allocation (when (seq table) (allocation table size))})))
 
 (defn- ctx
   "Assemble the per-request context handed to a generator."
@@ -260,24 +266,24 @@
             (persist! (:store engine)))))))
 
 (defn- roll->id
-  "Resolve the entered d100 roll `n` (1-100) to a loot type via the allocation."
-  [loot-allocation n]
-  (when-not (and (integer? n) (<= 1 n 100))
-    (throw (ex-info "Roll must be an integer between 1 and 100" {:n n})))
+  "Resolve the entered roll `n` (1-`size`) to a loot type via the allocation."
+  [loot-allocation size n]
+  (when-not (and (integer? n) (<= 1 n size))
+    (throw (ex-info (str "Roll must be an integer between 1 and " size) {:n n :loot-die-size size})))
   (some (fn [{:keys [id max]}] (when (<= n max) id)) loot-allocation))
 
 (defn roll
   "Roll the top-level loot table and generate the chosen loot type. With no `n`,
-   the table is sampled randomly by weight; given `n` (a 1-100 d100 result), the
-   type is resolved from its allocation on the table. Returns the chosen `:id`
+   the table is sampled randomly by weight; given `n` (a 1-`:loot-die-size`
+   result), the type is resolved from its allocation on the table. Returns the chosen `:id`
    alongside its `:view-model` so callers (e.g. the UI) can reflect which
    discipline was rolled."
   ([engine] (roll engine {} nil))
   ([engine inputs] (roll engine inputs nil))
-  ([{:keys [loot-sampler loot-allocation] :as engine} inputs n]
+  ([{:keys [loot-sampler loot-allocation loot-die-size] :as engine} inputs n]
    (when-not loot-sampler
      (throw (ex-info "No loot-table configured" {})))
-   (let [id (if (some? n) (roll->id loot-allocation n) (loot-sampler))
+   (let [id (if (some? n) (roll->id loot-allocation loot-die-size n) (loot-sampler))
          vm (generate engine id inputs)]
      ;; Writes ride at the top of the result, where a plain generate leaves
      ;; them, rather than buried inside the wrapper this adds.
@@ -290,8 +296,9 @@
    client ships it with each request and applies the writes that come back), and
    when generated results join the browser-side history (absent = the client's
    default, `:button`)."
-  [{:keys [reporter config]}]
-  (cond-> {:browser-storage? (store/browser? config)}
+  [{:keys [reporter config loot-die-size]}]
+  (cond-> {:browser-storage? (store/browser? config)
+           :loot-die-size    loot-die-size}
           (:history config) (assoc :history (:history config))
           reporter (assoc :report? true
                           :report-label (p/report-label reporter))))
