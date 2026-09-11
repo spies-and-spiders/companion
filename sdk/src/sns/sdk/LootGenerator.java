@@ -9,7 +9,7 @@ import java.util.Map;
  *
  * <p>Data shapes are exchanged as {@link Models} records; the engine context
  * ({@code ctx}) is passed through as a map keyed by the bare names of
- * {@code {:rng :store :progression :config :inputs}}.
+ * {@code {:rng :store :config :inputs}}.
  */
 public interface LootGenerator {
 

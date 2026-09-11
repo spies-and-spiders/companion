@@ -4,6 +4,7 @@
    as its spec/view-model conform to the schema."
   (:require
     [clojure.string :as str]
+    [sns.sdk.rank :as rank]
     [sns.ui.template :as template]))
 
 ;; --- input-form (from a loot-spec's :inputs) ---------------------------------
@@ -118,18 +119,24 @@
 ;; in the view-model can read them, which is how one drawn value is *shared*
 ;; between items rather than copied into each (copies desynchronise the moment
 ;; the DM edits one). An item's own vars shadow them.
+;; An item whose body renders to nothing is left out — a mod the DM emptied, or
+;; one whose text only appears at a higher rank. It is untouched in
+;; `result-editor`, so it comes back the moment it renders something again.
 (defn- entry [loot-vars {:item/keys [title body metadata vars]}]
-  (let [vars (merge loot-vars vars)]
-    [:li.entry
-     (when title [:h4.entry__title (template/render title vars)])
-     [:p.entry__body (template/render body vars)]
-     (when (seq metadata)
-       [:ul.tags (for [t metadata] [:li.tag t])])]))
+  (let [vars (merge loot-vars vars)
+        body (template/render body vars)]
+    (when-not (str/blank? body)
+      [:li.entry
+       (when title [:h4.entry__title (template/render title vars)])
+       [:p.entry__body body]
+       (when (seq metadata)
+         [:ul.tags (for [t metadata] [:li.tag t])])])))
 
 (defn- block [loot-vars {:section/keys [heading items]}]
-  [:section.block
-   (when heading [:h3.block__heading heading])
-   [:ul.entries (map (partial entry loot-vars) items)]])
+  (when-let [entries (seq (keep (partial entry loot-vars) items))]
+    [:section.block
+     (when heading [:h3.block__heading heading])
+     [:ul.entries entries]]))
 
 (defn- action [{:action/keys [label event]}]
   [:button.action {:on {:click [event]}} label])
@@ -155,7 +162,7 @@
         [:p.sigil__eyebrow (template/render (:loot/subtitle vm) (:loot/vars vm))])
       [:h2.sigil__title (template/render (:loot/title vm) (:loot/vars vm))]
       [:div.sigil__body
-       (map (partial block (:loot/vars vm)) (:loot/sections vm))]
+       (keep (partial block (:loot/vars vm)) (:loot/sections vm))]
       (when (seq (:loot/actions vm))
         [:div.sigil__actions
          (map action (:loot/actions vm))])]]))
@@ -225,13 +232,42 @@
      (for [opt values]
        [:option (cond-> {:value opt} (= opt v) (assoc :selected true)) opt])]))
 
-(defn- edit-var [path id {:keys [label value options type]}]
+(defn- ranked-to
+  "What the value and the rank come to, shown beside the field's own label so
+   the box reading 1 while the card reads 3 explains itself. Absent while they
+   agree, which is every var at rank 1."
+  [{:keys [value] :as v}]
+  (let [stepped (rank/stepped v)]
+    (when (not= value stepped)
+      [:span.edit__derived "= " (str stepped)])))
+
+(defn- rank-field
+  "A var's rank, beside its value rather than folded into it: the value stays
+   the rank-1 base the plugin declared, and the rendered card shows what the two
+   come to. Only vars that can rank up get one."
+  [path {:keys [rank] mx :max}]
+  [:label.edit.edit--rank
+   [:span.edit__label "Rank"]
+   ;; `.field__control`, matching the value control it sits beside rather than
+   ;; the prose fields further down the editor.
+   [:input.field__control
+    (cond-> {:type  "number"
+             :min   1
+             :step  1
+             :value (str (or rank 1))
+             :on    {:input [[:ui/edit-result (conj path :rank) :rank [:event.target/value]]]}}
+            mx (assoc :max mx))]])
+
+(defn- edit-var [path id {:keys [label value options type] :as v}]
   (let [action [:ui/edit-result (conj path :value) type]]
-    [:label.edit {:replicant/key (str path)}
-     [:span.edit__label (var-label id label)]
-     (if (seq options)
-       (select-field value options action)
-       (control nil value {:type (var-type type)} action))]))
+    [:div.edit-var {:replicant/key (str path)}
+     [:label.edit
+      [:span.edit__label (var-label id label) (ranked-to v)]
+      (if (seq options)
+        (select-field value options action)
+        (control nil value {:type (var-type type)} action))]
+     (when (rank/upgradeable? v)
+       (rank-field path v))]))
 
 (defn- editable-vars
   "The vars a DM may change: what the plugin *declared*, not the entry fields

@@ -15,12 +15,12 @@
       :inputs [{:id :character :label \"Character\" :type :enum :options [...]}]}")
   (generate [this ctx]
     "Produce loot. Returns a view-model (`sns.sdk.schema/view-model`).
-     `ctx` is `{:rng :store :progression :inputs :config}` — see the engine.
+     `ctx` is `{:rng :store :inputs :config}` — see the engine.
      Stateful types read/write via `(:store ctx)`."))
 
 (defprotocol LootAction
   "Optional. Stateful follow-up operations on previously generated loot
-   (e.g. levelling a relic up). Surfaced to the UI via view-model `:loot/actions`."
+   (e.g. ranking a relic up). Surfaced to the UI via view-model `:loot/actions`."
   (handle-action [this ctx action params]
     "Apply `action` (a keyword) with `params`. Returns an updated view-model.
      `ctx` additionally carries `:view-model` — the current, possibly
@@ -28,17 +28,8 @@
      one). Reconstruct your item from it rather than trusting a copy frozen
      into `params`, so the DM's edits are what the action operates on: the
      displayed values are the source of truth, and `:loot/state` carries only
-     what the view-model cannot express (an upgrade `:path`, a stored id)."))
-
-(defprotocol Progression
-  "How a single mod evolves. The default implementation interprets the
-   upgrade-graph DSL (`sns.sdk.schema/mod`); plugins may supply bespoke logic."
-  (current-state [this mod path]
-    "Derive `mod`'s variables at the progression described by `path` (a vector
-     of `{:id ...}` steps). Returns the resolved `sns.sdk.schema/item-vars`,
-     which the browser renders the mod's template against.")
-  (level-options [this mod path]
-    "Return the upgrade options available as the next step from `path`."))
+     what the view-model cannot express (a stored id, the entry a mod came
+     from). A var's rank rides on the var itself, so it is not one of them."))
 
 (defprotocol Reporter
   "Optional. Sends a generated loot view-model to an external destination (e.g. a
@@ -111,7 +102,10 @@
           (.random v)        (assoc :random (keyword (.random v)))
           (seq (.args v))    (assoc :args (update-keys (into {} (.args v)) keyword))
           (seq (.options v)) (assoc :options (vec (.options v)))
-          (.context v)       (assoc :context? true)))
+          (.context v)       (assoc :context? true)
+          (some? (.step v))  (assoc :step (.step v))
+          (some? (.max v))   (assoc :max (.max v))
+          (some? (.rank v))  (assoc :rank (.rank v))))
 
 (defn- item-vars->clj
   "Vars keyed by the name their template refers to them by, so the keys
@@ -153,11 +147,12 @@
           (some? (.state vm))   (assoc :loot/state (.state vm))
           (seq (.mutations vm)) (assoc :store/mutations (mutations->clj (.mutations vm)))))
 
-(defn- clj->item-var [{:keys [value type label random args options context?]}]
+(defn- clj->item-var [{:keys [value type label random args options context? step rank] mx :max}]
   (Models$ItemVar. value (some-> type name) label (some-> random name)
                    (when (seq args) (update-keys args name))
                    (when (seq options) (vec options))
-                   (boolean context?)))
+                   (boolean context?)
+                   step mx rank))
 
 (defn- clj->item-vars [vars]
   (when (seq vars)
@@ -208,11 +203,6 @@
     (let [ctx (cond-> ctx (:view-model ctx) (update :view-model clj->view-model))]
       (view-model->clj (loot-id this)
                        (.handleAction this (clj->java-map ctx) (name action) (clj->java-map params))))))
-
-(extend-type sns.sdk.Progression
-  Progression
-  (current-state [this mod path] (.currentState this mod path))
-  (level-options [this mod path] (.levelOptions this mod path)))
 
 (extend-type sns.sdk.Reporter
   Reporter

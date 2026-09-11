@@ -140,7 +140,7 @@ The UI renders this shape generically — a new loot type needs **no** UI code, 
                                                      :random  :damage-types
                                                      :options ["fire" "cold"]}}}]}]
  :loot/actions  [{:action/label "Level up"
-                  :action/event [:loot/action {:id :relics :action :level-up}]}]
+                  :action/event [:loot/action {:id :relics :action :rank-up}]}]
  :loot/state    {…}                              ; optional, opaque
  :store/mutations {:relics {"r1" {…}}}}          ; optional — writes to apply
 ```
@@ -173,9 +173,9 @@ its templates. `:loot/vars` does the same job for the title and subtitle.
 
 `:loot/state` is opaque, plugin-owned state the engine and UI carry untouched
 and hand back with the next action (as `ctx`'s `:view-model`). Keep it to
-progression bookkeeping that has no place in the rendered item — an upgrade
-`:path`, a stored id. Everything the DM can *see* should be read back off the
-view-model itself.
+bookkeeping that has no place in the rendered item — a stored id, the data entry
+a mod came from. Everything the DM can *see* should be read back off the
+view-model itself, a var's rank included.
 
 `:store/mutations` is how a stateful type writes: `{<collection> {<key>
 <value>}}`, a nil value retracting that key. The engine applies it *after* this
@@ -204,7 +204,7 @@ or
   "actions": [
     {
       "label": "Level up",
-      "action": "level-up",
+      "action": "rank-up",
       "params": {
         "relic-id": "…"
       }
@@ -230,10 +230,10 @@ part of this repo with a stable contract.
 
 | Namespace | What it gives you |
 |---|---|
-| `sns.sdk.protocols` | the protocols you implement (`LootGenerator`, `LootAction`, `Progression`, `Reporter`, `Store`), and the Java interfaces they are bridged onto |
-| `sns.sdk.schema` | the malli schemas for every shape crossing the boundary (loot-spec, view-model, upgrade graph, config) |
+| `sns.sdk.protocols` | the protocols you implement (`LootGenerator`, `LootAction`, `Reporter`, `Store`), and the Java interfaces they are bridged onto |
+| `sns.sdk.schema` | the malli schemas for every shape crossing the boundary (loot-spec, view-model, mod, config) |
 | `sns.sdk.randoms` | the `random` template filter and its preset vocabulary |
-| `sns.sdk.progression` | the upgrade-graph op vocabulary |
+| `sns.sdk.rank` | ranks: what a var's rank means, and which vars can still take one |
 
 The first two are contracts you implement; the last two are shared logic you can use
 and extend without depending on the app.
@@ -244,12 +244,9 @@ and extend without depending on the app.
 (generate  [this ctx]) ; => a view-model
 ```
 
-`ctx` is `{:rng :store :progression :config :inputs}`:
+`ctx` is `{:rng :store :config :inputs}`:
 - `:rng` — a randy RNG (or use randy's default-rng functions).
 - `:store` — the `Store` (see below) for stateful loot.
-- `:progression` — the default `Progression` (upgrade-graph interpreter). It
-  resolves a mod's declared vars and folds its upgrade path over them; it does
-  no rendering.
 - `:inputs` — values collected from the loot-spec's declared `:inputs`.
 
 There is no renderer on the context, because there is no rendering on the
@@ -267,22 +264,15 @@ copy frozen into `params`, so an action operates on what is actually displayed:
 ```clojure
 (handle-action [_ ctx action params]
   (-> (view-model->relic (:view-model ctx))   ; your own inverse of the below
-      (level-up)
+      (rank-up)
       (relic->view-model ctx)))
 ```
 
 Write that pair as inverses over everything the UI can change. Whatever the
-view-model cannot express — an upgrade `:path`, a stored id — travels in
-`:loot/state`; keep it small, since anything read back from there is a value
-the DM's edits cannot reach.
-
-### `Progression` (optional — custom upgrade systems)
-```clojure
-(current-state [this mod path]) ; derive a mod's vars at a progression path
-(level-options [this mod path]) ; next options
-```
-The default implementation interprets the upgrade-graph DSL; implement this only
-if you need bespoke logic.
+view-model cannot express — a stored id, the data entry a mod came from —
+travels in `:loot/state`; keep it small, since anything read back from there is a
+value the DM's edits cannot reach. A var's level is not one of them: it rides on
+the var itself, so it round-trips with the item like any other edit.
 
 ### `Reporter` (optional — send loot to an external destination)
 ```clojure
@@ -344,49 +334,64 @@ should say so itself. Clearing the field falls back to the field's `:default`.
 
 ---
 
-## The upgrade-graph DSL (mod state & progression)
+## Ranks (mod state & progression)
 
-A mod carries `:vars`, a `:template` interpolating them, and an `:upgrades`
-graph. **Upgrades mutate vars, never the text** — the template is fixed, so
-choosing the same option N times is well-defined. Text that appears only after
-an upgrade is a `{{#if}}` the graph switches on with `:enable`.
-
-```clojure
-{:vars     {:ab 1 :fire false}
- :template "+{{ab}} AB with effects that cannot deal damage.{{#if fire}} Deals 6 fire damage on hit.{{/if}}"
- :upgrades {:select  :choice            ; :choice | :random | :all
-            :options [{:id :precise :inc {:ab 1}}
-                      {:id :elemental :repeatable false :enable [:fire]}]}}
-```
-
-An option can be taken again and again; add `:repeatable false` for a one-shot,
-or `:repeatable N` to cap it at N picks. A consumed option is dropped from the
-node (its siblings stay reachable, and the node only goes terminal when every
-option in it is consumed).
-
-Op vocabulary on an option: `:inc` `:dec` `:conj` `:enable` `:disable`. A
-persisted progression is a `path` of `{:id …}` steps; the vars re-derive
-deterministically from it.
-
-The vocabulary is **open**: each op is a method of `sns.sdk.progression/apply-op`,
-so a plugin can add one without replacing the graph interpreter.
+A mod carries `:vars` and a `:template` interpolating them. **A var carries its
+own progression** — there is no separate upgrade graph and no path to replay:
+the rank is one more key on the var the template already reads.
 
 ```clojure
-(ns my.plugin
-  (:require [sns.sdk.progression :as sp]))
-
-(defmethod sp/apply-op :multiply [vars _ m]
-  (sp/update-values vars m *))
-
-;; …now usable in any upgrade graph: {:id :doubled :multiply {:ab 2}}
+{:vars      {:ab 1                          ; steps by 1: 1, 2, 3, …
+             :range {:value 30 :step 15}}   ; 30, 45, 60, …
+ :template  "+{{ab}} AB within {{range}}ft."
+ :max-ranks 4}                              ; total ranks across every var
 ```
 
-Only the vocabulary is shared — the interpreter that folds ops over a path is the
-`Progression` handed to you on the context. It applies ops in a fixed order,
-with plugin ops last in name order, so a mod derives identically every time.
-Anything on an option that isn't
-a structural key (`:id` `:repeatable` `:upgrades`) is treated as an op, so a
-typo'd op name is an error rather than a silent no-op.
+Ranks are **1-based**: a var's declared `:value` is rank 1, so an item nobody
+has upgraded is rank 1 and needs no bookkeeping at all. One upgrade makes it
+`{:rank 2}`.
+
+| key | meaning |
+|---|---|
+| `:step` | how far one rank moves the value; defaults to the value itself |
+| `:max` | most ranks this var may take; uncapped by default |
+| `:rank` | ranks taken; absent means 1 |
+
+A var holding anything but a number has nowhere to step to and never ranks.
+Text that should appear only once a var is high enough keys off the number
+rather than off a second flag var that could disagree with it:
+
+```clojure
+"+{{ab}} AB.{{#gte ab 3}} Deals 6 fire damage on hit.{{/gte}}"
+```
+
+Templates do arithmetic, so one var can drive several numbers at once — a rank
+that is worth +1 AB and +3 fire damage is one var, not two:
+
+```clojure
+"+{{multiply rank 3}} fire damage, +{{rank}} AB"   ; at rank 3: +9 and +3
+```
+
+The vocabulary is **closed**, deliberately: the browser folds ranks in as it
+renders, so the same `sns.sdk.rank` runs on both sides of the wire.
+
+```clojure
+(rank/stepped {:value 1 :step 2 :rank 3})   ; => 5
+(rank/upgradeable? {:value 1})              ; => true  (a number, uncapped)
+(rank/available vars 4)                     ; => (:ab :range), or nil when capped
+(rank/rank-up vars :ab)                     ; => vars with :ab one rank higher
+(rank/mod-rank vars)                        ; => the mod's own rank
+```
+
+Nothing is stamped on a var to set this up — the defaults are read, not
+written — so a plugin's vars travel exactly as it wrote them, and a rank
+round-trips with the item like any other DM edit. The editor shows the rank
+beside the value, and the value it shows stays the rank-1 base: the card shows
+what the two come to.
+
+An item whose body renders to nothing is left out of the view — a mod the DM
+emptied, or one whose text only starts at a higher rank. It stays in the
+editor, and comes back the moment it renders something again.
 
 ---
 
@@ -465,44 +470,26 @@ A `:jar` plugin can add presets in code by depending on the SDK alone:
 (vars/redraw-distinct rng item-vars :x)
 ```
 
-### Progression and vars are the same map
+### A var's rank and its value are one map
 
-An upgrade's ops (`:inc`, `:dec`, `:enable`, …) address vars by the same ids the
-template interpolates, so levelling a mod up and drawing its randoms touch one
-map rather than two:
+A var's progression addresses it by the same id the template interpolates, so
+ranking a mod up and drawing its randoms touch one map rather than two:
 
 ```clojure
 {:vars     {:ab 1 :x {:random :damage-types}}
- :template "+{{ ab }} AB, {{ x }} damage"
- :upgrades {:select :choice :options [{:id :precise :inc {:ab 1}}]}}
+ :template "+{{ ab }} AB, {{ x }} damage"}
 ```
 
-Taking `:precise` twice gives `:ab` 3; `:x` is untouched. Vars are re-derived by
-replaying the path from the mod's declared starting values, so the same path
-always yields the same result.
-
-There are two ways to keep a mod levelling, and mixing them counts every
-upgrade twice:
-
-- **the path is the state** — persist the *declared* vars plus the path, and
-  re-derive with `current-state` on each render. Reproducible from what was
-  stored; a DM's edit to a value lasts until the next derivation. This is what
-  the built-in `:relics` type does.
-- **the vars are the state** — keep the *resolved* vars and move them one
-  upgrade at a time with `(sns.sdk.progression/apply-ops rng vars option)` as
-  each option is chosen. This is what a plugin that reads its item back off the
-  view-model wants, since the displayed (possibly edited) value is what the
-  next upgrade builds on.
-
-The SDK deals in vars. Your mod's shape, where its path rides, and the step from
-a mod to a view-model item are yours to decide.
+`(rank/rank-up vars :ab)` twice gives `:ab` `{:value 1 :rank 3}`, which renders
+as 3; `:x` is untouched. The declared value never moves, so a rank can be taken
+back, and there is exactly one place a rank lives — no second copy to fall out
+of step with the first.
 
 A resolved var records the `:type` it was declared as (`:int`, `:decimal`,
-`:bool` — anything else is text). The editor picks its control from that — a
-number field, a checkbox for the flags `:enable` switches — and puts the value
-back in that type, so a DM can retype `:ab` and the next `:inc` still adds to a
-number. A numeric field left blank comes back as nil: it renders as nothing and
-an op still accumulates onto it.
+`:bool` — anything else is text). The editor picks its control from that — and
+puts the value back in that type, so a DM can retype `:ab` and it still ranks
+up as a number. A numeric field left blank comes back as nil: it renders as
+nothing, and ranking leaves it alone.
 
 ---
 
@@ -553,8 +540,8 @@ edit it in the UI and both mods above update together. The entry's other fields
 are available to its templates too (as `:context?` vars, so they render but are
 not offered for editing).
 
-(The data DSL renders mods at base state; upgrade-graph progression for data
-loot is not yet wired — use `:builtin`/`:jar` for stateful loot.)
+(The data DSL renders mods at the rank their vars declare; nothing ranks them
+up — use `:builtin`/`:jar` for stateful loot.)
 
 ---
 
@@ -670,7 +657,7 @@ symbol / module** with an action request (note `action`/`params` instead of
 `view-model` is the result the UI had on screen, **DM edits included**. Rebuild
 your item from that rather than from a copy frozen into `params`, so what the DM
 can see is what the action operates on — and put anything the item cannot express
-(an upgrade path, a stored id) under `loot/state`, which the engine and UI carry
+(a stored id, say) under `loot/state`, which the engine and UI carry
 through untouched. The plugin returns a fresh view-model (which may itself carry
 the next round of `loot/actions`). Branch on whether `action` is present in the
 request to tell a generate from an action.

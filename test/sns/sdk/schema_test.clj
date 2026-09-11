@@ -37,23 +37,21 @@
   (testing "opaque plugin state round-trips with the view-model"
     (is (schema/validate ::schema/view-model
                          {:loot/title "Soul"
-                          :loot/state {:passive {:path [{:id :precise}]}}}))))
+                          :loot/state {:origin 3}}))))
 
-(deftest upgrade-graph-schema
-  (testing "the mutually-recursive upgrade graph validates to arbitrary depth"
+(deftest mod-schema
+  (testing "a mod that ranks up: declared vars, the template, what it may spend"
     (is (schema/validate ::schema/mod
-                         {:vars     {:ab 1}
-                          :template "+{{ab}} AB"
-                          :upgrades {:select  :choice
-                                     :options [{:id :precise :repeatable true :inc {:ab 1}}
-                                               {:id       :nested
-                                                :upgrades {:select  :random
-                                                           :options [{:id :deep :inc {:ab 5}}]}}]}}))))
+                         {:vars      {:ab 1 :range {:value 30 :step 15 :max 3}}
+                          :template  "+{{ab}} AB within {{range}}ft"
+                          :max-ranks 4}))))
 
-(deftest path-schema
-  (testing "a persisted path carries option ids"
-    (is (schema/validate ::schema/path
-                         [{:id :precise} {:id :elemental}]))))
+(deftest item-var-carries-its-rank
+  (testing "a var's rank rides on the var, so it round-trips with the item"
+    (is (schema/validate ::schema/item-vars
+                         {:ab {:value 1 :type :int :step 2 :max 5 :rank 3}})))
+  (testing "ranks are 1-based, so there is no rank zero"
+    (is (not (schema/validate ::schema/item-vars {:ab {:value 1 :rank 0}})))))
 
 (deftest loot-spec-schema
   (testing "a loot-spec may flag itself as a utility"

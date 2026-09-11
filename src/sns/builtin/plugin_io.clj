@@ -9,7 +9,7 @@
    Actions round-trip: a returned `action` becomes a `:loot/action` event the UI
    dispatches back to the engine, which re-invokes the same plugin with an
    `action`/`params` request (rather than `inputs`), so an external plugin can
-   drive stateful follow-ups (e.g. levelling up) entirely in its own language.
+   drive stateful follow-ups (e.g. ranking up) entirely in its own language.
    The action request also carries the current, possibly DM-edited `view-model`,
    exactly as `LootAction/handle-action` receives it — that is what carries
    `:loot/state` back, and what makes the displayed values the source of truth.

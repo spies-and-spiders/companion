@@ -43,8 +43,8 @@
   (let [app (http/app (engine/create config {:store (edn-store/create {:backend :memory})}))
         gen (body (post app "/api/generate" {:id :relics}))
         {:keys [id action params]} (-> gen :loot/actions first :action/event second)
-        levelled (body (post app "/api/action" {:id id :action action :params params}))]
-    (is (re-find #"level 2" (:loot/subtitle levelled)))))
+        ranked (body (post app "/api/action" {:id id :action action :params params}))]
+    (is (re-find #"rank 2" (:loot/subtitle ranked)))))
 
 (defn- recording-reporter [sink]
   (reify sns.sdk.protocols/Reporter
@@ -169,22 +169,22 @@
         (is (some? muts) "the response carries the plugin's writes")
         (is (= #{:relics} (set (keys muts))) "only the plugin's own collection")
         (is (string? id))
-        (is (= [] (:path r)) "a fresh relic starts with an empty path")
+        (is (= {} (:ranks r)) "a fresh relic has taken no ranks")
         (testing "the server kept nothing — the same id is unknown without state"
           (let [resp (post app "/api/action" {:id     :relics
-                                              :action :level-up
+                                              :action :rank-up
                                               :params {:relic-id id}})]
             (is (= 400 (:status resp)))
             (is (= "Unknown relic" (:error (body resp))))))
         (testing "sending the state back lets the action resolve and advance"
           (let [choice (-> vm :loot/actions first :action/event second :params :choice)
                 vm'    (body (post app "/api/action" {:id     :relics
-                                                      :action :level-up
+                                                      :action :rank-up
                                                       :params {:relic-id id :choice choice}
                                                       :state  {:relics {id r}}}))]
-            (is (re-find #"level 2" (:loot/subtitle vm')))
-            (is (= 1 (count (get-in vm' [:store/mutations :relics id :path])))
-                "the advanced path comes back for the client to store")))))
+            (is (re-find #"rank 2" (:loot/subtitle vm')))
+            (is (= {(keyword choice) 2} (get-in vm' [:store/mutations :relics id :ranks]))
+                "the new rank comes back for the client to store")))))
     (testing "a read-only request carries no mutation key"
       (let [vm (body (post app "/api/generate" {:id :divine-dust}))]
         (is (not (contains? vm :store/mutations)))))))

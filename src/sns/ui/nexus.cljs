@@ -358,12 +358,17 @@
 (defn- retype
   "Put an edited value back into the type the plugin declared (`:type` on
    `sns.sdk.schema/item-var`), since every input hands back a string. Blank or
-   mid-typing (`-`, `1e`) becomes nil: it renders as nothing, and an op still
-   accumulates onto it."
+   mid-typing (`-`, `1e`) becomes nil: it renders as nothing, and a rank still
+   steps from it.
+
+   `:rank` is not a declared type but the rank control's own: whole ranks only,
+   where a value may well want a decimal typed into it."
   [type value]
-  (if (and (string? value) (#{:int :decimal} type))
-    (parse-double value)
-    value))
+  (cond
+    (not (string? value))   value
+    (= :rank type)          (parse-long value)
+    (#{:int :decimal} type) (parse-double value)
+    :else                   value))
 
 (nxr/register-action! :ui/edit-result
                       (fn [_state path type value]

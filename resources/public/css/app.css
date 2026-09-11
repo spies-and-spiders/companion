@@ -420,6 +420,19 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 }
 .block__heading--edit:focus-visible { outline: none; color: var(--arcane); border-bottom-color: var(--arcane); }
 .edit { display: flex; flex-direction: column; gap: 0.25rem; }
+/* one grid cell per var: its value, and the rank it has been taken to */
+.edit-var { display: flex; align-items: start; gap: 0.5rem; }
+.edit-var > .edit { flex: 1; min-width: 0; }
+.edit--rank { flex: 0 0 4.5rem; }
+.edit--rank .field__control { width: 100%; }
+/* what the base value and the rank come to, so the box and the card agree */
+.edit__derived {
+  margin-left: 0.4rem;
+  color: var(--gilt);
+  letter-spacing: normal;
+  text-transform: none;
+  font-family: var(--mono);
+}
 /* a drawn var picks from a select; give it the chevron the dark field hides */
 select.field__control {
   appearance: none;

@@ -8,18 +8,6 @@
     [malli.transform :as mt]
     [malli.util :as mu]))
 
-(def ^:private op-entries
-  "The mutation entries an upgrade option may carry. Shared by `::op` (a bare
-   op) and `::option` (an op plus identity/recursion) to avoid `:merge`, which
-   expands eagerly and cannot express the recursive graph. These are the ops
-   `sns.sdk.progression` defines; a plugin's own op is an extra key the open
-   `:map` admits."
-  [[:inc {:optional true} [:map-of keyword? number?]]
-   [:dec {:optional true} [:map-of keyword? number?]]
-   [:conj {:optional true} [:map-of keyword? any?]]
-   [:enable {:optional true} [:sequential keyword?]]
-   [:disable {:optional true} [:sequential keyword?]]])
-
 (def schemas
   "The project's named schemas, keyed by qualified keyword."
   {;; --- loot specifications (drive the generic input forms) ---
@@ -107,11 +95,18 @@
                [:options {:optional true} [:sequential any?]]
                ;; Available to templates but not offered for editing: an entry's
                ;; own fields, as opposed to what it declared as a var.
-               [:context? {:optional true} boolean?]]
+               [:context? {:optional true} boolean?]
+               ;; How the var ranks up (see `sns.sdk.rank`). Ranks are 1-based,
+               ;; so an absent `:rank` is the declared value itself. `:step`
+               ;; defaults to that value; a var holding anything but a number
+               ;; has nowhere to step to and never ranks.
+               [:step {:optional true} any?]
+               [:max {:optional true} [:int {:min 1}]]
+               [:rank {:optional true} [:int {:min 1}]]]
 
    ;; Vars keyed by the name the template refers to them by: `{{ damage }}`
    ;; reads `:damage`. A map (not a list) because that is both the render
-   ;; context's shape and the shape progression ops address by id.
+   ;; context's shape and the shape a plugin addresses a var by.
    ::item-vars [:map-of keyword? ::item-var]
 
    ;; `:item/title` and `:item/body` are *templates*, rendered in the browser
@@ -140,8 +135,8 @@
                  ;; so every surface that shows a result shows the same pair.
                  [:loot/words {:optional true} [:sequential string?]]
                  ;; Opaque, plugin-owned state the engine and UI carry untouched
-                 ;; and hand back with the next action — progression bookkeeping
-                 ;; (an upgrade `:path`, a stored id) that has no place in the
+                 ;; and hand back with the next action — bookkeeping (a stored
+                 ;; id, the data entry a mod came from) that has no place in the
                  ;; rendered item. The *displayed* values live in `:item/vars`
                  ;; and are the source of truth for everything else, so keep
                  ;; this to what genuinely cannot be read back off the item.
@@ -195,39 +190,20 @@
                       [:view-model {:optional true} ::view-model]
                       [:state {:optional true} [:map-of keyword? [:map-of any? any?]]]]]
 
-   ;; --- upgrade-graph DSL (mod state + progression) ---
-   ;; `::option` and `::upgrades` are mutually recursive, so the recursive edges
-   ;; use lazy `[:ref ...]` rather than bare keyword children.
-   ::op (into [:map] op-entries)
-
-   ::option (into [:map
-                   [:id keyword?]
-                   [:repeatable {:optional true :default true} [:or boolean? [:int {:min 1}]]]
-                   [:upgrades {:optional true} [:ref ::upgrades]]]
-                  op-entries)
-
-   ::upgrades [:map
-               [:select [:enum :choice :random :all]]
-               [:options [:sequential [:ref ::option]]]]
-
+   ;; --- a mod that ranks up ---
+   ;; The convention the built-ins use: `:vars` the template interpolates, each
+   ;; carrying its own progression, and an optional `:max-ranks` capping what
+   ;; the mod may spend across all of them. Nothing in the engine reads this — a
+   ;; plugin owns its own mod shape — but a plugin that follows it gets
+   ;; `sns.sdk.rank` for free.
+   ;;
    ;; `:vars` are declared (see `sns.sdk.vars`) — a raw literal, or a
    ;; `{:random …}`/`{:literal …}` behaviour — and resolve to the `::item-vars`
-   ;; the item carries. Progression's ops address them by the same ids the
-   ;; template interpolates, so levelling a mod up and drawing its randoms
-   ;; touch one map, not two.
-   ;;
-   ;; Progression reads `:vars` and `:upgrades`. `:template` records the shape
-   ;; the built-ins use for their text; a plugin turns its own mod into an item
-   ;; and may key that however it likes.
+   ;; the item carries.
    ::mod [:map
           [:vars {:optional true} [:map-of keyword? any?]]
           [:template {:optional true} string?]
-          [:upgrades {:optional true} [:ref ::upgrades]]]
-
-   ;; --- a persisted progression step ---
-   ::path-step [:map
-                [:id keyword?]]
-   ::path      [:sequential ::path-step]
+          [:max-ranks {:optional true} [:int {:min 1}]]]
 
    ;; --- the :data plugin DSL ---
    ;; `:title`/`:body` are either a *field reference* (a keyword, naming a field

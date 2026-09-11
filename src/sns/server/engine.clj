@@ -1,7 +1,7 @@
 (ns sns.server.engine
-  "The single generation pipeline: owns the registry, randomness, and
-   progression, and emits validated view-models. Templates travel to the
-   browser unrendered, alongside the variables they interpolate."
+  "The single generation pipeline: owns the registry and randomness, and emits
+   validated view-models. Templates travel to the browser unrendered, alongside
+   the variables they interpolate."
   (:require
     [clojure.edn :as edn]
     [clojure.java.io :as io]
@@ -11,7 +11,6 @@
     [sns.sdk.randoms :as randoms]
     [sns.sdk.schema :as schema]
     [sns.sdk.vars :as vars]
-    [sns.server.progression :as progression]
     [sns.server.registry :as registry]
     [sns.server.reporter :as reporter]
     [sns.server.store :as store]
@@ -73,8 +72,8 @@
 
 (defn create
   "Build a loot engine from validated `config`. `deps` supplies overridable
-   collaborators: `:store`, `:reporter`, `:rng`. The derived `:progression`,
-   `:store`, and `:reporter` default to the built-in (swappable) impls."
+   collaborators: `:store`, `:reporter`, `:rng`. The derived `:store` and
+   `:reporter` default to the built-in (swappable) impls."
   ([config] (create config {}))
   ([config {:keys [store reporter rng]}]
    (let [table (:loot-table config)
@@ -93,7 +92,6 @@
       :words           (build-words config)
       :store           store
       :reporter        (or reporter (reporter/from-config (:reporting config)))
-      :progression     (progression/progression rng)
       :rng             rng
       ;; Missing weights default to 1, so a table without weights is sampled
       ;; uniformly (and partial weights mix evenly-weighted entries in).
@@ -107,7 +105,7 @@
 (defn- ctx
   "Assemble the per-request context handed to a generator."
   [engine inputs]
-  (-> (select-keys engine [:rng :store :progression :config])
+  (-> (select-keys engine [:rng :store :config])
       (assoc :inputs inputs)))
 
 (defn- ->decimal

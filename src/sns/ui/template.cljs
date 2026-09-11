@@ -7,6 +7,8 @@
    collection (a numeric segment needs the brackets — `{{ x.0 }}` is a parse
    error), `{{#if flag}}…{{/if}}` for a conditional."
   (:require
+    [clojure.string :as str]
+    [sns.sdk.rank :as rank]
     ["handlebars" :as handlebars]
     ["@budibase/handlebars-helpers/lib/array" :as array-helpers]
     ["@budibase/handlebars-helpers/lib/collection" :as collection-helpers]
@@ -39,9 +41,12 @@
 
 (defn- context
   "Resolved vars flattened to the `{name value}` a template is rendered
-   against, JS-ified for Handlebars."
+   against, JS-ified for Handlebars. Ranks are folded in here — the one place
+   every template passes through — so the card, the editor's preview and the
+   reported text all show the ranked value, while the editor's own fields read
+   `:value` off the var and keep showing the rank-1 base."
   [vars]
-  (clj->js (reduce-kv (fn [acc id {:keys [value]}] (assoc acc id value)) {} vars)))
+  (clj->js (reduce-kv (fn [acc id v] (assoc acc id (rank/stepped v))) {} vars)))
 
 (defn render
   "Render `template` against `vars`. A template with no tags is itself, so a
@@ -58,6 +63,13 @@
     (try
       ((compile-template template) (context vars))
       (catch :default _ template))))
+
+(defn- blank-item?
+  "A rendered item with nothing left in its body — the DM emptied it, or its
+   template resolved to nothing at the rank it is at. It drops out of the view
+   and the report, but stays in the editor."
+  [{:item/keys [body]}]
+  (str/blank? body))
 
 (defn render-view-model
   "A view-model with every template resolved against its vars — for a consumer
@@ -77,5 +89,15 @@
     (-> vm
         (update :loot/title render vars)
         (update :loot/subtitle render vars)
+        ;; An item whose body renders to nothing is dropped, and a section left
+        ;; with none goes with it, so what is reported is what the card shows
+        ;; (`sns.ui.render/block`).
         (update :loot/sections
-                (partial mapv #(update % :section/items (partial mapv item)))))))
+                (fn [sections]
+                  (into []
+                        (keep (fn [section]
+                                (let [items (into [] (comp (map item) (remove blank-item?))
+                                                  (:section/items section))]
+                                  (when (seq items)
+                                    (assoc section :section/items items)))))
+                        sections))))))

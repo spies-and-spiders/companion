@@ -23,7 +23,8 @@
     [(Models$Section. "Mods"
                       [(Models$Item. "Ring" "+{{ dmg }} fire" ["rare"]
                                      {"dmg" (Models$ItemVar. 3 "int" "Damage" "uniform"
-                                                             {"lo" 1 "hi" 6} [1 2 3] false)})])]
+                                                             {"lo" 1 "hi" 6} [1 2 3] false
+                                                             2 (int 4) (int 3))})])]
     [(Models$Action. "Level up" "level-up" {"by" 1})]
     {"n" (Models$ItemVar. 2 "int")}
     ["yard" "congenial"]
@@ -45,7 +46,10 @@
                     :label   "Damage"
                     :random  :uniform
                     :args    {:lo 1 :hi 6}
-                    :options [1 2 3]}}
+                    :options [1 2 3]
+                    :step    2
+                    :max     4
+                    :rank    3}}
              (-> vm :loot/sections first :section/items first :item/vars))))
     (testing "an action becomes an event routed back to this plugin"
       (is (= [:loot/action {:id :ember :action :level-up :params {"by" 1}}]

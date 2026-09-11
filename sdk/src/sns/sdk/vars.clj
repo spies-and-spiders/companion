@@ -55,21 +55,28 @@
     (assoc v :type t)
     v))
 
+(def ^:private rank-keys
+  "Keys that describe how a var ranks up, not how it is drawn. Held aside while
+   a `{:random ...}` behaviour is resolved so they reach the var itself rather
+   than the preset's draw arguments."
+  [:step :max :rank])
+
 (defn- fresh [rng spec]
   (cond
     (not (map? spec))         {:value spec}
     (contains? spec :literal) {:value (:literal spec)}
-    (contains? spec :random)  (let [{preset-name :random :as args} spec
+    (contains? spec :random)  (let [{preset-name :random :as args} (apply dissoc spec rank-keys)
                                     args (dissoc args :random)]
-                                (cond-> (assoc (randoms/draw rng preset-name args)
-                                               :random preset-name)
-                                        (seq args) (assoc :args args)))
+                                (merge (cond-> (assoc (randoms/draw rng preset-name args)
+                                                      :random preset-name)
+                                               (seq args) (assoc :args args))
+                                       (select-keys spec rank-keys)))
     :else                     {:value spec}))
 
 (defn resolve-var
   "Resolve one declared var into an `sns.sdk.schema/item-var`. Idempotent:
    resolving an already-resolved var returns it unchanged, so a round-tripped
-   view-model keeps the values and types it arrived with.
+   view-model keeps the values, types and ranks it arrived with.
 
    `id` is unused beyond documenting the call site — a var carries the label a
    plugin sets, and the UI derives one from the key otherwise."

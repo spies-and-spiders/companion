@@ -39,11 +39,11 @@ public final class Models {
 
     /** {@code type} is enum/int/decimal/text/bool; {@code list} collects several. */
     public record Field(String id, String label, String type, Object defaultValue,
-                        List<Object> options, boolean list) {
+                        List<?> options, boolean list) {
         public Field(String id, String label, String type) {
             this(id, label, type, null, null, false);
         }
-        public Field(String id, String label, String type, Object defaultValue, List<Object> options) {
+        public Field(String id, String label, String type, Object defaultValue, List<?> options) {
             this(id, label, type, defaultValue, options, false);
         }
     }
@@ -97,11 +97,17 @@ public final class Models {
      * means text). {@code random}/{@code args} record what it was drawn from, so
      * an action can reroll it. With {@code context} it renders but is not
      * offered for editing.
+     *
+     * <p>{@code step}/{@code max}/{@code rank} are how the var ranks up (see
+     * {@code sns.sdk.rank}). Ranks are 1-based, so a null {@code rank} is the
+     * declared value itself; a null {@code step} defaults to that value, and a
+     * var holding anything but a number never ranks.
      */
     public record ItemVar(Object value, String type, String label, String random,
-                          Map<String, Object> args, List<Object> options, boolean context) {
-        public ItemVar(Object value) { this(value, null, null, null, null, null, false); }
-        public ItemVar(Object value, String type) { this(value, type, null, null, null, null, false); }
+                          Map<String, Object> args, List<?> options, boolean context,
+                          Object step, Integer max, Integer rank) {
+        public ItemVar(Object value) { this(value, null, null, null, null, null, false, null, null, null); }
+        public ItemVar(Object value, String type) { this(value, type, null, null, null, null, false, null, null, null); }
     }
 
     /**
