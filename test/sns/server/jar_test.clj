@@ -7,6 +7,7 @@
     [clojure.test :refer [deftest is testing]]
     [sns.sdk.protocols :as p]
     [sns.server.classpath :as classpath]
+    [sns.server.engine :as engine]
     [sns.server.registry :as registry]))
 
 (def ^:private plugin-source
@@ -14,11 +15,11 @@
      (:require [sns.sdk.protocols :as p]))
    (defn generator [_plugin]
      (reify p/LootGenerator
-       (loot-spec [_] {:id :test-jar :label \"Test Jar\"})
+       (loot-spec [_] {:history :never})
        (generate [_ _ctx] {:loot/title \"From a JAR\"})))
    (defn other-generator [_plugin]
      (reify p/LootGenerator
-       (loot-spec [_] {:id :test-jar-2 :label \"Test Jar 2\"})
+       (loot-spec [_] {})
        (generate [_ _ctx] {:loot/title \"Also from a JAR\"})))")
 
 (defn- build-plugin-jar! []
@@ -43,10 +44,6 @@
    import sns.sdk.Models;
 
    public class JavaLoot implements LootGenerator, LootAction {
-       public Models.LootSpec lootSpec() {
-           return new Models.LootSpec(\"java-jar\", \"Java Jar\");
-       }
-
        private static Models.ViewModel blade(int keen) {
            return new Models.ViewModel(
                \"From Java\", null,
@@ -92,17 +89,17 @@
           gen (registry/build-generator
                 {:type :jar                                               :id :test-jar
                  :jar  {:path jar :entrypoint 'testplugin.loot/generator}})]
-      (is (= {:id :test-jar :label "Test Jar"} (p/loot-spec gen)))
+      (is (= {:history :never} (p/loot-spec gen)))
       (is (= "From a JAR" (:loot/title (p/generate gen {})))))))
 
 (deftest reuses-loader-across-plugins-from-one-jar
   (testing "several plugins may name the same jar, which is loaded only once"
     (let [jar (build-plugin-jar!)
           reg (registry/build
-                {:plugins [{:type :jar                                               :id :test-jar
-                            :jar  {:path jar :entrypoint 'testplugin.loot/generator}}
-                           {:type :jar                                                     :id :test-jar-2
-                            :jar  {:path jar :entrypoint 'testplugin.loot/other-generator}}]})]
+                {:tools [{:type :jar                                               :id :test-jar
+                          :jar  {:path jar :entrypoint 'testplugin.loot/generator}}
+                         {:type :jar                                                     :id :test-jar-2
+                          :jar  {:path jar :entrypoint 'testplugin.loot/other-generator}}]})]
       (is (= "From a JAR" (:loot/title (p/generate (:test-jar reg) {}))))
       (is (= "Also from a JAR" (:loot/title (p/generate (:test-jar-2 reg) {}))))
       (is (identical? (classpath/add-jar! jar) (classpath/add-jar! jar))
@@ -113,8 +110,19 @@
     (let [jar (build-java-plugin-jar!)
           gen (registry/build-generator
                 {:type :jar :id :java-jar :jar {:path jar :class "testplugin.JavaLoot"}})]
-      (is (= {:id :java-jar :label "Java Jar"} (p/loot-spec gen)))
+      (is (= {} (p/loot-spec gen)) "a Java plugin may leave its loot-spec to the default")
       (is (= "From Java" (:loot/title (p/generate gen {})))))))
+
+(deftest jar-plugins-take-their-description-from-config
+  (let [jar (build-java-plugin-jar!)
+        eng (engine/create {:tools [{:type      :jar                                                              :id :blade :label "Blade" :section "Arms"
+                                     :generator {:history :always :inputs [{:id :edge :label "Edge" :type :int}]}
+                                     :jar       {:path jar :class "testplugin.JavaLoot"}}]})]
+    (is (= {:id     :blade                                 :label             "Blade"  :section "Arms" :history :always
+            :inputs [{:id :edge :label "Edge" :type :int}] :store/collections [:blade]}
+           (first (engine/loot-specs eng))))
+    (testing "its actions route to the configured id"
+      (is (= :blade (-> (engine/generate eng :blade) :loot/actions first :action/event second :id))))))
 
 (deftest java-plugin-actions-read-the-displayed-view-model
   (testing "a Java :class plugin returns vars and state, and its action is handed

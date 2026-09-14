@@ -2,16 +2,16 @@
 """A stateful `:cli` plugin: a tally the DM keeps, incremented by the plugin.
 
 Shows both directions of the state contract. The engine reads the collections
-declared on the config entry and sends them as `state`; the `mutations` sent
+declared under the config entry's `generator` and sends them as `state`; the `mutations` sent
 back are applied on its side, so this script never touches a file and never
 learns which storage backend is configured.
 
     {"type": "cli", "id": "tally",
-     "command": ["python3", "examples/cli-plugin/tally.py"],
-     "inputs": [{"id": "who", "label": "Who", "type": "text"}],
-     "store/manual": {"key-label": "Name",
-                      "fields": [{"id": "count", "label": "Count",
-                                  "type": "int", "default": 0}]}}
+     "cli": {"command": ["python3", "examples/cli-plugin/tally.py"]},
+     "generator": {"inputs": [{"id": "who", "label": "Who", "type": "text"}],
+                   "store/manual": {"key-label": "Name",
+                                    "fields": [{"id": "count", "label": "Count",
+                                                "type": "int", "default": 0}]}}}
 """
 import json
 import sys

@@ -32,7 +32,7 @@
     {"relics" {"Quincy" {"flares" 3} "Viktor" nil}}))
 
 (deftest java-view-model-carries-the-whole-schema
-  (let [vm (view-model->clj :ember java-view-model)]
+  (let [vm (view-model->clj java-view-model)]
     (is (schema/validate ::schema/view-model vm))
     (testing "the fields a Models.ViewModel used to drop"
       (is (= {:n {:value 2 :type :int}} (:loot/vars vm)))
@@ -51,27 +51,24 @@
                     :max     4
                     :rank    3}}
              (-> vm :loot/sections first :section/items first :item/vars))))
-    (testing "an action becomes an event routed back to this plugin"
-      (is (= [:loot/action {:id :ember :action :level-up :params {"by" 1}}]
+    (testing "an action becomes an event, which the engine routes back to the tool"
+      (is (= [:loot/action {:action :level-up :params {"by" 1}}]
              (-> vm :loot/actions first :action/event))))))
 
 (deftest view-model-round-trips-through-clojure
   (testing "Java -> Clojure -> Java lands on the same record, so what a Reporter
             (or an action's :view-model) receives is what the generator returned"
-    (is (= java-view-model (clj->view-model (view-model->clj :ember java-view-model))))))
+    (is (= java-view-model (clj->view-model (view-model->clj java-view-model))))))
 
 (deftest java-loot-spec-carries-the-whole-schema
   (let [spec (loot-spec->clj
-               (Models$LootSpec. "relics" "Relic"
+               (Models$LootSpec. true "Add character"
                                  [(Models$Field. "who" "Who" "text" nil nil true)]
-                                 true "Add character" ["relics" "tally"]
+                                 "always" ["relics" "tally"]
                                  (Models$ManualState. "Character" true
-                                                      [(Models$Field. "chance" "Chance" "int")])
-                                 "always"))]
+                                                      [(Models$Field. "chance" "Chance" "int")])))]
     (is (schema/validate ::schema/loot-spec spec))
-    (is (= {:id                :relics
-            :label             "Relic"
-            :utility?          true
+    (is (= {:hidden?           true
             :generate-label    "Add character"
             :store/collections [:relics :tally]
             :store/manual      {:key-label "Character"
@@ -84,5 +81,5 @@
 (deftest omitted-components-stay-absent
   (testing "a minimal record produces no empty keys, so the spec and view-model
             validate as the sparse maps they are"
-    (is (= {:loot/title "Bare"} (view-model->clj :x (Models$ViewModel. "Bare"))))
-    (is (= {:id :x :label "X"} (loot-spec->clj (Models$LootSpec. "x" "X"))))))
+    (is (= {:loot/title "Bare"} (view-model->clj (Models$ViewModel. "Bare"))))
+    (is (= {} (loot-spec->clj (Models$LootSpec.))))))

@@ -17,15 +17,15 @@
   (testing "a JSON config decodes strings to keywords/symbols and validates"
     (let [f   (write-temp-json
                 (str "{\"storage\":{\"backend\":\"file\"},"
-                     "\"plugins\":[{\"type\":\"builtin\",\"id\":\"dust\","
+                     "\"tools\":[{\"type\":\"builtin\",\"id\":\"dust\","
                      "\"builtin\":{\"entrypoint\":\"sns.builtin.dust/generator\"}},"
                      "{\"type\":\"data\",\"id\":\"uniques\",\"data\":{\"source\":\"data/uniques.edn\"}}],"
                      "\"loot-table\":[{\"id\":\"dust\",\"weight\":40},{\"id\":\"uniques\"}]}"))
           cfg (config/load-config f)]
       (is (= :file (-> cfg :storage :backend)))
-      (is (= [:builtin :data] (mapv :type (:plugins cfg))))
-      (is (= 'sns.builtin.dust/generator (-> cfg :plugins first :builtin :entrypoint)))
-      (is (= [:dust :uniques] (mapv :id (:plugins cfg))))
+      (is (= [:builtin :data] (mapv :type (:tools cfg))))
+      (is (= 'sns.builtin.dust/generator (-> cfg :tools first :builtin :entrypoint)))
+      (is (= [:dust :uniques] (mapv :id (:tools cfg))))
       (is (= [40 nil] (mapv :weight (:loot-table cfg)))))))
 
 (deftest json-data-plugin-keeps-its-templates
@@ -33,11 +33,11 @@
             decoded to keywords, and `{{result}}` read as a field reference to
             `:{{result}}`, which no entry has, so every such item rendered blank"
     (let [f   (write-temp-json
-                (str "{\"plugins\":[{\"type\":\"data\",\"id\":\"cards\",\"data\":{\"inline\":"
+                (str "{\"tools\":[{\"type\":\"data\",\"id\":\"cards\",\"data\":{\"inline\":"
                      "{\"label\":\"Cards\",\"items\":[{\"result\":\"Draw 2.\"}],"
                      "\"title\":\"Tarot\",\"sections\":[{\"each\":\"items\","
                      "\"item\":{\"title\":\"A card\",\"body\":\"{{result}}\"}}]}}}]}"))
-          item (-> (config/load-config f) :plugins first :data :inline :sections first :item)]
+          item (-> (config/load-config f) :tools first :data :inline :sections first :item)]
       (is (= "{{result}}" (:body item)))
       (is (= "A card" (:title item))))))
 
@@ -45,18 +45,27 @@
   (testing "the global setting and a plugin's override both arrive as keywords"
     (let [f   (write-temp-json
                 (str "{\"history\":\"on-report\","
-                     "\"plugins\":[{\"type\":\"cli\",\"id\":\"weather\","
-                     "\"cli\":{\"command\":[\"echo\"]},\"history\":\"always\"}]}"))
+                     "\"tools\":[{\"type\":\"cli\",\"id\":\"weather\","
+                     "\"cli\":{\"command\":[\"echo\"]},\"generator\":{\"history\":\"always\"}}]}"))
           cfg (config/load-config f)]
       (is (= :on-report (:history cfg)))
-      (is (= :always (-> cfg :plugins first :history)))))
+      (is (= :always (-> cfg :tools first :generator :history)))))
   (testing "an unknown mode fails validation"
-    (let [f (write-temp-json "{\"history\":\"sometimes\",\"plugins\":[]}")]
+    (let [f (write-temp-json "{\"history\":\"sometimes\",\"tools\":[]}")]
+      (is (thrown? Exception (config/load-config f))))))
+
+(deftest json-pages-decode-to-keywords
+  (let [f (write-temp-json
+            (str "{\"tools\":[{\"type\":\"cli\",\"id\":\"weather\",\"cli\":{\"command\":[\"echo\"]}},"
+                 "{\"type\":\"page\",\"id\":\"combat\",\"page\":{\"tools\":[\"weather\"]}}]}"))]
+    (is (= {:type :page :id :combat :page {:tools [:weather]}} (second (:tools (config/load-config f))))))
+  (testing "an empty page fails validation"
+    (let [f (write-temp-json "{\"tools\":[{\"type\":\"page\",\"id\":\"combat\",\"page\":{\"tools\":[]}}]}")]
       (is (thrown? Exception (config/load-config f))))))
 
 (deftest rejects-invalid-json-config
   (testing "an unknown plugin type fails validation"
-    (let [f (write-temp-json "{\"plugins\":[{\"type\":\"bogus\",\"id\":\"x\"}]}")]
+    (let [f (write-temp-json "{\"tools\":[{\"type\":\"bogus\",\"id\":\"x\"}]}")]
       (is (thrown? Exception (config/load-config f))))))
 
 (def ^:private fixture-config "test/resources/config.edn")
@@ -64,14 +73,14 @@
 (deftest loads-edn-config-from-filesystem
   (testing "an EDN config loads from an explicit filesystem path"
     (let [cfg (config/load-config fixture-config)]
-      (is (seq (:plugins cfg)))
-      (is (= :data (-> cfg :plugins (nth 2) :type)))))
+      (is (seq (:tools cfg)))
+      (is (= :data (-> cfg :tools (nth 2) :type)))))
   (testing "no-arg load discovers a config file in the working directory"
     ;; Exercise the default-source discovery without depending on a
     ;; (git-ignored) config.edn at the repo root: point the search at the
     ;; fixture via its absolute path so the test is hermetic in CI.
     (with-redefs [config/default-paths [(.getAbsolutePath (io/file fixture-config))]]
-      (is (seq (:plugins (config/load-config)))))))
+      (is (seq (:tools (config/load-config)))))))
 
 (deftest example-config-matches-schema
   (testing "examples/config.edn conforms to the ::config schema"

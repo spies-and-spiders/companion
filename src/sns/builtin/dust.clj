@@ -5,10 +5,9 @@
 
 (defn generator
   "Factory: always yields Divine Dust, ignoring inputs and state."
-  [{:keys [id]}]
+  [_plugin]
   (reify p/LootGenerator
-    (loot-spec [_]
-      {:id (or id :divine-dust) :label "Divine Dust"})
+    (loot-spec [_] {})
     (generate [_ _ctx]
       {:loot/title    "Divine Dust"
        :loot/subtitle "A pinch of divine residue"})))

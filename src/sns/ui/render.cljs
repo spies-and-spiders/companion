@@ -5,6 +5,7 @@
   (:require
     [clojure.string :as str]
     [sns.sdk.rank :as rank]
+    [sns.ui.state :as state]
     [sns.ui.template :as template]))
 
 ;; --- input-form (from a loot-spec's :inputs) ---------------------------------
@@ -60,56 +61,61 @@
 ;; explicit Add button instead. Either way, dropping a value below its default
 ;; count still submits a vector.
 
+(defn- dom-id
+  "A DOM id unique on the page, which may show several plugins' forms at once."
+  [& parts]
+  (str/join "-" (map #(if (keyword? %) (name %) %) parts)))
+
 (defn- list-row
   "One stored entry: its control, a remove button, and — for reorderable types —
    a drag handle plus drop target covering the whole row."
-  [id idx value f draggable?]
+  [plugin id idx value f draggable?]
   [:div.list-row
    {:replicant/key idx
     :on            (when draggable?
                      {:dragover [[:fx/prevent-default [:event/raw]]]
-                      :drop     [[:fx/prevent-default [:event/raw]] [:ui/list-drag-drop id idx]]})}
+                      :drop     [[:fx/prevent-default [:event/raw]] [:ui/list-drag-drop plugin id idx]]})}
    (when draggable?
-     [:span.list-row__handle {:draggable "true" :on {:dragstart [[:ui/list-drag-start id idx]]}} "⠿"])
-   (control (str "field-options-" (name id) "-" idx) value f [:ui/set-list-input id idx])
+     [:span.list-row__handle {:draggable "true" :on {:dragstart [[:ui/list-drag-start plugin id idx]]}} "⠿"])
+   (control (dom-id "field-options" plugin id idx) value f [:ui/set-list-input plugin id idx])
    [:button.list-row__remove
-    {:type "button" :on {:click [[:ui/remove-list-input id idx]]}}
+    {:type "button" :on {:click [[:ui/remove-list-input plugin id idx]]}}
     "✕"]])
 
-(defn- list-field [inputs {:keys [id type] :as f}]
+(defn- list-field [plugin inputs {:keys [id type] :as f}]
   (let [values (vec (get inputs id))
         bool?  (= :bool type)]
     [:div.list-field
      (for [[idx v] (map-indexed vector values)]
-       (list-row id idx v f (not bool?)))
+       (list-row plugin id idx v f (not bool?)))
      (if bool?
        [:button.list-field__add
-        {:type "button" :on {:click [[:ui/set-list-input id (count values) false]]}}
+        {:type "button" :on {:click [[:ui/set-list-input plugin id (count values) false]]}}
         "+ Add"]
        ;; a fresh, unsaved row — typing into it appends rather than overwrites
        (when (or (empty? values) (not (str/blank? (str (peek values)))))
          [:div.list-row.list-row--extra {:replicant/key (count values)}
-          (control (str "field-options-" (name id) "-" (count values)) nil f
-                   [:ui/set-list-input id (count values)])]))]))
+          (control (dom-id "field-options" plugin id (count values)) nil f
+                   [:ui/set-list-input plugin id (count values)])]))]))
 
-(defn- field [inputs {:keys [id label type list?] :as f}]
+(defn- field [plugin inputs {:keys [id label type list?] :as f}]
   (if list?
     [:div.field {:replicant/key id}
      [:span.field__label label]
-     (list-field inputs f)]
+     (list-field plugin inputs f)]
     [:label.field {:replicant/key id
                    :class         (when (= :bool type) "field--bool")}
      [:span.field__label label]
-     (control (str "field-options-" (name id)) (get inputs id) f [:ui/set-input id])]))
+     (control (dom-id "field-options" plugin id) (get inputs id) f [:ui/set-input plugin id])]))
 
 (defn input-form
   "Render a spec's declared inputs, or nil when there are none."
-  [spec inputs]
+  [{plugin :id :as spec} inputs]
   (when (seq (:inputs spec))
     ;; Enter anywhere in the form generates, matching the button.
-    [:div.fields {:on {:keydown [[:ui/generate-on-enter [:event/key]]]}}
+    [:div.fields {:on {:keydown [[:ui/generate-on-enter plugin [:event/key]]]}}
      (for [f (:inputs spec)]
-       (field inputs f))]))
+       (field plugin inputs f))]))
 
 ;; --- view-model renderer (the signature surface) -----------------------------
 
@@ -168,28 +174,28 @@
          (map action (:loot/actions vm))])]]))
 
 ;; --- result editor (manual tweaks before re-rendering / reporting) -----------
-;; Edits write straight back into the result view-model at `path`, so the
-;; read-only view and the reported payload always reflect the latest text.
+;; Edits write straight back into plugin `plugin`'s result view-model at `path`,
+;; so the read-only view and the reported payload always reflect the latest text.
 
-(defn- edit-field [label path v area?]
+(defn- edit-field [plugin label path v area?]
   [:label.edit {:replicant/key (str path)}
    [:span.edit__label label]
    (if area?
      [:textarea.edit__control
-      {:on {:input [[:ui/edit-result path :text [:event.target/value]]]}}
+      {:on {:input [[:ui/edit-result plugin path :text [:event.target/value]]]}}
       (str v)]
      [:input.edit__control
       {:type  "text"
        :value (str v)
-       :on    {:input [[:ui/edit-result path :text [:event.target/value]]]}}])])
+       :on    {:input [[:ui/edit-result plugin path :text [:event.target/value]]]}}])])
 
-(defn- edit-metadata [path metadata]
+(defn- edit-metadata [plugin path metadata]
   [:label.edit {:replicant/key (str path)}
    [:span.edit__label "Metadata (comma-separated)"]
    [:input.edit__control
     {:type  "text"
      :value (str/join ", " metadata)
-     :on    {:input [[:ui/edit-result-metadata path [:event.target/value]]]}}]])
+     :on    {:input [[:ui/edit-result-metadata plugin path [:event.target/value]]]}}]])
 
 ;; A var's own control, separate from the template that interpolates it — so
 ;; changing a value doesn't mean retyping the prose, and a plugin reads a value
@@ -245,7 +251,7 @@
   "A var's rank, beside its value rather than folded into it: the value stays
    the rank-1 base the plugin declared, and the rendered card shows what the two
    come to. Only vars that can rank up get one."
-  [path {:keys [rank] mx :max}]
+  [plugin path {:keys [rank] mx :max}]
   [:label.edit.edit--rank
    [:span.edit__label "Rank"]
    ;; `.field__control`, matching the value control it sits beside rather than
@@ -255,11 +261,11 @@
              :min   1
              :step  1
              :value (str (or rank 1))
-             :on    {:input [[:ui/edit-result (conj path :rank) :rank [:event.target/value]]]}}
+             :on    {:input [[:ui/edit-result plugin (conj path :rank) :rank [:event.target/value]]]}}
             mx (assoc :max mx))]])
 
-(defn- edit-var [path id {:keys [label value options type] :as v}]
-  (let [action [:ui/edit-result (conj path :value) type]]
+(defn- edit-var [plugin path id {:keys [label value options type] :as v}]
+  (let [action [:ui/edit-result plugin (conj path :value) type]]
     [:div.edit-var {:replicant/key (str path)}
      [:label.edit
       [:span.edit__label (var-label id label) (ranked-to v)]
@@ -267,7 +273,7 @@
         (select-field value options action)
         (control nil value {:type (var-type type)} action))]
      (when (rank/upgradeable? v)
-       (rank-field path v))]))
+       (rank-field plugin path v))]))
 
 (defn- editable-vars
   "The vars a DM may change: what the plugin *declared*, not the entry fields
@@ -279,11 +285,11 @@
   "The editable vars under `base-path`, several to a row. Values are what a DM
    changes mid-session, so they lead — the prose that interpolates them is the
    rarer edit and sits behind a disclosure."
-  [class base-path vars]
+  [plugin class base-path vars]
   (when-let [editable (seq (editable-vars vars))]
     [:div {:class class}
      (for [[id v] editable]
-       (edit-var (conj base-path id) id v))]))
+       (edit-var plugin (conj base-path id) id v))]))
 
 ;; The body field holds the template itself — `{{ x }}` where a value sits — so
 ;; the sentence and the values are edited independently and neither forces
@@ -291,39 +297,40 @@
 (defn- edit-text
   "An item's prose, folded away behind a summary that previews it as rendered —
    which is what a DM reads to find the item, and the edit they seldom want."
-  [si ii {:item/keys [title body metadata]} preview]
+  [plugin si ii {:item/keys [title body metadata]} preview]
   [:details.fold {:replicant/key (str "text-" si "-" ii)}
    [:summary.fold__summary
     [:span.fold__preview preview]
     [:span.fold__hint "text"]]
    [:div.fold__body
-    (edit-field "Item title" [:loot/sections si :section/items ii :item/title] title false)
-    (edit-field "Body" [:loot/sections si :section/items ii :item/body] body true)
-    (edit-metadata [:loot/sections si :section/items ii :item/metadata] metadata)]])
+    (edit-field plugin "Item title" [:loot/sections si :section/items ii :item/title] title false)
+    (edit-field plugin "Body" [:loot/sections si :section/items ii :item/body] body true)
+    (edit-metadata plugin [:loot/sections si :section/items ii :item/metadata] metadata)]])
 
-(defn- edit-item [loot-vars si ii {:item/keys [title body vars] :as item}]
+(defn- edit-item [plugin loot-vars si ii {:item/keys [title body vars] :as item}]
   (let [all     (merge loot-vars vars)
         rendered #(some-> % (template/render all) str str/trim not-empty)
         preview (str (some-> (rendered title) (str ": ")) (rendered body))]
     [:li.entry.entry--edit {:replicant/key ii}
-     (var-grid "entry__vars" [:loot/sections si :section/items ii :item/vars] vars)
-     (edit-text si ii item preview)]))
+     (var-grid plugin "entry__vars" [:loot/sections si :section/items ii :item/vars] vars)
+     (edit-text plugin si ii item preview)]))
 
-(defn- edit-block [loot-vars si {:section/keys [heading items]}]
+(defn- edit-block [plugin loot-vars si {:section/keys [heading items]}]
   [:section.block.block--edit {:replicant/key si}
    ;; Styled as the heading it is, so the sections stay legible as structure
    ;; while still editing in place.
    [:input.block__heading.block__heading--edit
     {:type  "text"
      :value (str heading)
-     :on    {:input [[:ui/edit-result [:loot/sections si :section/heading] :text
+     :on    {:input [[:ui/edit-result plugin [:loot/sections si :section/heading] :text
                       [:event.target/value]]]}}]
-   [:ul.entries (map-indexed (fn [ii item] (edit-item loot-vars si ii item)) items)]])
+   [:ul.entries (map-indexed (fn [ii item] (edit-item plugin loot-vars si ii item)) items)]])
 
 (defn result-editor
-  "Render the result view-model as an editable form. Behavioural `:loot/actions`
-   are intentionally not editable (and preserved untouched in state)."
-  [vm]
+  "Render plugin `plugin`'s result view-model as an editable form. Behavioural
+   `:loot/actions` are intentionally not editable (and preserved untouched in
+   state)."
+  [plugin vm]
   (when vm
     (let [loot-vars (:loot/vars vm)]
       [:article.sigil.sigil--edit {:replicant/key "result-editor"}
@@ -336,95 +343,106 @@
           [:span.fold__preview (:loot/title vm)]
           [:span.fold__hint "title & subtitle"]]
          [:div.fold__body
-          (edit-field "Title" [:loot/title] (:loot/title vm) false)
-          (edit-field "Subtitle" [:loot/subtitle] (:loot/subtitle vm) false)]]
+          (edit-field plugin "Title" [:loot/title] (:loot/title vm) false)
+          (edit-field plugin "Subtitle" [:loot/subtitle] (:loot/subtitle vm) false)]]
         ;; Shared values, edited once: these are ambient to every template in the
         ;; view-model, so changing one here updates every item that reads it.
-        (when-let [grid (var-grid "entry__vars entry__vars--shared" [:loot/vars] loot-vars)]
+        (when-let [grid (var-grid plugin "entry__vars entry__vars--shared" [:loot/vars] loot-vars)]
           (list [:h3.block__heading "Shared values"] grid))
         [:div.sigil__body
-         (map-indexed (partial edit-block loot-vars) (:loot/sections vm))]]])))
+         (map-indexed (partial edit-block plugin loot-vars) (:loot/sections vm))]]])))
 
 ;; --- manually-managed state (a spec's `:store/manual` table) ------------------
 ;; The DM-owned rows a plugin reads: one row per key, its declared fields
 ;; inline. Edits are local until a `change` bubbles to the row, which commits
 ;; the whole row — so typing costs nothing and blurring costs one request.
 
-(defn- manual-cell [k path f value]
+(defn- manual-cell [plugin k path f value]
   [:label.manual__cell {:replicant/key (:id f)
                         :class         (when (= :bool (:type f)) "manual__cell--bool")}
    [:span.field__label (:label f)]
    ;; unique per row *and* per record, since a `:list?` row repeats its fields
-   (control (str "manual-" k "-" (str/join "-" (map #(if (keyword? %) (name %) %) path)))
-            value f [:ui/manual-edit k (vec path)])])
+   (control (apply dom-id "manual" plugin k path)
+            value f [:ui/manual-edit plugin k (vec path)])])
 
-(defn- manual-fields [k prefix fields row]
+(defn- manual-fields [plugin k prefix fields row]
   (for [f fields]
-    (manual-cell k (conj prefix (:id f)) f (get row (:id f)))))
+    (manual-cell plugin k (conj prefix (:id f)) f (get row (:id f)))))
 
 (defn- manual-item
   "One record of a `:list?` row. `idx` past the end is the blank trailing
    record: filling any field in appends it, and the next blank appears."
-  [k fields idx row extra?]
+  [plugin k fields idx row extra?]
   [:li.manual__item {:replicant/key idx :class (when extra? "manual__item--extra")}
-   (manual-fields k [idx] fields row)
+   (manual-fields plugin k [idx] fields row)
    ;; The blank record keeps the button as an inert placeholder: without it the
    ;; row is a column wider than the saved ones and the fields stop lining up.
    [:button.manual__remove
     {:type     "button"
      :class    (when extra? "manual__remove--placeholder")
      :disabled extra?
-     :on       (when-not extra? {:click [[:ui/manual-remove-item k idx]]})}
+     :on       (when-not extra? {:click [[:ui/manual-remove-item plugin k idx]]})}
     "✕"]])
 
-(defn- manual-row [{:keys [fields list?]} k value]
-  [:li.manual__row {:replicant/key k :on {:change [[:ui/manual-commit k]]}}
+(defn- manual-row [plugin {:keys [fields list?]} k value]
+  [:li.manual__row {:replicant/key k :on {:change [[:ui/manual-commit plugin k]]}}
    [:div.manual__head
     [:span.manual__name k]
-    [:button.manual__remove {:type "button" :on {:click [[:ui/manual-remove k]]}} "Remove"]]
+    [:button.manual__remove {:type "button" :on {:click [[:ui/manual-remove plugin k]]}} "Remove"]]
    (if list?
      [:ul.manual__items
-      (concat (map-indexed (fn [idx row] (manual-item k fields idx row false)) value)
-              [(manual-item k fields (count value) nil true)])]
-     [:div.manual__fields (manual-fields k [] fields value)])])
+      (concat (map-indexed (fn [idx row] (manual-item plugin k fields idx row false)) value)
+              [(manual-item plugin k fields (count value) nil true)])]
+     [:div.manual__fields (manual-fields plugin k [] fields value)])])
 
 (defn manual-editor
   "The DM-owned table a spec declares with `:store/manual`, or nil when it
    declares none."
-  [spec manual manual-key]
+  [{plugin :id :as spec} manual manual-key]
   (when-let [{:keys [key-label] :as declaration} (:store/manual spec)]
     (let [key-label (or key-label "Entry")]
       [:section.manual
        [:p.summon__eyebrow key-label]
        [:ul.manual__rows
         (for [[k v] (sort-by key manual)]
-          (manual-row declaration k v))
+          (manual-row plugin declaration k v))
         [:li.manual__row.manual__row--new {:replicant/key "__add"}
          [:input.field__control
           {:type        "text"
            :placeholder (str "Add " (str/lower-case key-label) "…")
            :value       (str manual-key)
-           :on          {:input  [[:ui/manual-set-key [:event.target/value]]]
-                         :change [[:ui/manual-add]]}}]]]])))
+           :on          {:input  [[:ui/manual-set-key plugin [:event.target/value]]]
+                         :change [[:ui/manual-add plugin]]}}]]]])))
 
-;; --- loot-type picker --------------------------------------------------------
+;; --- page picker ---------------------------------------------------------------
 
 ;; A hidden type only ever appears as a transient row (see `picker`), so it is
 ;; styled to read as one: present for now, not part of the standing rail.
 (defn- modifier [{:keys [hidden?]}]
   (when hidden? "discipline--transient"))
 
-(defn- type-button [active? event glyph label modifier]
+(defn- page-button [active? id glyph label modifier]
   [:button.discipline {:class [(when active? "discipline--active") modifier]
-                       :on    {:click [event]}}
+                       :on    {:click [[:ui/select-page id]]}}
    [:span.discipline__glyph glyph]
    [:span.discipline__name label]])
 
-(defn- type-list [class types selected glyph]
-  [:ul.rail__list {:class class}
-   (for [{:keys [id label] :as spec} types]
+(defn- type-list [rows page]
+  [:ul.rail__list
+   (for [{:keys [id label glyph] :as row} rows]
      [:li {:replicant/key id}
-      (type-button (= id selected) [:ui/select-type id] glyph label (modifier spec))])])
+      (page-button (= id page) id glyph label (modifier row))])])
+
+(def ^:private default-section "Loot")
+
+(defn- by-section
+  "`rows` grouped by section: Loot first, then the rest alphabetically. Within a
+   section, rows follow their tools' config order, `order`."
+  [order rows]
+  (let [position (zipmap order (range))]
+    (->> (sort-by (comp position :id) rows)
+         (group-by #(or (:section %) default-section))
+         (sort-by (fn [[section]] [(not= default-section section) section])))))
 
 (defn- matcher
   "A case-insensitive substring predicate over labels; matches everything when
@@ -435,17 +453,20 @@
       (or (str/blank? q)
           (str/includes? (str/lower-case (str label)) q)))))
 
-(defn picker [{:keys [loot-types selected roll-n type-filter browser-storage? loot-die-size]}]
-  (let [match?        (matcher type-filter)
+(defn picker [{:keys [pages sections page roll-n type-filter browser-storage? loot-die-size] :as state}]
+  (let [match?  (matcher type-filter)
+        ;; A configured page matches on its own label or any of its plugins'.
+        pages   (for [{:keys [label tools] :as p} pages
+                      :when (some match? (cons label (map #(:label (state/spec state %)) tools)))]
+                  (assoc p :glyph "❖"))
         ;; A hidden type is meant to be reached only by rolling the loot-table,
-        ;; so it stays off the rail — except while it is the type on screen,
+        ;; so it stays off the rail — except while it is the page on screen,
         ;; where it appears (in its config position) so the rail keeps showing
         ;; what the workbench holds.
-        visible       (filterv #(and (or (not (:hidden? %)) (= selected (:id %)))
-                                     (match? (:label %)))
-                               loot-types)
-        utilities     (filterv :utility? visible)
-        disciplines   (filterv (complement :utility?) visible)]
+        plugins (for [spec (state/unpaged state)
+                      :when (and (or (not (:hidden? spec)) (= page (:id spec)))
+                                 (match? (:label spec)))]
+                  (assoc spec :glyph "◆"))]
     [:nav.rail
      [:div.roll-group
       [:input.roll__input
@@ -461,16 +482,13 @@
      [:p.rail__hint (str "Enter 1–" loot-die-size " to roll on the table, or leave blank for random.")]
      [:input.rail__search
       {:type        "search"
-       :placeholder "Search plugins…"
+       :placeholder "Search tools…"
        :value       (str type-filter)
        :on          {:input [[:ui/set-type-filter [:event.target/value]]]}}]
-     [:p.rail__eyebrow "Loot Types"]
-     (type-list "rail__list--loot" disciplines selected "◆")
-     [:p.rail__eyebrow.rail__eyebrow--utilities "Utilities"]
-     [:ul.rail__list.rail__list--utils
-      (for [{:keys [id label] :as spec} utilities]
-        [:li {:replicant/key id}
-         (type-button (= id selected) [:ui/select-type id] "✦" label (modifier spec))])]
+     (for [[section rows] (by-section sections (concat pages plugins))]
+       [:div.rail__section {:replicant/key section}
+        [:p.rail__eyebrow section]
+        (type-list rows page)])
      [:button.rail__export {:on {:click [[:ui/export]]}}
       "Download state"]
      [:p.rail__hint
@@ -503,21 +521,21 @@
     [:div.history__preview (result (dissoc vm :loot/actions))]))
 
 (defn history
-  "The stored results for the selected loot type, newest first. Clicking one
-   puts it back on the bench; hovering one previews it in full below the list."
-  [selected entries hovered]
+  "The stored results for loot type `plugin`, newest first. Clicking one puts it
+   back on the bench; hovering one previews it in full above the list."
+  [plugin entries hovered]
   (when (seq entries)
     [:section.history
      [:div.history__head
       [:p.summon__eyebrow "History"]
-      [:button.action-btn {:on {:click [[:ui/history-clear]]}} "Clear"]]
+      [:button.action-btn {:on {:click [[:ui/history-clear plugin]]}} "Clear"]]
      [:ul.history__list
       (map-indexed
         (fn [idx {:keys [at view-model]}]
-          [:li.history__row {:replicant/key (str selected "-" at "-" idx)
-                             :on            {:mouseenter [[:ui/history-hover idx]]
-                                             :mouseleave [[:ui/history-hover nil]]}}
-           [:button.history__entry {:on {:click [[:ui/history-restore idx]]}}
+          [:li.history__row {:replicant/key (str at "-" idx)
+                             :on            {:mouseenter [[:ui/history-hover plugin idx]]
+                                             :mouseleave [[:ui/history-hover plugin nil]]}}
+           [:button.history__entry {:on {:click [[:ui/history-restore plugin idx]]}}
             [:span.history__time (.toLocaleString (js/Date. at))]
             [:span.history__name (history-label view-model)]
             ;; always rendered, empty or not: they hold the grid columns that
@@ -525,7 +543,7 @@
             [:span.history__body (history-body view-model)]
             [:span.history__words (str/join " " (:loot/words view-model))]]
            [:button.history__remove {:type "button"
-                                     :on   {:click [[:ui/history-delete idx]]}}
+                                     :on   {:click [[:ui/history-delete plugin idx]]}}
             "✕"]])
         entries)]
      (history-preview (when hovered (:view-model (nth (vec entries) hovered nil))))]))

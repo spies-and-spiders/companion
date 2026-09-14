@@ -3,8 +3,7 @@
 ;; drawn once per entry, so every mod below shares the same one (and editing it
 ;; in the UI updates them together). `:body :effect` is a *field reference*:
 ;; the mod's own `:effect` string is the template, handed to the browser intact.
-{:label    "Unique"
- :items    [{:name "Pacifist's Vow"
+{:items    [{:name "Pacifist's Vow"
              :base "armour"
              :mods [{:effect   "Non-damaging spells have a 50% chance to consume a spell slot one level lower than usual."
                      :metadata ["resources"]}

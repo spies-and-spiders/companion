@@ -1,5 +1,4 @@
-{:label    "Potion"
- :inputs   [{:id      :rarity           :label   "Rarity" :type :enum
+{:inputs   [{:id      :rarity           :label   "Rarity" :type :enum
              :options ["common" "rare"] :default "common"}
             {:id :engraving :label "Engraving" :type :text}]
  :items    [{:name "Potion"}]

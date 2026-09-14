@@ -12,7 +12,7 @@
     (java.util.zip ZipInputStream)))
 
 (def ^:private config
-  {:plugins    [{:type :builtin :id :divine-dust :builtin {:entrypoint 'sns.builtin.dust/generator}}
+  {:tools      [{:type :builtin :id :divine-dust :builtin {:entrypoint 'sns.builtin.dust/generator}}
                 {:type :builtin :id :relics :builtin {:entrypoint 'sns.builtin.relics/generator}}]
    :loot-table [{:id :divine-dust :weight 100}]})
 
@@ -56,24 +56,25 @@
     (let [app  (http/app (engine/create config {:store (edn-store/create {:backend :memory})}))
           resp (app {:request-method :get :uri "/api/capabilities"})]
       (is (= 200 (:status resp)))
-      (is (= {:browser-storage? false :loot-die-size 100} (body resp)))))
+      (is (= {:browser-storage? false :loot-die-size 100 :sections [:divine-dust :relics]} (body resp)))))
   (testing "with a reporter -> report? surfaced"
     (let [app  (http/app (engine/create config {:store    (edn-store/create {:backend :memory})
                                                 :reporter (recording-reporter (atom nil))}))
           resp (app {:request-method :get :uri "/api/capabilities"})]
       (is (= {:browser-storage? false
               :loot-die-size    100
+              :sections         [:divine-dust :relics]
               :report?          true
               :report-label     "Send to Discord"} (body resp)))))
   (testing ":history is surfaced only when the config sets it"
     (let [app  (http/app (engine/create (assoc config :history :on-report)
                                         {:store (edn-store/create {:backend :memory})}))
           resp (app {:request-method :get :uri "/api/capabilities"})]
-      (is (= {:browser-storage? false :loot-die-size 100 :history :on-report} (body resp)))))
+      (is (= {:browser-storage? false :loot-die-size 100 :sections [:divine-dust :relics] :history :on-report} (body resp)))))
   (testing ":browser storage -> the client ships state with each request"
     (let [app  (http/app (engine/create (assoc config :storage {:backend :browser})))
           resp (app {:request-method :get :uri "/api/capabilities"})]
-      (is (= {:browser-storage? true :loot-die-size 100} (body resp))))))
+      (is (= {:browser-storage? true :loot-die-size 100 :sections [:divine-dust :relics]} (body resp))))))
 
 (deftest report-endpoint
   (let [sink (atom nil)
@@ -84,7 +85,7 @@
     (is (= {:loot/title "Dust"} @sink))))
 
 (def ^:private social-config
-  (update config :plugins conj {:type :builtin :id :social}))
+  (update config :tools conj {:type :builtin :id :social}))
 
 (deftest state-endpoint
   (let [app (http/app (engine/create social-config {:store (edn-store/create {:backend :memory})}))]
@@ -192,7 +193,7 @@
 (deftest roll-carries-mutations-at-the-top-level
   ;; A roll wraps the view-model, so its writes have to be lifted out of that
   ;; wrapper — the client reads them off the response, not off the item.
-  (let [rolled  {:plugins    (:plugins config)
+  (let [rolled  {:tools      (:tools config)
                  :loot-table [{:id :relics :weight 100}]}
         browser (http/app (engine/create (assoc rolled :storage {:backend :browser})))
         server  (http/app (engine/create rolled {:store (edn-store/create {:backend :memory})}))]

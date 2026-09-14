@@ -67,12 +67,13 @@
   (throw (ex-info "Unsupported plugin type" {:type type :plugin plugin})))
 
 (defn build
-  "Resolve all plugins into a map of loot-type id -> LootGenerator, ordered as
-   they appear in config (the UI picker preserves this order)."
-  [{:keys [plugins]}]
-  (reduce (fn [reg {:keys [id] :as plugin}]
-            (when (contains? reg id)
-              (throw (ex-info "Duplicate loot-type id" {:id id})))
-            (assoc reg id (build-generator plugin)))
-          (ordered-map)
-          plugins))
+  "Resolve every plugin in `:tools` into a map of loot-type id -> LootGenerator,
+   ordered as they appear in config. Pages are not generators, so they are left
+   out, but their ids must still be unique across every tool."
+  [{:keys [tools]}]
+  (doseq [[id n] (frequencies (map :id tools)) :when (> n 1)]
+    (throw (ex-info "Duplicate tool id" {:id id})))
+  (into (ordered-map)
+        (comp (remove (comp #{:page} :type))
+              (map (juxt :id build-generator)))
+        tools))

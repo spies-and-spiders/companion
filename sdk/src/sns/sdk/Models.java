@@ -18,23 +18,16 @@ public final class Models {
     // --- loot specification (drives the generic input forms) -----------------
 
     /**
-     * Conforms to {@code sns.sdk.schema/loot-spec}. A {@code utility} is a
-     * session tool rather than loot: grouped separately and barred from the
-     * loot-table. {@code storeCollections} defaults to one named after
-     * {@code id}. {@code history} is always/on-report/button/never.
-     *
-     * <p>No {@code hidden}: that is set on the plugin's config entry, not here.
+     * Conforms to {@code sns.sdk.schema/loot-spec}. Every component is optional, and
+     * the tool's {@code :generator} config overrides each one it sets; the tool's id,
+     * label and section come from config alone. {@code storeCollections} defaults to
+     * one named after the tool's id. {@code history} is always/on-report/button/never.
      */
-    public record LootSpec(String id, String label, List<Field> inputs, boolean utility,
-                           String generateLabel, List<String> storeCollections,
-                           ManualState storeManual, String history) {
-        public LootSpec(String id, String label) { this(id, label, null, false); }
-        public LootSpec(String id, String label, List<Field> inputs) {
-            this(id, label, inputs, false);
-        }
-        public LootSpec(String id, String label, List<Field> inputs, boolean utility) {
-            this(id, label, inputs, utility, null, null, null, null);
-        }
+    public record LootSpec(boolean hidden, String generateLabel, List<Field> inputs,
+                           String history, List<String> storeCollections,
+                           ManualState storeManual) {
+        public LootSpec() { this(null); }
+        public LootSpec(List<Field> inputs) { this(false, null, inputs, null, null, null); }
     }
 
     /** {@code type} is enum/int/decimal/text/bool; {@code list} collects several. */

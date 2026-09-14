@@ -7,6 +7,7 @@
     [sns.ui.api :as api]
     [sns.ui.export :as export]
     [sns.ui.idb :as idb]
+    [sns.ui.state :as state]
     [sns.ui.template :as template]))
 
 (nxr/register-system->state! deref)
@@ -50,8 +51,10 @@
 (nxr/register-effect! :fx/load-capabilities
                       (fn [{:keys [dispatch]} _system]
                         (api/request {:url "/api/capabilities"}
-                                     (fn [{:keys [report? report-label browser-storage? history loot-die-size]}]
-                                       (dispatch [[:fx/assoc-in [:report?] (boolean report?)]
+                                     (fn [{:keys [report? report-label browser-storage? history loot-die-size pages sections]}]
+                                       (dispatch [[:fx/assoc-in [:pages] (vec pages)]
+                                                  [:fx/assoc-in [:sections] (vec sections)]
+                                                  [:fx/assoc-in [:report?] (boolean report?)]
                                                   [:fx/assoc-in [:report-label] report-label]
                                                   [:fx/assoc-in [:browser-storage?] (boolean browser-storage?)]
                                                   [:fx/assoc-in [:loot-die-size] (or loot-die-size 100)]
@@ -110,14 +113,6 @@
                    on-err)))
         (.catch (fn [e] (on-err {:error (str e)}))))))
 
-(defn- stash-fx
-  "Effects that park the on-screen result under the loot type it belongs to, so
-   coming back to that type restores it."
-  [{:keys [selected result]}]
-  (if (and selected result)
-    [[:fx/assoc-in [:results selected] result]]
-    []))
-
 (defn- history-request
   "Read the history collection back, having first applied `mutations` (nil just
    reads). Goes through `stateful-request` like every other stateful call, so a
@@ -147,36 +142,42 @@
   (when (and id vm (= trigger (history-mode state id)))
     [[:fx/history id (with-entry (rows-for state id) vm)]]))
 
+(defn- result-fx
+  "Effects putting `vm` on loot type `id`'s bench."
+  [id vm]
+  [[:fx/assoc-in [:results id] vm]
+   [:fx/assoc-in [:editing id] false]
+   [:fx/assoc-in [:report-status id] nil]])
+
 (defn- result-effect
-  "Run `req` and put the view-model it returns on the bench. `record-id` names
-   the loot type to file the result under in the history. `only-if-changed?` is
-   for an action, which reworks the item already on the bench: it earns a history
-   entry only when it actually changed something."
-  [{:keys [dispatch]} system collections req record-id only-if-changed?]
-  (dispatch [[:fx/assoc-in [:loading?] true] [:fx/assoc-in [:error] nil]
-             [:fx/assoc-in [:report-status] nil]])
+  "Run `req` and put the view-model it returns on loot type `id`'s bench, filing
+   it in that type's history. `only-if-changed?` is for an action, which reworks
+   the item already on the bench: it earns a history entry only when it actually
+   changed something."
+  [{:keys [dispatch]} system collections req id only-if-changed?]
+  (dispatch [[:fx/assoc-in [:loading id] true] [:fx/assoc-in [:error] nil]
+             [:fx/assoc-in [:report-status id] nil]])
   (stateful-request
     system collections req
-    (fn [vm] (dispatch (into (vec (when-not (and only-if-changed? (= vm (:result @system)))
-                                    (history-fx @system record-id vm :always)))
-                       [[:fx/assoc-in [:result] vm]
-                        [:fx/assoc-in [:editing?] false]
-                        [:fx/assoc-in [:loading?] false]])))
-               (fn [err] (dispatch [[:fx/assoc-in [:error] (:error err)]
-                                    [:fx/assoc-in [:loading?] false]]))))
+    (fn [vm] (dispatch (-> (vec (when-not (and only-if-changed? (= vm (get-in @system [:results id])))
+                                  (history-fx @system id vm :always)))
+                           (into (result-fx id vm))
+                           (conj [:fx/assoc-in [:loading id] false]))))
+    (fn [err] (dispatch [[:fx/assoc-in [:error] (:error err)]
+                         [:fx/assoc-in [:loading id] false]]))))
 
 (nxr/register-effect! :fx/report
-                      (fn [{:keys [dispatch]} system]
+                      (fn [{:keys [dispatch]} system id]
                         ;; finished text, not templates — the backend has no renderer
-                        (when-let [vm (some-> (:result @system) template/render-view-model)]
-                          (dispatch [[:fx/assoc-in [:report-status] :sending]
+                        (when-let [vm (some-> (get-in @system [:results id]) template/render-view-model)]
+                          (dispatch [[:fx/assoc-in [:report-status id] :sending]
                                      [:fx/assoc-in [:error] nil]])
                           (api/request {:method :post :url "/api/report" :body {:view-model vm}}
                                        (fn [_ok]
-                                         (dispatch (into (vec (history-fx @system (:selected @system)
-                                                                          (:result @system) :on-report))
-                                                         [[:fx/assoc-in [:report-status] :sent]])))
-                                       (fn [err] (dispatch [[:fx/assoc-in [:report-status] nil]
+                                         (dispatch (into (vec (history-fx @system id (get-in @system [:results id])
+                                                                          :on-report))
+                                                         [[:fx/assoc-in [:report-status id] :sent]])))
+                                       (fn [err] (dispatch [[:fx/assoc-in [:report-status id] nil]
                                                             [:fx/assoc-in [:error] (:error err)]]))))))
 
 (nxr/register-effect! :fx/export
@@ -188,31 +189,26 @@
 (nxr/register-effect! :fx/generate
                       (fn [ctx system id inputs]
                         (result-effect ctx system (collections-for system id)
-                                       {:method :post :url "/api/generate"
+                                       {:method :post
+                                        :url    "/api/generate"
                                         :body   {:id id :inputs inputs}}
                                        id false)))
 
 (nxr/register-effect! :fx/roll
                       (fn [{:keys [dispatch]} system inputs n]
-                        (dispatch [[:fx/assoc-in [:loading?] true] [:fx/assoc-in [:error] nil]
-                                   [:fx/assoc-in [:report-status] nil]])
+                        (dispatch [[:fx/assoc-in [:error] nil]])
                         (stateful-request
                           system (collections-for system nil)
                           {:method :post
                            :url    "/api/roll"
                            :body   (cond-> {:inputs inputs} (some? n) (assoc :n n))}
-                                     ;; roll returns {:id ... :view-model ...} so we can
-                                     ;; jump the picker to the discipline that was rolled.
-                                     (fn [{:keys [id view-model]}]
-                                       (dispatch (into (into (stash-fx @system)
-                                                       (history-fx @system id view-model :always))
-                                                 [[:fx/assoc-in [:selected] id]
-                                                  [:fx/assoc-in [:inputs] {}]
-                                                  [:fx/assoc-in [:result] view-model]
-                                                  [:fx/assoc-in [:editing?] false]
-                                                  [:fx/assoc-in [:loading?] false]])))
-                                     (fn [err] (dispatch [[:fx/assoc-in [:error] (:error err)]
-                                                          [:fx/assoc-in [:loading?] false]])))))
+                          ;; roll returns {:id ... :view-model ...} so we can jump
+                          ;; to a page showing the discipline that was rolled.
+                          (fn [{:keys [id view-model]}]
+                            (dispatch (-> (vec (history-fx @system id view-model :always))
+                                          (into (result-fx id view-model))
+                                          (conj [:ui/select-page (state/page-for @system id)]))))
+                          (fn [err] (dispatch [[:fx/assoc-in [:error] (:error err)]])))))
 
 (nxr/register-effect! :fx/action
                       (fn [ctx system id action params view-model]
@@ -222,9 +218,9 @@
                                         :body   {:id id :action action :params params :view-model view-model}}
                                        id true)))
 
-;; A loot type's manually-managed collection: read on selection, and re-read
-;; after every edit, so what is on screen is what the store holds. `mutations`
-;; is `{<key> <row>}` (a nil row removes the key); nil just reads.
+;; A loot type's manually-managed collection: read when its page opens, and
+;; re-read after every edit, so what is on screen is what the store holds.
+;; `mutations` is `{<key> <row>}` (a nil row removes the key); nil just reads.
 (nxr/register-effect! :fx/manual-state
                       (fn [{:keys [dispatch]} system id mutations]
                         (stateful-request
@@ -235,7 +231,7 @@
                           ;; ponytail: the reply replaces the whole local map, so
                           ;; typing into a second row while the first is in flight
                           ;; loses it. Per-row merging if that ever bites.
-                          (fn [resp] (dispatch [[:fx/assoc-in [:manual] (:store/state resp)]
+                          (fn [resp] (dispatch [[:fx/assoc-in [:manual id] (:store/state resp)]
                                                 [:fx/assoc-in [:error] nil]]))
                           (fn [err] (dispatch [[:fx/assoc-in [:error] (:error err)]])))))
 
@@ -243,25 +239,20 @@
 
 (defn- manual-spec
   "The `:store/manual` declaration of loot type `id`, or nil when it has none."
-  [loot-types id]
-  (some #(when (= id (:id %)) (:store/manual %)) loot-types))
+  [state id]
+  (:store/manual (state/spec state id)))
 
-(nxr/register-action! :ui/select-type
-                      (fn [{:keys [loot-types results] :as state} id]
-                        (cond-> (into (stash-fx state)
-                                [[:fx/assoc-in [:selected] id]
-                                 [:fx/assoc-in [:inputs] {}]
-                                 [:fx/assoc-in [:drag] nil]
-                                 [:fx/assoc-in [:result] (get results id)]
-                                 [:fx/assoc-in [:manual] nil]
-                                 [:fx/assoc-in [:manual-key] ""]
-                                 [:fx/assoc-in [:editing?] false]])
-                                (manual-spec loot-types id)
-                                (conj [:fx/manual-state id nil]))))
+(nxr/register-action! :ui/select-page
+                      (fn [state page]
+                        (into [[:fx/assoc-in [:page] page]
+                               [:fx/assoc-in [:drag] nil]]
+                              (comp (filter #(manual-spec state %))
+                                    (map #(vector :fx/manual-state % nil)))
+                              (state/page-tools state page))))
 
 (nxr/register-action! :ui/set-input
-                      (fn [_state field value]
-                        [[:fx/assoc-in [:inputs field] value]]))
+                      (fn [_state id field value]
+                        [[:fx/assoc-in [:inputs id field] value]]))
 
 ;; --- list (`:list?`) input fields ---------------------------------------------
 ;; A list field's value is always a vector. `idx` beyond the current end
@@ -269,23 +260,23 @@
 ;; grows the list); any other `idx` overwrites in place.
 
 (nxr/register-action! :ui/set-list-input
-                      (fn [state field idx value]
-                        (let [current (vec (get-in state [:inputs field]))]
-                          [[:fx/assoc-in [:inputs field]
+                      (fn [state id field idx value]
+                        (let [current (vec (get-in state [:inputs id field]))]
+                          [[:fx/assoc-in [:inputs id field]
                             (if (< idx (count current))
                               (assoc current idx value)
                               (conj current value))]])))
 
 (nxr/register-action! :ui/remove-list-input
-                      (fn [state field idx]
-                        (let [current (vec (get-in state [:inputs field]))]
+                      (fn [state id field idx]
+                        (let [current (vec (get-in state [:inputs id field]))]
                           (when (< idx (count current))
-                            [[:fx/assoc-in [:inputs field]
+                            [[:fx/assoc-in [:inputs id field]
                               (into (subvec current 0 idx) (subvec current (inc idx)))]]))))
 
 (nxr/register-action! :ui/list-drag-start
-                      (fn [_state field idx]
-                        [[:fx/assoc-in [:drag] {:field field :from idx}]]))
+                      (fn [_state id field idx]
+                        [[:fx/assoc-in [:drag] {:plugin id :field field :from idx}]]))
 
 (nxr/register-action! :ui/list-drag-end
                       (fn [_state]
@@ -302,28 +293,28 @@
     (into (conj (subvec without 0 to) item) (subvec without to))))
 
 (nxr/register-action! :ui/list-drag-drop
-                      (fn [{:keys [drag] :as state} field to-idx]
-                        (let [current (vec (get-in state [:inputs field]))
+                      (fn [{:keys [drag] :as state} id field to-idx]
+                        (let [current (vec (get-in state [:inputs id field]))
                               from    (:from drag)]
-                          (when (and drag (= field (:field drag)) (not= from to-idx)
+                          (when (and drag (= [id field] [(:plugin drag) (:field drag)]) (not= from to-idx)
                                      (< from (count current)) (< to-idx (count current)))
-                            [[:fx/assoc-in [:inputs field] (move current from to-idx)]
+                            [[:fx/assoc-in [:inputs id field] (move current from to-idx)]
                              [:fx/assoc-in [:drag] nil]]))))
 
 (nxr/register-action! :ui/set-type-filter
                       (fn [_state value]
                         [[:fx/assoc-in [:type-filter] value]]))
 
-(defn- generate-fx [{:keys [selected inputs]}]
-  [[:fx/generate selected inputs]])
+(defn- generate-fx [state id]
+  [[:fx/generate id (get-in state [:inputs id])]])
 
 (nxr/register-action! :ui/generate generate-fx)
 
 ;; Enter inside the input form generates, matching the button.
 (nxr/register-action! :ui/generate-on-enter
-                      (fn [state key]
-                        (when (and (= key "Enter") (:selected state))
-                          (generate-fx state))))
+                      (fn [state id key]
+                        (when (= key "Enter")
+                          (generate-fx state id))))
 
 (nxr/register-action! :ui/set-roll-input
                       (fn [_state value]
@@ -346,14 +337,14 @@
                           (roll-fx state))))
 
 (nxr/register-action! :ui/report
-                      (fn [_state]
-                        [[:fx/report]]))
+                      (fn [_state id]
+                        [[:fx/report id]]))
 
 (nxr/register-action! :ui/toggle-edit
-                      (fn [state]
+                      (fn [state id]
                         ;; clear any stale "Sent ✓" so an edited item reads as unsent
-                        [[:fx/assoc-in [:editing?] (not (:editing? state))]
-                         [:fx/assoc-in [:report-status] nil]]))
+                        [[:fx/assoc-in [:editing id] (not (get-in state [:editing id]))]
+                         [:fx/assoc-in [:report-status id] nil]]))
 
 (defn- retype
   "Put an edited value back into the type the plugin declared (`:type` on
@@ -371,57 +362,55 @@
     :else                   value))
 
 (nxr/register-action! :ui/edit-result
-                      (fn [_state path type value]
-                        [[:fx/assoc-in (into [:result] path) (retype type value)]
-                         [:fx/assoc-in [:report-status] nil]]))
+                      (fn [_state id path type value]
+                        [[:fx/assoc-in (into [:results id] path) (retype type value)]
+                         [:fx/assoc-in [:report-status id] nil]]))
 
 (nxr/register-action! :ui/edit-result-metadata
-                      (fn [_state path value]
-                        [[:fx/assoc-in (into [:result] path)
+                      (fn [_state id path value]
+                        [[:fx/assoc-in (into [:results id] path)
                           (->> (str/split (or value "") #",")
                                (map str/trim)
                                (remove str/blank?)
                                vec)]
-                         [:fx/assoc-in [:report-status] nil]]))
+                         [:fx/assoc-in [:report-status id] nil]]))
 
 ;; Dispatched directly from a view-model's :action/event vector. Sends the
-;; current (possibly DM-edited) :result alongside the action's own static
+;; current (possibly DM-edited) result alongside the action's own static
 ;; params, so the plugin can see edits made since generation (issue #8).
 (nxr/register-action! :loot/action
-                      (fn [{:keys [result]} {:keys [id action params]}]
-                        [[:fx/action id action params result]]))
+                      (fn [{:keys [results]} {:keys [id action params]}]
+                        [[:fx/action id action params (get results id)]]))
 
 ;; The history list under the result: newest first, one entry per stored
 ;; view-model. Restoring one puts it back on the bench, where it can be edited,
 ;; actioned or reported like any freshly generated result.
 
 (nxr/register-action! :ui/history-save
-                      (fn [{:keys [selected result] :as state}]
-                        (when (and selected result)
-                          [[:fx/history selected (with-entry (rows-for state selected) result)]])))
+                      (fn [state id]
+                        (when-let [result (get-in state [:results id])]
+                          [[:fx/history id (with-entry (rows-for state id) result)]])))
 
 (nxr/register-action! :ui/history-restore
-                      (fn [{:keys [selected] :as state} idx]
-                        (when-let [vm (get-in (rows-for state selected) [idx :view-model])]
-                          [[:fx/assoc-in [:result] vm]
-                           [:fx/assoc-in [:editing?] false]
-                           [:fx/assoc-in [:report-status] nil]])))
+                      (fn [state id idx]
+                        (when-let [vm (get-in (rows-for state id) [idx :view-model])]
+                          (result-fx id vm))))
 
 (nxr/register-action! :ui/history-delete
-                      (fn [{:keys [selected] :as state} idx]
-                        (let [rows (vec (rows-for state selected))]
+                      (fn [state id idx]
+                        (let [rows (vec (rows-for state id))]
                           (when (< idx (count rows))
-                            [[:fx/history selected
+                            [[:fx/history id
                               (into (subvec rows 0 idx) (subvec rows (inc idx)))]]))))
 
-;; A nil row retracts the key, so clearing leaves nothing behind in the store.
 (nxr/register-action! :ui/history-hover
-                      (fn [_state idx]
-                        [[:fx/assoc-in [:history-hover] idx]]))
+                      (fn [_state id idx]
+                        [[:fx/assoc-in [:history-hover id] idx]]))
 
+;; A nil row retracts the key, so clearing leaves nothing behind in the store.
 (nxr/register-action! :ui/history-clear
-                      (fn [{:keys [selected]}]
-                        [[:fx/history selected nil]]))
+                      (fn [_state id]
+                        [[:fx/history id nil]]))
 
 (nxr/register-action! :ui/export
                       (fn [_state]
@@ -433,37 +422,36 @@
 ;; keystroke. Each commit sends the whole row and re-reads the collection.
 
 (nxr/register-action! :ui/manual-edit
-                      (fn [_state k path value]
-                        [[:fx/assoc-in (into [:manual k] path) value]]))
+                      (fn [_state id k path value]
+                        [[:fx/assoc-in (into [:manual id k] path) value]]))
 
 (nxr/register-action! :ui/manual-commit
-                      (fn [{:keys [selected manual]} k]
-                        [[:fx/manual-state selected {k (get manual k)}]]))
+                      (fn [state id k]
+                        [[:fx/manual-state id {k (get-in state [:manual id k])}]]))
 
 (nxr/register-action! :ui/manual-remove
-                      (fn [{:keys [selected]} k]
-                        [[:fx/manual-state selected {k nil}]]))
+                      (fn [_state id k]
+                        [[:fx/manual-state id {k nil}]]))
 
 (nxr/register-action! :ui/manual-remove-item
-                      (fn [{:keys [selected manual]} k idx]
-                        (let [rows (vec (get manual k))]
+                      (fn [state id k idx]
+                        (let [rows (vec (get-in state [:manual id k]))]
                           (when (< idx (count rows))
-                            [[:fx/manual-state selected
+                            [[:fx/manual-state id
                               {k (into (subvec rows 0 idx) (subvec rows (inc idx)))}]]))))
 
 (nxr/register-action! :ui/manual-set-key
-                      (fn [_state value]
-                        [[:fx/assoc-in [:manual-key] value]]))
+                      (fn [_state id value]
+                        [[:fx/assoc-in [:manual-key id] value]]))
 
 ;; A new key starts empty — the server fills its fields in from their declared
 ;; defaults, so the browser needs to know nothing about them.
 (nxr/register-action! :ui/manual-add
-                      (fn [{:keys [selected loot-types manual manual-key]}]
-                        (let [k (str/trim (str manual-key))]
+                      (fn [state id]
+                        (let [k (str/trim (str (get-in state [:manual-key id])))]
                           (cond
-                            (str/blank? k)       nil
-                            (contains? manual k) [[:fx/assoc-in [:manual-key] ""]]
+                            (str/blank? k)                          nil
+                            (contains? (get-in state [:manual id]) k) [[:fx/assoc-in [:manual-key id] ""]]
                             :else
-                            [[:fx/manual-state selected
-                              {k (if (:list? (manual-spec loot-types selected)) [] {})}]
-                             [:fx/assoc-in [:manual-key] ""]]))))
+                            [[:fx/manual-state id {k (if (:list? (manual-spec state id)) [] {})}]
+                             [:fx/assoc-in [:manual-key id] ""]]))))

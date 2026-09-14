@@ -63,12 +63,9 @@
 (defn generator
   "Build the tracker from its `:builtin` plugin config entry. The characters live
    in one manual-state collection named after the plugin's `:id`."
-  [{:keys [id label]}]
+  [{:keys [id]}]
   (let [id   (or id :social)
-        spec {:id             id
-              :label          (or label "Group Social")
-              :utility?       true
-              :generate-label "Show group bonuses"
+        spec {:generate-label "Show group bonuses"
               :store/manual   {:key-label "Character"
                                :fields    [{:id      :deception
                                             :label   "Deception"

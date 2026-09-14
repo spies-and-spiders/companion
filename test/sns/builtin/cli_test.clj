@@ -30,18 +30,6 @@
           vm  (p/generate gen {:inputs {:who "Thoros"}})]
       (is (= "Thoros" (:loot/title vm))))))
 
-(deftest utility-flag-surfaces-in-loot-spec
-  (is (true? (:utility? (p/loot-spec (cli/generator {:id :init :cli {:command ["true"]} :label "Initiative" :utility? true})))))
-  (is (nil? (:utility? (p/loot-spec (cli/generator {:id :weather :cli {:command ["true"]} :label "Weather"}))))))
-
-(deftest declared-inputs-surface-in-loot-spec
-  (testing "config-declared :inputs drive the UI form for an external plugin"
-    (let [fields [{:id :who :label "Who" :type :text}]
-          spec   (p/loot-spec (cli/generator {:id :echo :cli {:command ["true"]} :inputs fields}))]
-      (is (= fields (:inputs spec)))
-      (is (schema/validate ::schema/loot-spec spec))))
-  (is (nil? (:inputs (p/loot-spec (cli/generator {:id :echo :cli {:command ["true"]}}))))))
-
 (deftest nonzero-exit-throws
   (let [gen (cli/generator {:id :boom :cli {:command ["bash" "-c" "exit 3"]} :label "Boom"})]
     (is (thrown? Exception (p/generate gen {:inputs {}})))))
@@ -129,16 +117,6 @@
 (defn- store-of [state]
   (edn-store/->MemoryStore (atom state)))
 
-(deftest declared-storage-surfaces-in-loot-spec
-  (testing "config-declared storage reaches the spec, so the UI renders its editor"
-    (let [spec (p/loot-spec (cli/generator {:id :crystals :cli {:command ["true"]} :store/manual manual}))]
-      (is (= manual (:store/manual spec)))
-      (is (schema/validate ::schema/loot-spec spec))))
-  (testing "a plugin declaring nothing gets no storage keys"
-    (let [spec (p/loot-spec (cli/generator {:id :echo :cli {:command ["true"]}}))]
-      (is (not (contains? spec :store/manual)))
-      (is (not (contains? spec :store/collections))))))
-
 (deftest declared-collections-are-read-and-sent-as-state
   (let [cmd ["python3" "-c"
              (str "import sys,json; d=json.load(sys.stdin); "
@@ -146,12 +124,12 @@
         state {:crystals {"Quincy" [{:crystal "Blaze Wretch" :chance 27}]}
                :other    {"x" {:n 1}}}]
     (testing ":store/manual implies the collection named after the plugin's id"
-      (let [gen (cli/generator {:id :crystals :cli {:command cmd} :store/manual manual})
+      (let [gen (cli/generator {:id :crystals :cli {:command cmd} :generator {:store/manual manual}})
             vm  (p/generate gen {:inputs {} :store (store-of state)})]
         (is (= "{\"crystals\": {\"Quincy\": [{\"chance\": 27, \"crystal\": \"Blaze Wretch\"}]}}"
                (:loot/title vm)))))
     (testing ":store/collections ships exactly what it names"
-      (let [gen (cli/generator {:id :crystals :cli {:command cmd} :store/collections [:other]})
+      (let [gen (cli/generator {:id :crystals :cli {:command cmd} :generator {:store/collections [:other]}})
             vm  (p/generate gen {:inputs {} :store (store-of state)})]
         (is (= "{\"other\": {\"x\": {\"n\": 1}}}" (:loot/title vm)))))
     (testing "a plugin declaring nothing is sent no state, and the store is untouched"
@@ -162,7 +140,7 @@
                                                        (throw (ex-info "should not read" {}))))})]
         (is (= "null" (:loot/title vm)))))
     (testing "an action call carries the same state"
-      (let [gen (cli/generator {:id :crystals :cli {:command cmd} :store/manual manual})
+      (let [gen (cli/generator {:id :crystals :cli {:command cmd} :generator {:store/manual manual}})
             vm  (p/handle-action gen {:store (store-of state)} :roll {})]
         (is (= "{\"crystals\": {\"Quincy\": [{\"chance\": 27, \"crystal\": \"Blaze Wretch\"}]}}"
                (:loot/title vm)))))))
@@ -173,7 +151,7 @@
                (str "import sys,json; json.load(sys.stdin); "
                     "print(json.dumps({'loot/title':'Logged','store/mutations':"
                     "{'crystals':{'Quincy':{'flares':3},'Viktor':None}}}))")]
-          gen (cli/generator {:id :crystals :cli {:command cmd} :store/manual manual})
+          gen (cli/generator {:id :crystals :cli {:command cmd} :generator {:store/manual manual}})
           vm  (p/generate gen {:inputs {} :store (store-of {})})]
       (is (schema/validate ::schema/view-model vm))
       (is (= {:crystals {"Quincy" {:flares 3} "Viktor" nil}} (:store/mutations vm))

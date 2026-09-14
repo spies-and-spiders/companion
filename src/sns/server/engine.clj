@@ -55,20 +55,33 @@
     (defmethod randoms/preset id [_ _] values)))
 
 (defn- validate-table!
-  "Every loot-table entry must reference a registered, rollable loot type;
-   utilities are session tools, not loot, so they can't be rolled. The table
-   also has to fit on the loot die, or some entry could never be rolled."
+  "Every loot-table entry must reference a registered loot type, and the table
+   has to fit on the loot die, or some entry could never be rolled."
   [registry table size]
   (when (> (count table) size)
     (throw (ex-info "Loot-table has more entries than the loot die has sides; raise :loot-die-size"
                     {:entries       (count table)
                      :loot-die-size size})))
   (doseq [{:keys [id]} table]
-    (let [generator (or (get registry id)
-                        (throw (ex-info "Loot-table references an unknown loot type"
-                                        {:id id :known (vec (keys registry))})))]
-      (when (:utility? (p/loot-spec generator))
-        (throw (ex-info "Utilities cannot appear in the loot-table" {:id id}))))))
+    (when-not (contains? registry id)
+      (throw (ex-info "Loot-table references an unknown loot type"
+                      {:id id :known (vec (keys registry))})))))
+
+(defn- pages
+  "The `:page` tools in config order."
+  [config]
+  (filter (comp #{:page} :type) (:tools config)))
+
+(defn- validate-pages!
+  "Every page lists registered plugins, each once. A page is not in the registry,
+   so one page listing another is rejected like any other unknown id."
+  [registry pages]
+  (doseq [{:keys [id] {:keys [tools]} :page} pages]
+    (when-some [unknown (seq (remove #(contains? registry %) tools))]
+      (throw (ex-info "Page references an unknown plugin"
+                      {:page id :unknown (vec unknown) :known (vec (keys registry))})))
+    (when-not (apply distinct? tools)
+      (throw (ex-info "Page lists a plugin more than once" {:page id :tools tools})))))
 
 (defn create
   "Build a loot engine from validated `config`. `deps` supplies overridable
@@ -84,11 +97,13 @@
      (some-> store p/setup!)
      (when (seq table)
        (validate-table! registry table size))
+     (validate-pages! registry (pages config))
      ;; Config-declared random presets, usable from any plugin's vars as
      ;; `{:random :<preset>}`.
      (install-randoms! (:randoms config))
      {:config          config
       :registry        registry
+      :entries         (into {} (map (juxt :id identity)) (:tools config))
       :words           (build-words config)
       :store           store
       :reporter        (or reporter (reporter/from-config (:reporting config)))
@@ -148,23 +163,35 @@
           inputs
           (:inputs loot-spec)))
 
+(defn- label
+  "Tool `id`'s display label: its configured one, or one derived from the id."
+  [id entry]
+  (or (:label entry) (vars/humanise-label id)))
+
+(defn- tool-spec
+  "Everything known of loot type `id`: its generator's loot-spec with the config's
+   `:generator` laid over it, under the config's `:id`, `:label` and `:section`.
+   An id, label or section the generator reports for itself is ignored."
+  [{:keys [registry entries]} id]
+  (let [generator (or (get registry id)
+                      (throw (ex-info "Unknown loot type" {:id id :known (keys registry)})))
+        {:keys [section] :as entry} (entries id)]
+    (cond-> (-> (p/loot-spec generator)
+                (dissoc :id :label :section)
+                (merge (:generator entry))
+                ;; Defaulted here rather than in each generator, so the UI
+                ;; always receives an explicit list to fetch state for.
+                (update :store/collections #(or (not-empty %) [id]))
+                (assoc :id id :label (label id entry)))
+            section (assoc :section section))))
+
 (defn loot-specs
-  "Data-only specs for every registered loot type (drives the UI picker/forms),
-   in the order the plugins appear in config. A plugin config entry marked
-   `:hidden?` has that folded into its spec here rather than in the generator, so
-   hiding works for every plugin type — including compiled `:jar` plugins that
-   know nothing about it. Hidden types are still returned: the UI needs the spec
-   (label, inputs) to render one that has been rolled off the loot-table."
-  [{:keys [registry config]}]
-  (let [hidden (into #{} (comp (filter :hidden?) (map :id)) (:plugins config))]
-    (mapv (fn [generator]
-            (let [spec (p/loot-spec generator)]
-              (cond-> spec
-                      ;; Defaulted here rather than in each generator, so the UI
-                      ;; always receives an explicit list to fetch state for.
-                      true (update :store/collections #(or (not-empty %) [(:id spec)]))
-                      (hidden (:id spec)) (assoc :hidden? true))))
-          (vals registry))))
+  "Specs for every registered loot type (drives the UI picker/forms), in the
+   order the plugins appear in config. Hidden types are still returned: the UI
+   needs the spec (label, inputs) to render one that has been rolled off the
+   loot-table."
+  [{:keys [registry] :as engine}]
+  (mapv #(tool-spec engine %) (keys registry)))
 
 (defn- coerce-entry
   "One row of a manual-state collection, narrowed to the declared fields and
@@ -183,10 +210,8 @@
    retracting that key; rows are coerced to the declared fields. Returns
    `{:store/state <the whole collection>}`, carrying `:store/mutations` for what
    was actually applied when there was anything to apply."
-  [{:keys [registry store]} id mutations]
-  (let [generator (or (get registry id)
-                      (throw (ex-info "Unknown loot type" {:id id})))
-        spec      (p/loot-spec generator)
+  [{:keys [store] :as engine} id mutations]
+  (let [spec      (tool-spec engine id)
         {:keys [fields list?]} (or (:store/manual spec)
                                    (throw (ex-info "Loot type has no manual state" {:id id})))
         coll      (or (first (:store/collections spec)) id)
@@ -238,6 +263,16 @@
   (cond-> engine
           (store/browser? config) (assoc :store (edn-store/->MemoryStore (atom (or state {}))))))
 
+(defn- address-actions
+  "Route every `:loot/action` on `vm` back to tool `id`, whatever id its
+   generator believes it has."
+  [id vm]
+  (cond-> vm
+          (seq (:loot/actions vm))
+          (update :loot/actions (partial mapv (fn [{[k params] :action/event :as a}]
+                                                (cond-> a
+                                                        (= :loot/action k) (assoc :action/event [k (assoc params :id id)])))))))
+
 (defn- with-words
   "Two words naming this result, drawn once by the engine so a plugin never has
    to and every surface showing the result — UI, history, reporter — shows the
@@ -251,13 +286,12 @@
   "Generate loot of type `id` with `inputs`, returning a validated view-model."
   ([engine id] (generate engine id {}))
   ([{:keys [registry rng] :as engine} id inputs]
-   (let [generator (or (get registry id)
-                       (throw (ex-info "Unknown loot type" {:id id :known (keys registry)})))
-         inputs    (apply-input-defaults (p/loot-spec generator) inputs)]
+   (let [inputs (apply-input-defaults (tool-spec engine id) inputs)]
      ;; Vars draw from the request's rng, wherever downstream the draw happens.
      (randoms/with-rng rng
        (->> (ctx engine inputs)
-            (p/generate generator)
+            (p/generate (get registry id))
+            (address-actions id)
             (with-words engine nil)
             (vars/resolve-view-model rng)
             (schema/assert! ::schema/view-model)
@@ -273,16 +307,17 @@
 (defn roll
   "Roll the top-level loot table and generate the chosen loot type. With no `n`,
    the table is sampled randomly by weight; given `n` (a 1-`:loot-die-size`
-   result), the type is resolved from its allocation on the table. Returns the chosen `:id`
-   alongside its `:view-model` so callers (e.g. the UI) can reflect which
-   discipline was rolled."
+   result), the type is resolved from its allocation on the table. `inputs` is
+   keyed by loot-type id, so the chosen type generates with its own. Returns the
+   chosen `:id` alongside its `:view-model` so callers (e.g. the UI) can reflect
+   which discipline was rolled."
   ([engine] (roll engine {} nil))
   ([engine inputs] (roll engine inputs nil))
   ([{:keys [loot-sampler loot-allocation loot-die-size] :as engine} inputs n]
    (when-not loot-sampler
      (throw (ex-info "No loot-table configured" {})))
    (let [id (if (some? n) (roll->id loot-allocation loot-die-size n) (loot-sampler))
-         vm (generate engine id inputs)]
+         vm (generate engine id (get inputs id {}))]
      ;; Writes ride at the top of the result, where a plain generate leaves
      ;; them, rather than buried inside the wrapper this adds.
      (cond-> {:id id :view-model (dissoc vm :store/mutations)}
@@ -293,11 +328,17 @@
    report button is shown, whether state lives in the browser (in which case the
    client ships it with each request and applies the writes that come back), and
    when generated results join the browser-side history (absent = the client's
-   default, `:button`)."
+   default, `:button`). `:sections` is every tool id in config order, which the
+   UI lists the rail by, and `:pages` the configured pages."
   [{:keys [reporter config loot-die-size]}]
   (cond-> {:browser-storage? (store/browser? config)
-           :loot-die-size    loot-die-size}
+           :loot-die-size    loot-die-size
+           :sections         (mapv :id (:tools config))}
           (:history config) (assoc :history (:history config))
+          (seq (pages config)) (assoc :pages (mapv (fn [{:keys [page] :as p}]
+                                                     (-> (select-keys p [:id :section])
+                                                         (assoc :label (label (:id p) p) :tools (:tools page))))
+                                                   (pages config)))
           reporter (assoc :report? true
                           :report-label (p/report-label reporter))))
 
@@ -323,6 +364,7 @@
       (throw (ex-info "Loot type does not support actions" {:id id})))
     (randoms/with-rng rng
       (->> (p/handle-action generator (assoc (ctx engine nil) :view-model view-model) action params)
+           (address-actions id)
            (with-words engine (:loot/words view-model))
            (vars/resolve-view-model rng)
            (schema/assert! ::schema/view-model)

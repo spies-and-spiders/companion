@@ -10,7 +10,7 @@ and expects a view-model as JSON on stdout — the same one a :jar plugin return
 
 Register it in config.edn with:
     {:type :cli :id :weather :label "Weather"
-     :command ["python3" "examples/cli-plugin/weather.py"]}
+     :cli {:command ["python3" "examples/cli-plugin/weather.py"]}}
 """
 import json
 import random

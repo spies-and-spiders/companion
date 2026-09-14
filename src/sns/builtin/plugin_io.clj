@@ -49,20 +49,11 @@
   [mutations]
   (update-vals mutations #(update-keys % name)))
 
-(defn spec-storage
-  "The `:store/...` keys an external plugin's config contributes to its
-   loot-spec. Declared in config rather than by the plugin, exactly as `:inputs`
-   and `:utility?` are, since it has no loot-spec of its own."
-  [{:store/keys [collections manual]}]
-  (cond-> {}
-          (seq collections) (assoc :store/collections (vec collections))
-          manual (assoc :store/manual manual)))
-
 (defn collections
   "The collections to read and ship with each request, or nil when the plugin
    declared none. `:store/manual` implies the one named after the plugin's `:id`,
-   matching what the loot-spec defaults to."
-  [{:keys [id] :store/keys [collections manual]}]
+   matching what the engine defaults `:store/collections` to."
+  [{:keys [id] {:store/keys [collections manual]} :generator}]
   (or (not-empty (vec collections)) (when manual [id])))
 
 (defn with-state

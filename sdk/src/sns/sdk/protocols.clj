@@ -10,9 +10,9 @@
   "A loot type. Implementations are resolved from config by the registry."
   (loot-spec [this]
     "Static, data-only description of this loot type. Conforms to
-     `sns.sdk.schema/loot-spec`, e.g.
-     {:id :relics :label \"Relic\"
-      :inputs [{:id :character :label \"Character\" :type :enum :options [...]}]}")
+     `sns.sdk.schema/loot-spec`; the tool's config supplies its id, label and
+     section, and its `:generator` overrides any key set here, e.g.
+     {:inputs [{:id :character :label \"Character\" :type :enum :options [...]}]}")
   (generate [this ctx]
     "Produce loot. Returns a view-model (`sns.sdk.schema/view-model`).
      `ctx` is `{:rng :store :inputs :config}` — see the engine.
@@ -61,13 +61,6 @@
   (read-collection [this coll-id]
     "The whole collection `coll-id` (a keyword) as a map, or `{}` when absent."))
 
-(defn- loot-id
-  "The loot-type id a generator declares, used to route a view-model's actions
-   back to it. `nil` when `x` is not also a `LootGenerator`."
-  [x]
-  (when (instance? sns.sdk.LootGenerator x)
-    (keyword (.id (.lootSpec ^sns.sdk.LootGenerator x)))))
-
 ;; --- Models -> Clojure data ---
 
 (defn- field->clj [^Models$Field f]
@@ -84,11 +77,8 @@
           (.list m)     (assoc :list? true)))
 
 (defn- loot-spec->clj [^Models$LootSpec ls]
-  ;; No `:hidden?` — that is set on the plugin's config entry for every plugin
-  ;; type and folded into the spec by the engine, never by the generator.
-  (cond-> {:id    (keyword (.id ls))
-           :label (.label ls)}
-          (.utility ls)                (assoc :utility? true)
+  (cond-> {}
+          (.hidden ls)                 (assoc :hidden? true)
           (.generateLabel ls)          (assoc :generate-label (.generateLabel ls))
           (seq (.storeCollections ls)) (assoc :store/collections (mapv keyword (.storeCollections ls)))
           (.storeManual ls)            (assoc :store/manual (manual-state->clj (.storeManual ls)))
@@ -131,18 +121,19 @@
   (cond-> {:section/items (mapv item->clj (.items s))}
           (.heading s) (assoc :section/heading (.heading s))))
 
-(defn- action->clj [loot-id ^Models$Action a]
+(defn- action->clj
+  "An action whose event the engine addresses to the tool that returned it."
+  [^Models$Action a]
   {:action/label (.label a)
-   :action/event [:loot/action {:id     loot-id
-                                :action (keyword (.action a))
+   :action/event [:loot/action {:action (keyword (.action a))
                                 :params (into {} (.params a))}]})
 
-(defn- view-model->clj [loot-id ^Models$ViewModel vm]
+(defn- view-model->clj [^Models$ViewModel vm]
   (cond-> {:loot/title (.title vm)}
           (.subtitle vm)        (assoc :loot/subtitle (.subtitle vm))
           (seq (.vars vm))      (assoc :loot/vars (item-vars->clj (.vars vm)))
           (seq (.sections vm))  (assoc :loot/sections (mapv section->clj (.sections vm)))
-          (seq (.actions vm))   (assoc :loot/actions (mapv #(action->clj loot-id %) (.actions vm)))
+          (seq (.actions vm))   (assoc :loot/actions (mapv action->clj (.actions vm)))
           (seq (.words vm))     (assoc :loot/words (vec (.words vm)))
           (some? (.state vm))   (assoc :loot/state (.state vm))
           (seq (.mutations vm)) (assoc :store/mutations (mutations->clj (.mutations vm)))))
@@ -191,7 +182,7 @@
   (loot-spec [this] (loot-spec->clj (.lootSpec this)))
   (generate [this ctx] (->> (clj->java-map ctx)
                             (.generate this)
-                            (view-model->clj (loot-id this)))))
+                            view-model->clj)))
 
 (extend-type sns.sdk.LootAction
   LootAction
@@ -201,8 +192,7 @@
     ;; author reads the edited `Item.vars()` and `ViewModel.state()` back with
     ;; the same records they returned.
     (let [ctx (cond-> ctx (:view-model ctx) (update :view-model clj->view-model))]
-      (view-model->clj (loot-id this)
-                       (.handleAction this (clj->java-map ctx) (name action) (clj->java-map params))))))
+      (view-model->clj (.handleAction this (clj->java-map ctx) (name action) (clj->java-map params))))))
 
 (extend-type sns.sdk.Reporter
   Reporter

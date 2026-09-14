@@ -7,13 +7,13 @@
     [sns.server.store.edn :as edn-store]))
 
 (def ^:private test-config
-  {:plugins    [{:type :builtin :id :divine-dust :builtin {:entrypoint 'sns.builtin.dust/generator}}]
+  {:tools      [{:type :builtin :id :divine-dust :builtin {:entrypoint 'sns.builtin.dust/generator}}]
    :loot-table [{:id :divine-dust :weight 100}]})
 
 (deftest builds-registry-and-generates
   (let [eng (engine/create test-config)]
     (testing "loot-specs lists the registered type, with its collections defaulted"
-      (is (= [{:id :divine-dust :label "Divine Dust" :store/collections [:divine-dust]}]
+      (is (= [{:id :divine-dust :label "Divine dust" :store/collections [:divine-dust]}]
              (engine/loot-specs eng))))
     (testing "generate returns a validated view-model"
       (is (= {:loot/title    "Divine Dust"
@@ -41,8 +41,8 @@
                                                      :fixed {:value "as sent"}}}]}]})))
 
 (deftest resolves-declared-vars-for-in-process-plugins
-  (let [eng (engine/create {:plugins [{:type    :builtin                                 :id :unresolved
-                                       :builtin {:entrypoint `unresolved-vars-generator}}]})
+  (let [eng (engine/create {:tools [{:type    :builtin                                 :id :unresolved
+                                     :builtin {:entrypoint `unresolved-vars-generator}}]})
         vm  (engine/generate eng :unresolved)]
     (is (= {:colour {:value "puce" :random :literal :options ["puce"] :args {:options ["puce"]}}}
            (:loot/vars vm)))
@@ -53,13 +53,13 @@
 (deftest loot-table-without-weights-is-uniform
   (testing "a loot-table entry may omit :weight (defaults to 1, sampled uniformly)"
     (let [eng (engine/create
-                {:plugins    [{:type :builtin :id :divine-dust :builtin {:entrypoint 'sns.builtin.dust/generator}}]
+                {:tools      [{:type :builtin :id :divine-dust :builtin {:entrypoint 'sns.builtin.dust/generator}}]
                  :loot-table [{:id :divine-dust}]})]
       (is (= :divine-dust (:id (engine/roll eng)))))))
 
 (deftest roll-by-number-resolves-via-allocation
   (let [eng (engine/create
-              {:plugins    [{:type :builtin :id :divine-dust :builtin {:entrypoint 'sns.builtin.dust/generator}}
+              {:tools      [{:type :builtin :id :divine-dust :builtin {:entrypoint 'sns.builtin.dust/generator}}
                             {:type :builtin :id :other :builtin {:entrypoint 'sns.builtin.dust/generator}}]
                :loot-table [{:id :divine-dust :weight 40} {:id :other :weight 60}]})]
     (testing "a number lands in the weighted slice it belongs to (1-40 vs 41-100)"
@@ -75,7 +75,7 @@
 (deftest roll-by-number-normalises-arbitrary-weight-totals
   (testing "weights that don't sum to 100 are stretched onto the 1-100 scale"
     (let [eng (engine/create
-                {:plugins    [{:type :builtin :id :a :builtin {:entrypoint 'sns.builtin.dust/generator}}
+                {:tools      [{:type :builtin :id :a :builtin {:entrypoint 'sns.builtin.dust/generator}}
                               {:type :builtin :id :b :builtin {:entrypoint 'sns.builtin.dust/generator}}
                               {:type :builtin :id :c :builtin {:entrypoint 'sns.builtin.dust/generator}}]
                  :loot-table [{:id :a} {:id :b} {:id :c}]})]
@@ -88,7 +88,7 @@
   (let [plugins [{:type :builtin :id :a :builtin {:entrypoint 'sns.builtin.dust/generator}}
                  {:type :builtin :id :b :builtin {:entrypoint 'sns.builtin.dust/generator}}]
         eng     (engine/create
-                  {:plugins       plugins
+                  {:tools         plugins
                    :loot-die-size 20
                    :loot-table    [{:id :a :weight 3} {:id :b :weight 1}]})]
     (testing "the allocation is scaled to the configured die"
@@ -101,35 +101,58 @@
       (is (= 20 (:loot-die-size (engine/capabilities eng)))))
     (testing "a table with more entries than the die has sides fails at startup"
       (is (thrown? Exception
-                   (engine/create {:plugins       plugins
+                   (engine/create {:tools         plugins
                                    :loot-die-size 1
                                    :loot-table    [{:id :a} {:id :b}]}))))))
 
-(def ^:private utility-plugin
-  ;; The command never runs during engine creation — only its loot-spec is read.
-  {:type :cli :id :tools :cli {:command ["true"]} :utility? true})
+(defn- self-describing-generator
+  "A generator whose loot-spec claims an id, label and section of its own, and
+   routes its action to that claimed id."
+  [_plugin]
+  (reify p/LootGenerator
+    (loot-spec [_] {:id     :claimed                                :label "Claimed" :section "Claimed" :history :never
+                    :inputs [{:id :word :label "Word" :type :text}]})
+    (generate [_ _]
+      {:loot/title   "Hi"
+       :loot/actions [{:action/label "Again" :action/event [:loot/action {:id :claimed :action :again}]}]})))
+
+(deftest config-describes-the-tool
+  (let [entry {:type :builtin :id :greeter :builtin {:entrypoint `self-describing-generator}}
+        spec  #(first (engine/loot-specs (engine/create {:tools [(merge entry %)]})))]
+    (testing "the id, label and section come from config alone"
+      (is (= {:id :greeter :label "Greeter"} (select-keys (spec {}) [:id :label :section])))
+      (is (= {:id :greeter :label "Hello" :section "Talk"}
+             (select-keys (spec {:label "Hello" :section "Talk"}) [:id :label :section]))))
+    (testing "the loot-spec's generator keys stand unless :generator overrides them, key by key"
+      (is (= [:never [:word]] ((juxt :history (comp #(mapv :id %) :inputs)) (spec {}))))
+      (is (= [:always [:word] true]
+             ((juxt :history (comp #(mapv :id %) :inputs) :hidden?) (spec {:generator {:history :always :hidden? true}})))))
+    (testing "an action is routed back to the configured id"
+      (is (= :greeter (-> (engine/generate (engine/create {:tools [entry]}) :greeter)
+                          :loot/actions first :action/event second :id))))))
+
+(deftest configured-generator-keys-apply-to-every-plugin-type
+  (let [eng (engine/create
+              {:tools [{:type :builtin :id :social :section "Utilities" :generator {:generate-label "Tally"}}
+                       {:type      :cli                                       :id :tools :cli {:command ["true"]}
+                        :generator {:hidden? true :store/manual {:fields []}}}]})]
+    (is (= [["Utilities" "Tally" nil] [nil nil true]]
+           (mapv (juxt :section :generate-label :hidden?) (engine/loot-specs eng))))
+    (is (some? (:store/manual (second (engine/loot-specs eng)))))))
 
 (deftest validates-loot-table-at-startup
-  (testing "a utility in the loot-table is rejected"
-    (is (thrown? Exception
-                 (engine/create
-                   {:plugins    [utility-plugin]
-                    :loot-table [{:id :tools}]}))))
-  (testing "a utility registers fine when kept off the table"
-    (let [eng (engine/create {:plugins [utility-plugin]})]
-      (is (true? (:utility? (first (engine/loot-specs eng)))))))
   (testing "an unknown loot-table id is rejected"
     (is (thrown? Exception
                  (engine/create
-                   {:plugins    [{:type :builtin :id :divine-dust}]
+                   {:tools      [{:type :builtin :id :divine-dust}]
                     :loot-table [{:id :nonexistent}]})))))
 
-(deftest folds-config-hidden-into-loot-specs
+(deftest configured-hidden-types-stay-generable
   (let [eng (engine/create
-              {:plugins    [{:type :builtin :id :divine-dust :builtin {:entrypoint 'sns.builtin.dust/generator} :hidden? true}
+              {:tools      [{:type :builtin :id :divine-dust :builtin {:entrypoint 'sns.builtin.dust/generator} :generator {:hidden? true}}
                             {:type :builtin :id :other :builtin {:entrypoint 'sns.builtin.dust/generator}}]
                :loot-table [{:id :divine-dust}]})]
-    (testing "the flag is applied by the engine, so it works for a generator that knows nothing of it"
+    (testing "the flag reaches the spec of a generator that knows nothing of it"
       (is (= [true nil] (mapv :hidden? (engine/loot-specs eng)))))
     (testing "a hidden type is still listed (the UI needs its spec) and still rollable"
       (is (= [:divine-dust :other] (mapv :id (engine/loot-specs eng))))
@@ -140,8 +163,44 @@
 (deftest rejects-duplicate-ids
   (is (thrown? Exception
                (engine/create
-                 {:plugins [{:type :builtin :id :dup :builtin {:entrypoint 'sns.builtin.dust/generator}}
-                            {:type :builtin :id :dup :builtin {:entrypoint 'sns.builtin.dust/generator}}]}))))
+                 {:tools [{:type :builtin :id :dup :builtin {:entrypoint 'sns.builtin.dust/generator}}
+                          {:type :builtin :id :dup :builtin {:entrypoint 'sns.builtin.dust/generator}}]}))))
+
+(defn echo-inputs-generator [_plugin]
+  (reify p/LootGenerator
+    (loot-spec [_] {:id :echo :label "Echo" :inputs [{:id :word :label "Word" :type :text}]})
+    (generate [_ {:keys [inputs]}] {:loot/title (str (:word inputs))})))
+
+(deftest roll-uses-the-chosen-types-inputs
+  (let [eng (engine/create {:tools      [{:type :builtin :id :echo :builtin {:entrypoint `echo-inputs-generator}}]
+                            :loot-table [{:id :echo}]})]
+    (is (= "rolled" (-> (engine/roll eng {:echo {:word "rolled"} :other {:word "ignored"}})
+                        :view-model :loot/title)))))
+
+(deftest validates-pages-at-startup
+  (let [plugins [{:type :builtin :id :divine-dust :builtin {:entrypoint 'sns.builtin.dust/generator}}
+                 {:type :builtin :id :relics :builtin {:entrypoint 'sns.builtin.relics/generator}}]
+        page    (fn [id & tools] {:type :page :id id :page {:tools (vec tools)}})
+        create  #(engine/create {:tools (into plugins %&)})]
+    (testing "a page reaches the UI via capabilities, and every tool id is listed in config order"
+      (let [caps (engine/capabilities
+                   (engine/create {:tools [(first plugins)
+                                           (assoc (page :combat :divine-dust :relics) :label "Combat" :section "Tools")
+                                           (second plugins)]}))]
+        (is (= [{:id :combat :label "Combat" :section "Tools" :tools [:divine-dust :relics]}] (:pages caps)))
+        (is (= [:divine-dust :combat :relics] (:sections caps)))))
+    (testing "a page is not a loot type"
+      (is (= [:divine-dust :relics] (mapv :id (engine/loot-specs (create (page :combat :relics))))))
+      (is (thrown? Exception (engine/create {:tools      (conj plugins (page :combat :relics))
+                                             :loot-table [{:id :combat}]}))))
+    (testing "an unknown plugin, or another page, is rejected"
+      (is (thrown-with-msg? Exception #"unknown plugin" (create (page :combat :nonexistent))))
+      (is (thrown-with-msg? Exception #"unknown plugin" (create (page :combat :relics) (page :outer :combat)))))
+    (testing "a plugin listed twice on one page is rejected"
+      (is (thrown-with-msg? Exception #"more than once" (create (page :combat :relics :relics)))))
+    (testing "a page id may not repeat, nor reuse a plugin's"
+      (is (thrown-with-msg? Exception #"Duplicate" (create (page :combat :relics) (page :combat :divine-dust))))
+      (is (thrown-with-msg? Exception #"Duplicate" (create (page :relics :divine-dust)))))))
 
 (deftest loads-and-validates-resource-config
   (testing "a real filesystem config loads, validates, and drives the engine"
@@ -161,19 +220,19 @@
 (deftest data-inline-spec
   (let [spec {:label "Omen" :items [{:text "a crow lands"}] :title "{{text}}"}]
     (testing "an :inline spec is used in place of a file"
-      (let [eng (engine/create {:plugins [{:type :data :id :omens :data {:inline spec}}]})]
+      (let [eng (engine/create {:tools [{:type :data :id :omens :data {:inline spec}}]})]
         (is (= "a crow lands" (title-var (engine/generate eng :omens) :text)))))
     (testing ":inline takes precedence over :source, which is not read"
-      (let [eng (engine/create {:plugins [{:type :data
-                                           :id   :omens
-                                           :data {:inline spec :source "test/resources/does-not-exist.edn"}}]})]
+      (let [eng (engine/create {:tools [{:type :data
+                                         :id   :omens
+                                         :data {:inline spec :source "test/resources/does-not-exist.edn"}}]})]
         (is (= "a crow lands" (title-var (engine/generate eng :omens) :text)))))))
 
 (deftest config-randoms-are-available-to-vars
   (testing "a config-declared preset is drawn from by a plugin's declared var"
     (let [eng (engine/create
                 {:randoms {:omens ["a crow lands" "the lanterns gutter"]}
-                 :plugins [{:type :data
+                 :tools   [{:type :data
                             :id   :portents
                             :data {:inline {:label "Portent"
                                             :items [{:kind      :portent
@@ -187,7 +246,7 @@
 
 (deftest input-defaults-fill-blank-values
   (let [eng (engine/create
-              {:plugins [{:type :data :id :potion :data {:source "test/resources/enum-default.edn"}}]})]
+              {:tools [{:type :data :id :potion :data {:source "test/resources/enum-default.edn"}}]})]
     (testing "a blank enum input falls back to its declared :default"
       (is (= "common" (title-var (engine/generate eng :potion {}) :rarity)))
       (is (= "common" (title-var (engine/generate eng :potion {:rarity ""}) :rarity))))
@@ -199,13 +258,13 @@
   ;; literal JSON sent over the wire — parsing it first would round the precision
   ;; away in the test harness rather than in the engine.
   (let [eng   (engine/create
-                {:plugins [{:type   :cli
-                            :id     :echo
-                            :label  "Echo"
-                            :inputs [{:id :multiplier :label "Multiplier" :type :decimal :default "1.3"}]
-                            :cli    {:command ["python3" "-c"
-                                               (str "import sys,json; "
-                                                    "print(json.dumps({'loot/title': sys.stdin.read()}))")]}}]})
+                {:tools [{:type      :cli
+                          :id        :echo
+                          :label     "Echo"
+                          :generator {:inputs [{:id :multiplier :label "Multiplier" :type :decimal :default "1.3"}]}
+                          :cli       {:command ["python3" "-c"
+                                                (str "import sys,json; "
+                                                     "print(json.dumps({'loot/title': sys.stdin.read()}))")]}}]})
         sent  #(:loot/title (engine/generate eng :echo %))]
     (testing "a :decimal field is sent as a JSON number, not the form's string"
       (is (= "{\"inputs\":{\"multiplier\":1.3}}" (sent {:multiplier "1.3"}))))
@@ -219,13 +278,13 @@
 
 (deftest int-inputs-reach-the-generator-as-numbers
   (let [eng (engine/create
-              {:plugins [{:type   :cli
-                          :id     :echo
-                          :label  "Echo"
-                          :inputs [{:id :bonus :label "Bonus" :type :int}]
-                          :cli    {:command ["python3" "-c"
-                                             (str "import sys,json; d=json.load(sys.stdin); "
-                                                  "print(json.dumps({'loot/title': type(d['inputs']['bonus']).__name__}))")]}}]})]
+              {:tools [{:type      :cli
+                        :id        :echo
+                        :label     "Echo"
+                        :generator {:inputs [{:id :bonus :label "Bonus" :type :int}]}
+                        :cli       {:command ["python3" "-c"
+                                              (str "import sys,json; d=json.load(sys.stdin); "
+                                                   "print(json.dumps({'loot/title': type(d['inputs']['bonus']).__name__}))")]}}]})]
     (testing "a :int field entered in the browser form arrives parsed"
       (is (= "int" (:loot/title (engine/generate eng :echo {:bonus "3"})))))
     (testing "an unparseable value is passed through for the generator to reject"
@@ -236,11 +295,11 @@
                       (str "import sys,json; d=json.load(sys.stdin); "
                            "print(json.dumps({'loot/title': json.dumps(d['inputs']['bonuses'])}))")]
         eng          (engine/create
-                       {:plugins [{:type   :cli
-                                   :id     :echo
-                                   :label  "Echo"
-                                   :inputs [{:id :bonuses :label "Bonuses" :type :int :list? true}]
-                                   :cli    {:command echo-bonuses}}]})]
+                       {:tools [{:type      :cli
+                                 :id        :echo
+                                 :label     "Echo"
+                                 :generator {:inputs [{:id :bonuses :label "Bonuses" :type :int :list? true}]}
+                                 :cli       {:command echo-bonuses}}]})]
     (testing "several entered values are coerced element-wise and sent as a JSON array"
       (is (= "[1, 2, 3]" (:loot/title (engine/generate eng :echo {:bonuses ["1" "2" "3"]})))))
     (testing "a single value still arrives as a one-element vector, not a bare scalar"
@@ -249,13 +308,13 @@
       (is (= "[]" (:loot/title (engine/generate eng :echo {}))))))
   (testing "a declared :default is used, coerced, when nothing is submitted"
     (let [eng (engine/create
-                {:plugins [{:type   :cli
-                            :id     :echo
-                            :label  "Echo"
-                            :inputs [{:id :bonuses :label "Bonuses" :type :int :list? true :default ["1" "2"]}]
-                            :cli    {:command ["python3" "-c"
-                                               (str "import sys,json; d=json.load(sys.stdin); "
-                                                    "print(json.dumps({'loot/title': json.dumps(d['inputs']['bonuses'])}))")]}}]})]
+                {:tools [{:type      :cli
+                          :id        :echo
+                          :label     "Echo"
+                          :generator {:inputs [{:id :bonuses :label "Bonuses" :type :int :list? true :default ["1" "2"]}]}
+                          :cli       {:command ["python3" "-c"
+                                                (str "import sys,json; d=json.load(sys.stdin); "
+                                                     "print(json.dumps({'loot/title': json.dumps(d['inputs']['bonuses'])}))")]}}]})]
       (is (= "[1, 2]" (:loot/title (engine/generate eng :echo {})))))))
 
 ;; --- issue #8: the current view-model reaches the action -----------------------
@@ -274,7 +333,7 @@
 (defn echo-state-generator [_plugin-config] (->EchoStateGenerator))
 
 (deftest action-receives-the-current-view-model
-  (let [eng (engine/create {:plugins [{:type :builtin :id :echo-state :builtin {:entrypoint 'sns.server.engine-test/echo-state-generator}}]})]
+  (let [eng (engine/create {:tools [{:type :builtin :id :echo-state :builtin {:entrypoint 'sns.server.engine-test/echo-state-generator}}]})]
     (testing "a generator reads the displayed (possibly DM-edited) view-model, so
               state round-trips without being copied into every action's params"
       (let [vm (engine/generate eng :echo-state)]
@@ -297,7 +356,7 @@
 
 (deftest declared-writes-are-applied-after-validation
   (let [store (doto (edn-store/create {:backend :memory}) p/setup!)
-        eng   (-> (engine/create {:plugins []} {:store store})
+        eng   (-> (engine/create {:tools []} {:store store})
                   (assoc-in [:registry :writer]
                             (declaring {:loot/title      "Written"
                                         :store/mutations {:things {"a" {:n 1}}}})))]
@@ -314,7 +373,7 @@
             "the retraction and the insert both went nowhere")))))
 
 (deftest browser-state-is-read-and-written-per-request
-  (let [eng (-> (engine/create {:storage {:backend :browser} :plugins []})
+  (let [eng (-> (engine/create {:storage {:backend :browser} :tools []})
                 (assoc-in [:registry :writer]
                           (declaring {:loot/title      "Written"
                                       :store/mutations {:things {"b" {:n 2}}}})))]

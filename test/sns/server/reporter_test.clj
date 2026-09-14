@@ -21,15 +21,15 @@
     (report! [_ vm] (reset! sink vm) nil)))
 
 (def ^:private base-config
-  {:plugins    [{:type :builtin :id :divine-dust :builtin {:entrypoint 'sns.builtin.dust/generator}}]
+  {:tools      [{:type :builtin :id :divine-dust :builtin {:entrypoint 'sns.builtin.dust/generator}}]
    :loot-table [{:id :divine-dust :weight 1}]})
 
 (deftest capabilities-reflect-reporter
   (testing "no reporter -> no report capability"
-    (is (= {:browser-storage? false :loot-die-size 100} (engine/capabilities (engine/create base-config)))))
+    (is (= {:browser-storage? false :loot-die-size 100 :sections [:divine-dust]} (engine/capabilities (engine/create base-config)))))
   (testing "with a reporter -> report? and label surfaced"
     (let [eng (engine/create base-config {:reporter (recording-reporter (atom nil))})]
-      (is (= {:browser-storage? false :loot-die-size 100 :report? true :report-label "Send"}
+      (is (= {:browser-storage? false :loot-die-size 100 :sections [:divine-dust] :report? true :report-label "Send"}
              (engine/capabilities eng))))))
 
 (deftest report-sends-validated-view-model

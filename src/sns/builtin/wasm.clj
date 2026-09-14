@@ -80,21 +80,16 @@
    running the WASI module at `:module`. `:args` are the program arguments (the
    module's own name is prepended), and `:dirs` maps guest paths the module may
    read to host directories — a module with no `:dirs` gets no filesystem at all.
-   `:utility?`, `:inputs` and `:store/...` mean exactly what they do for `:cli`."
-  [{:keys [id label utility? history inputs] {:keys [module args dirs]} :wasm :as plugin}]
+   Its `:generator` config means exactly what it does for `:cli`."
+  [{:keys [id] {:keys [module args dirs]} :wasm :as plugin}]
   (let [src   (.. (Source/newBuilder "wasm" (File. ^String module))
                   (name (clojure.core/name id))
                   (build))
         argv  (into [(name id)] args)
-        spec  (merge (cond-> {:id id :label (or label (name id))}
-                             utility? (assoc :utility? true)
-                             history (assoc :history history)
-                             (seq inputs) (assoc :inputs (vec inputs)))
-                     (io/spec-storage plugin))
         colls (io/collections plugin)]
     (reify
       p/LootGenerator
-      (loot-spec [_] spec)
+      (loot-spec [_] {})
       (generate [_ ctx]
         (run id src argv dirs (io/with-state ctx colls {:inputs (:inputs ctx)})))
       p/LootAction

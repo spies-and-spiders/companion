@@ -132,9 +132,9 @@
         config {:server     {:host "127.0.0.1" :port port}
                 :storage    (cond-> {:backend storage-backend}
                                     (= :file storage-backend) (assoc :file {:dir state-dir}))
-                :plugins    (cond-> [{:type :builtin :id :divine-dust}
+                :tools      (cond-> [{:type :builtin :id :divine-dust}
                                      {:type :builtin :id :relics}
-                                     {:type :builtin :id :social}
+                                     {:type :builtin :id :social :section "Utilities"}
                                      {:type :data :id :uniques :data {:source "data/uniques.edn"}}
                                      {:type :data :id :rings :data {:source "data/rings.edn"}}
                                      ;; :chill-factor is unused by weather.py itself; it exists so
@@ -142,25 +142,25 @@
                                      ;; engine's :decimal input coercion (`->decimal` in
                                      ;; sns.server.engine) - the exact code path that broke in a
                                      ;; native image via reflection inside `bigdec` (dd6fc1a).
-                                     {:type     :cli
-                                      :id       :weather
-                                      :utility? true
-                                      :label    "Weather"
-                                      :cli      {:command [(python-command) "examples/cli-plugin/weather.py"]}
-                                      :inputs   [{:id :chill-factor :label "Chill Factor" :type :decimal}]}
+                                     {:type      :cli
+                                      :id        :weather
+                                      :section   "Utilities"
+                                      :label     "Weather"
+                                      :cli       {:command [(python-command) "examples/cli-plugin/weather.py"]}
+                                      :generator {:inputs [{:id :chill-factor :label "Chill Factor" :type :decimal}]}}
                                      ;; A :cli plugin with declared state: the
                                      ;; engine reads its collection into the
                                      ;; request and applies the mutations it
                                      ;; returns, so neither direction depends on
                                      ;; the script understanding EDN.
-                                     {:type         :cli
-                                      :id           :tally
-                                      :utility?     true
-                                      :label        "Tally"
-                                      :cli          {:command [(python-command) "examples/cli-plugin/tally.py"]}
-                                      :inputs       [{:id :who :label "Who" :type :text}]
-                                      :store/manual {:key-label "Name"
-                                                     :fields    [{:id :count :label "Count" :type :int :default 0}]}}]
+                                     {:type      :cli
+                                      :id        :tally
+                                      :section   "Utilities"
+                                      :label     "Tally"
+                                      :cli       {:command [(python-command) "examples/cli-plugin/tally.py"]}
+                                      :generator {:inputs       [{:id :who :label "Who" :type :text}]
+                                                  :store/manual {:key-label "Name"
+                                                                 :fields    [{:id :count :label "Count" :type :int :default 0}]}}}]
                                     lib-path    (conj ffi-plugin)
                                     module-path (conj wasm-plugin))
                 :loot-table (cond-> [{:id :divine-dust} {:id :relics} {:id :uniques} {:id :rings}]

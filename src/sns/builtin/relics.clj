@@ -88,8 +88,7 @@
   [_plugin]
   (reify
     p/LootGenerator
-    (loot-spec [_]
-      {:id loot-id :label "Relic"})
+    (loot-spec [_] {})
     (generate [_ {:keys [rng]}]
       (let [template (r/sample rng templates)
             relic    (assoc template :id (str (random-uuid)) :ranks {})]

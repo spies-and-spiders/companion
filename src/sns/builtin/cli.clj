@@ -28,22 +28,15 @@
 
 (defn generator
   "Build a `LootGenerator`/`LootAction` from a `:cli` plugin config entry, running
-   its `:cli` `:command` (a vector of program + args). `:utility?` marks a session tool
-   rather than loot (grouped separately in the UI, barred from the :loot-table),
-   and `:inputs` declares the form fields whose values are sent as the request's
-   `inputs`. `:store/collections`/`:store/manual` declare state: what they name is
-   read and sent as `state`, and the `mutations` the script returns are applied
-   by the engine."
-  [{:keys [id label utility? history inputs] {:keys [command]} :cli :as plugin}]
-  (let [spec  (merge (cond-> {:id id :label (or label (name id))}
-                             utility? (assoc :utility? true)
-                             history (assoc :history history)
-                             (seq inputs) (assoc :inputs (vec inputs)))
-                     (io/spec-storage plugin))
-        colls (io/collections plugin)]
+   its `:cli` `:command` (a vector of program + args). Having no loot-spec of its
+   own, it is described entirely by its `:generator` config: the collections that
+   declares are read and sent as `state`, and the `mutations` the script returns
+   are applied by the engine."
+  [{:keys [id] {:keys [command]} :cli :as plugin}]
+  (let [colls (io/collections plugin)]
     (reify
       p/LootGenerator
-      (loot-spec [_] spec)
+      (loot-spec [_] {})
       (generate [_ ctx]
         (run id command (io/with-state ctx colls {:inputs (:inputs ctx)})))
       p/LootAction

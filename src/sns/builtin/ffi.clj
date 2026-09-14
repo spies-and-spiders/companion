@@ -71,12 +71,10 @@
   "Build a `LootGenerator`/`LootAction` from an `:ffi` plugin config entry, bound
    to its `:symbol` (and optional `:free-symbol`) in the shared library at
    `:library`. The library stays loaded for the app's lifetime (a global arena).
-   `:utility?` marks a session tool rather than loot, and `:inputs` declares the
-   form fields whose values are sent as the request's `inputs`.
-   `:store/collections`/`:store/manual` declare state: what they name is read and
-   sent as `state`, and the `mutations` the library returns are applied by the
-   engine."
-  [{:keys                                     [id label utility? history inputs]
+   Like `:cli`, it is described entirely by its `:generator` config: the
+   collections that declares are read and sent as `state`, and the `mutations`
+   the library returns are applied by the engine."
+  [{:keys                                     [id]
     {:keys [library free-symbol] sym :symbol} :ffi
     :as                                       plugin}]
   (let [linker (Linker/nativeLinker)
@@ -84,15 +82,10 @@
         handle (downcall linker lookup (str sym) (ptr->ptr))
         free   (when free-symbol
                  (downcall linker lookup (str free-symbol) (ptr->void)))
-        spec   (merge (cond-> {:id id :label (or label (name id))}
-                              utility? (assoc :utility? true)
-                              history (assoc :history history)
-                              (seq inputs) (assoc :inputs (vec inputs)))
-                      (io/spec-storage plugin))
         colls  (io/collections plugin)]
     (reify
       p/LootGenerator
-      (loot-spec [_] spec)
+      (loot-spec [_] {})
       (generate [_ ctx]
         (call id handle free (io/with-state ctx colls {:inputs (:inputs ctx)})))
       p/LootAction

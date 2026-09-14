@@ -12,8 +12,7 @@
 
 (deftest single-draw-with-submods
   (testing "a single drawn entry renders title/subtitle and iterates its mods"
-    (let [spec {:label    "Unique"
-                :items    [{:name "Only One"
+    (let [spec {:items    [{:name "Only One"
                             :base "armour"
                             :mods [{:effect "Effect A" :metadata ["x"]}
                                    {:effect "Effect B"}]}]
@@ -37,8 +36,7 @@
 
 (deftest multi-draw-renders-each-entry
   (testing ":each :items iterates the drawn entries"
-    (let [spec {:label    "Rings"
-                :items    [{:name "A" :effect "ea"} {:name "B" :effect "eb"}
+    (let [spec {:items    [{:name "A" :effect "ea"} {:name "B" :effect "eb"}
                            {:name "C" :effect "ec"}]
                 :take     2
                 :title    "Two rings"
@@ -58,8 +56,7 @@
   ;; builds. The existing multi-draw tests missed it by falling back to randy's
   ;; default rng, which *is* a java.util.Random.
   (testing "a small pool (so the shuffle strategy is chosen) draws with the engine's rng"
-    (let [spec  {:label    "Rings"
-                 :items    [{:name "A"} {:name "B"} {:name "C"}]
+    (let [spec  {:items    [{:name "A"} {:name "B"} {:name "C"}]
                  :take     2
                  :title    "Two rings"
                  :sections [{:each :items :item {:body :name}}]}
@@ -97,8 +94,7 @@
   (testing "a JSON body naming no field on the entry is the template itself —
             regression: `{{result}}` decoded to the keyword `:{{result}}`, read
             as a field reference, and every such item rendered blank"
-    (let [spec {:label    "Cards"
-                :items    [{:result "Draw 2 tarot cards."}]
+    (let [spec {:items    [{:result "Draw 2 tarot cards."}]
                 :title    "Tarot"
                 :sections [{:each :items :item {:body "{{result}}"}}]}
           vm   (data/generate (assoc spec :items [{:result "Draw 2 tarot cards."}]) ctx)
@@ -106,17 +102,13 @@
       (is (= "{{result}}" (:item/body item)) "handed to the browser to render")
       (is (= "Draw 2 tarot cards." (-> item :item/vars :result :value))))))
 
-(deftest utility-flag-surfaces-in-loot-spec
-  (let [gen (data/generator :tools {:label "Tools" :utility? true :items [{:name "x"}] :title "t"})]
-    (is (true? (:utility? (sns.sdk.protocols/loot-spec gen))))))
-
 (deftest history-override-surfaces-in-loot-spec
-  (let [gen (data/generator :tools {:label "Tools" :history :never :items [{:name "x"}] :title "t"})]
+  (let [gen (data/generator :tools {:history :never :items [{:name "x"}] :title "t"})]
     (is (= :never (:history (sns.sdk.protocols/loot-spec gen))))))
 
 (deftest honours-injected-rng
   (testing "draws use the rng threaded through the context, not the global default"
-    (let [spec {:label "Pick" :items [{:name "A"} {:name "B"} {:name "C"}] :title "{{name}}"}
+    (let [spec {:items [{:name "A"} {:name "B"} {:name "C"}] :title "{{name}}"}
           ;; a stub rng that always returns index 2 -> "C"
           rng  (reify randy.rng/RandomNumberGenerator
                  (next-int [_ _] 2)
@@ -126,8 +118,7 @@
 
 (deftest inputs-available-to-templates
   (testing "input values are interpolable in templates"
-    (let [spec {:label "Greeting"
-                :items [{:name "x"}]
+    (let [spec {:items [{:name "x"}]
                 :title "Hail, {{who}}"}
           vm   (data/generate spec (assoc ctx :inputs {:who "Thoros"}))]
       (is (= "Hail, {{who}}" (:loot/title vm)))
@@ -136,7 +127,7 @@
 (deftest file-generator-exposes-reload-input
   (testing "the reload field is prepended to the spec's own inputs"
     (let [f    (doto (java.io.File/createTempFile "data-test" ".edn") .deleteOnExit)
-          _    (spit f (pr-str {:label "Greeting" :items [{:name "x"}] :title "Hail"}))
+          _    (spit f (pr-str {:items [{:name "x"}] :title "Hail"}))
           gen  (data/file-generator :greeting (.getPath f))
           spec (sns.sdk.protocols/loot-spec gen)]
       (is (= [:__reload?] (map :id (:inputs spec)))))))
@@ -144,10 +135,10 @@
 (deftest file-generator-reloads-on-request
   (testing "generating with :__reload? true re-reads the source file"
     (let [f   (doto (java.io.File/createTempFile "data-test" ".edn") .deleteOnExit)
-          _   (spit f (pr-str {:label "Greeting" :items [{:name "x"}] :title "Before"}))
+          _   (spit f (pr-str {:items [{:name "x"}] :title "Before"}))
           gen (data/file-generator :greeting (.getPath f))]
       (is (= "Before" (:loot/title (sns.sdk.protocols/generate gen ctx))))
-      (spit f (pr-str {:label "Greeting" :items [{:name "x"}] :title "After"}))
+      (spit f (pr-str {:items [{:name "x"}] :title "After"}))
       (is (= "Before" (:loot/title (sns.sdk.protocols/generate gen ctx)))
           "without the reload flag, the stale in-memory spec is used")
       (is (= "After" (:loot/title (sns.sdk.protocols/generate gen (assoc ctx :inputs {:__reload? true}))))

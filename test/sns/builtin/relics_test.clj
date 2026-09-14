@@ -7,7 +7,7 @@
     [sns.server.store.edn :as edn-store]))
 
 (def ^:private config
-  {:plugins    [{:type :builtin :id :relics :builtin {:entrypoint 'sns.builtin.relics/generator}}]
+  {:tools      [{:type :builtin :id :relics :builtin {:entrypoint 'sns.builtin.relics/generator}}]
    :loot-table [{:id :relics :weight 100}]})
 
 (defn- ranks-taken

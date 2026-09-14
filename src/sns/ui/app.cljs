@@ -8,17 +8,49 @@
     [sns.ui.render :as render]
     [sns.ui.state :as state]))
 
-(defn- current-spec [{:keys [loot-types selected]}]
-  (some #(when (= selected (:id %)) %) loot-types))
+(defn- card
+  "Everything for one loot type: its manual table, form, result and history."
+  [state id]
+  (when-let [spec (state/spec state id)]
+    (let [result       (get-in state [:results id])
+          editing?     (get-in state [:editing id])
+          history-mode (or (:history spec) (:history-mode state))
+          rows         (get (:history state) (name id))
+          ;; What is on the bench but in no history entry: a hand-edit, or a
+          ;; result generated under a mode that does not store on its own.
+          unsaved?     (and result (not-any? #(= result (:view-model %)) rows))]
+      [:div.card {:replicant/key id}
+       (render/manual-editor spec (get-in state [:manual id]) (get-in state [:manual-key id]))
+       [:section.summon
+        [:p.summon__eyebrow (:label spec)]
+        (render/input-form spec (get-in state [:inputs id]))
+        [:button.generate {:on {:click [[:ui/generate id]]}}
+         (if (get-in state [:loading id])
+           "Summoning…"
+           (or (:generate-label spec) (str "Generate " (:label spec))))]]
+       (if editing?
+         (render/result-editor id result)
+         (render/result result))
+       (when result
+         [:div.result-actions
+          [:button.action-btn
+           {:on {:click [[:ui/toggle-edit id]]}}
+           (if editing? "Done editing" "Edit item")]
+          (when (or (= :button history-mode)
+                    (and (= :always history-mode) unsaved?))
+            [:button.action-btn {:on {:click [[:ui/history-save id]]}} "Save to history"])
+          (when (:report? state)
+            [:button.report__btn
+             {:disabled (= :sending (get-in state [:report-status id]))
+              :on       {:click [[:ui/report id]]}}
+             (case (get-in state [:report-status id])
+               :sending "Sending…"
+               :sent    "Sent ✓"
+               (or (:report-label state) "Send"))])])
+       (render/history id rows (get-in state [:history-hover id]))])))
 
 (defn- view [state]
-  (let [spec         (current-spec state)
-        history-mode (or (:history spec) (:history-mode state))
-        rows         (get (:history state) (some-> (:selected state) name))
-        ;; What is on the bench but in no history entry: a hand-edit, or a
-        ;; result generated under a mode that does not store on its own.
-        unsaved?     (and (:result state)
-                          (not-any? #(= (:result state) (:view-model %)) rows))]
+  (let [ids (state/page-tools state (:page state))]
     [:div.app
      [:header.topbar
       [:div.brand [:span.brand__mark "✦"] [:span.brand__name "sns-companion"]]]
@@ -27,38 +59,10 @@
       [:main.workbench
        (when (:error state)
          [:p.notice.notice--error (:error state)])
-       (render/manual-editor spec (:manual state) (:manual-key state))
-       (when spec
-         [:section.summon
-          [:p.summon__eyebrow (:label spec)]
-          (render/input-form spec (:inputs state))
-          [:button.generate {:on {:click [[:ui/generate]]}}
-           (if (:loading? state)
-             "Summoning…"
-             (or (:generate-label spec) (str "Generate " (:label spec))))]])
-       (if (:editing? state)
-         (render/result-editor (:result state))
-         (render/result (:result state)))
-       (when (:result state)
-         [:div.result-actions
-          [:button.action-btn
-           {:on {:click [[:ui/toggle-edit]]}}
-           (if (:editing? state) "Done editing" "Edit item")]
-          (when (or (= :button history-mode)
-                    (and (= :always history-mode) unsaved?))
-            [:button.action-btn {:on {:click [[:ui/history-save]]}} "Save to history"])
-          (when (:report? state)
-            [:button.report__btn
-             {:disabled (= :sending (:report-status state))
-              :on       {:click [[:ui/report]]}}
-             (case (:report-status state)
-               :sending "Sending…"
-               :sent    "Sent ✓"
-               (or (:report-label state) "Send"))])])
-       (render/history (:selected state) rows (:history-hover state))
-       (when (and (nil? (:result state)) (nil? spec))
+       (if (seq ids)
+         [:div.cards (for [id ids] (card state id))]
          [:div.empty
-          [:p.empty__line "Choose a loot type, or make a loot roll."]])]]]))
+          [:p.empty__line "Choose a page, or make a loot roll."]])]]]))
 
 (defn- render! [state]
   (r/render (js/document.getElementById "app") (view state)))

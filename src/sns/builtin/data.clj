@@ -144,14 +144,10 @@
 
 (defn generator
   "Build a `LootGenerator` for a `:data` plugin from an inline `spec`."
-  [id spec]
+  [_id spec]
   (reify p/LootGenerator
     (loot-spec [_]
-      (cond-> {:id    id
-               :label (:label spec)}
-              (:utility? spec) (assoc :utility? true)
-              (:history spec) (assoc :history (:history spec))
-              (:inputs spec) (assoc :inputs (:inputs spec))))
+      (select-keys spec [:history :inputs]))
     (generate [_ ctx]
       (generate spec ctx))))
 
@@ -165,16 +161,13 @@
   "Build a `LootGenerator` for a `:data` plugin whose spec is loaded from
    `source`. Holds the spec in an atom and exposes a `:__reload?` input that,
    when set, re-reads `source` into that atom before generating."
-  [id source]
+  [_id source]
   (let [spec-atom (atom (load-spec source))]
     (reify p/LootGenerator
       (loot-spec [_]
         (let [spec @spec-atom]
-          (cond-> {:id     id
-                   :label  (:label spec)
-                   :inputs (into [reload-field] (:inputs spec))}
-                  (:utility? spec) (assoc :utility? true)
-                  (:history spec) (assoc :history (:history spec)))))
+          (-> (select-keys spec [:history])
+              (assoc :inputs (into [reload-field] (:inputs spec))))))
       (generate [_ ctx]
         (when (get-in ctx [:inputs :__reload?])
           (reset! spec-atom (load-spec source)))

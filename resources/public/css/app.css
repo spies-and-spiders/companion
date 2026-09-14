@@ -94,27 +94,16 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .rail__list {
   list-style: none; margin: 0; padding: 0;
   display: flex; flex-direction: column; gap: 0.15rem;
-  /* content-sized (never grows), so Utilities sits directly below the
-     disciplines; may shrink and scroll when the rail runs out of height */
+  /* content-sized (never grows), so each section sits directly below the one
+     before; may shrink and scroll when the rail runs out of height */
   flex: 0 1 auto;
   min-height: 0;
   overflow-y: auto;
 }
 
-/* Loot types stay sized to their entries, capped so a long list scrolls
-   rather than crowding out Utilities; the drag handle on its bottom edge lets
-   a DM re-balance loot vs. utilities to taste. */
-.rail__list--loot {
-  /* no grow/shrink, so a height set via the resize handle sticks instead of
-     being overridden by the flex layout; height stays auto (content-sized)
-     until the DM drags, capped so a long list scrolls */
-  flex: 0 0 auto;
-  max-height: 42vh;
-  min-height: 2rem;
-  resize: vertical;
-}
-
-.rail__eyebrow--utilities { margin-top: 0.6rem; }
+/* layout-transparent, so each list still shrinks within the rail */
+.rail__section { display: contents; }
+.rail__section + .rail__section > .rail__eyebrow { margin-top: 0.6rem; }
 
 .rail__search {
   width: 100%;
@@ -215,7 +204,21 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   display: flex;
   flex-direction: column;
   gap: 1.6rem;
-  max-width: 880px;
+}
+
+/* one card per loot type on the page; a lone card keeps the old reading width */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 30rem), 1fr));
+  gap: 2rem;
+  align-items: start;
+}
+.cards:has(> .card:only-child) { max-width: 880px; }
+.card { display: flex; flex-direction: column; gap: 1.6rem; min-width: 0; }
+.cards:not(:has(> .card:only-child)) > .card {
+  padding: 1.4rem;
+  border: var(--rule);
+  border-radius: var(--radius);
 }
 
 .summon { display: flex; flex-direction: column; gap: 1rem; }
@@ -359,8 +362,8 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .history__preview .sigil { animation: none; }
 /* while a preview is up, dim whatever is on the bench so the two do not read as
    one item. `> .sigil` is the bench copy only — the preview's own is nested. */
-.workbench > .sigil { transition: opacity 0.15s ease; }
-.workbench:has(.history__preview) > .sigil { opacity: 0.25; }
+.card > .sigil { transition: opacity 0.15s ease; }
+.card:has(.history__preview) > .sigil { opacity: 0.25; }
 /* the bench copy is roomy; a popup wants to fit above the list */
 .history__preview .sigil__frame { padding: 1.1rem 1.3rem; }
 .history__preview .sigil__title { font-size: 1.5rem; margin-bottom: 0.8rem; }

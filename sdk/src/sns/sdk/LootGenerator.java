@@ -13,8 +13,10 @@ import java.util.Map;
  */
 public interface LootGenerator {
 
-    /** Static, data-only description of this loot type. */
-    Models.LootSpec lootSpec();
+    /** Static, data-only description of this loot type; none by default. */
+    default Models.LootSpec lootSpec() {
+        return new Models.LootSpec();
+    }
 
     /** Produce loot. */
     Models.ViewModel generate(Map<String, Object> ctx);

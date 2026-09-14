@@ -14,13 +14,14 @@ There are five types of loot plugins, all used to define custom loot:
 | **`:wasm`**    | Run a WASI module on GraalWASM, exchanging the same JSON as `:cli` over its stdio. In-process and works in the native image like `:ffi`, but sandboxed (it sees only the directories you map) and one portable build for every platform. |
 | **`:jar`**     | An external JAR implementing the protocols or interfaces provided. This provides the best integration into the Companion, but requires the use of a JVM language (e.g. Java/Kotlin/Clojure/Scala) **and a JVM build (not the native image)**. |
 
-All five are configured the same way in `config.edn`. Keys every plugin shares
-(`:type`, `:id`, `:label`, `:utility?`, `:hidden?`, …) sit at the top level; the
-ones only one `:type` understands nest under that type's own key — the same rule
-`:storage` and `:reporting` follow for their backend:
+All five are listed under `:tools` in `config.edn`, alongside `:page` entries (see
+[Pages](#pages)). Keys every tool shares (`:type`, `:id`, `:label`, `:section`) sit at
+the top level; what every plugin shares nests under `:generator`, and what only one
+`:type` understands nests under that type's own key — the same rule `:storage` and
+`:reporting` follow for their backend:
 ```clojure
 {:storage    {:backend :file :file {:dir "./state"}}
- :plugins    [{:type :data    :id :uniques :data {:source "data/uniques.edn"}}
+ :tools      [{:type :data    :id :uniques :data {:source "data/uniques.edn"}}
               {:type :cli     :id :weather :label "Weather"
                               :cli {:command ["python3" "examples/cli-plugin/weather.py"]}}
               {:type :ffi     :id :ffi-loot
@@ -38,34 +39,52 @@ ones only one `:type` understands nest under that type's own key — the same ru
 The die defaults to a d100; set `:loot-die-size` to roll a different one. The table cannot have
 more entries than the die has sides — the app refuses to start if it does.
 
-A plugin may declare itself a **utility** — a session tool rather than loot. Utilities
-are grouped separately in the UI and rejected from the `:loot-table` at startup.
-Builtin/`:jar` plugins set `:utility? true` in their loot-spec (Java: the `LootSpec`
-record's `utility` component); `:data` specs set it in the spec file; `:cli`/`:ffi`/`:wasm`
-plugins set it on the config entry.
+A tool's `:id`, `:label` and `:section` come from its config entry alone; a plugin cannot
+set them for itself. `:label` defaults to one derived from the id (`:divine-dust` shows as
+"Divine dust").
 
-A plugin may also be marked **hidden** with `:hidden? true` on its config entry — this
-works for every plugin type, since the engine applies it rather than the generator (so
-a compiled `:jar` plugin can be hidden without touching its code). A hidden type is
-kept out of the UI picker, so the only way to reach it is by rolling the `:loot-table`
-(or from another loot type's action) — useful for loot that should only ever turn up by
-chance. Whichever hidden type is on screen appears on the picker while it is there, so
-the rail always reflects what you're looking at. A hidden type that is in no
-`:loot-table` is unreachable; nothing stops you configuring that.
+The UI rail lists tools under **sections**, named with `:section "Utilities"` (any
+string). Tools with no section are listed under `Loot`, which always comes first; other
+sections follow in alphabetical order. Within a section, tools keep their order in
+`:tools`.
 
-A plugin may declare **manual state** with `:store/manual` in its loot-spec: a table
-the DM fills in by hand rather than one the app generates. The UI renders a generic
-editor for it above the plugin's own form, and the plugin reads it back through the
-store like any other collection.
+Everything else a plugin's UI needs sits under **`:generator`** on its config entry, for
+every plugin type:
+
+| Key                  | What it does |
+|----------------------|--------------|
+| `:hidden?`           | Keeps it off the rail (see below). |
+| `:inputs`            | The form fields whose values are sent as `inputs`. |
+| `:history`           | Overrides the global `:history` setting. |
+| `:generate-label`    | The generate button's text. |
+| `:store/collections` | The state collections it reads or writes. |
+| `:store/manual`      | A DM-maintained table (see below). |
+
+Builtin and `:jar` plugins may declare the same keys in their loot-spec, and `:data`
+specs may declare `:inputs` and `:history` in the spec file; anything set under
+`:generator` overrides them key by key.
+
+A plugin may be marked **hidden** with `:generator {:hidden? true}` — as with every
+`:generator` key, a compiled `:jar` plugin can be hidden without touching its code. A
+hidden type is kept out of the UI picker, so the only way to reach it is by rolling the
+`:loot-table`, from a page, or from another loot type's action — useful for loot that
+should only ever turn up by chance. Whichever hidden type is on screen appears on the
+picker while it is there, so the rail always reflects what you're looking at. A hidden
+type that is in no `:loot-table` or page is unreachable; nothing stops you configuring
+that.
+
+A plugin may declare **manual state** with `:store/manual`: a table the DM fills in by
+hand rather than one the app generates. The UI renders a generic editor for it above
+the plugin's own form, and the plugin reads it back through the store like any other
+collection.
 
 ```clojure
-{:id           :social
- :label        "Group Social"
- :utility?     true
- :store/manual {:key-label "Character"
-                :fields    [{:id :deception :label "Deception" :type :decimal :default 0}
-                            {:id :persuasion :label "Persuasion" :type :decimal :default 0}
-                            {:id :present? :label "Present" :type :bool :default true}]}}
+{:type      :cli :id :social :label "Group Social" :section "Utilities"
+ :cli       {:command ["./social"]}
+ :generator {:store/manual {:key-label "Character"
+                            :fields    [{:id :deception :label "Deception" :type :decimal :default 0}
+                                        {:id :persuasion :label "Persuasion" :type :decimal :default 0}
+                                        {:id :present? :label "Present" :type :bool :default true}]}}}
 ```
 
 Each key is a row and `:fields` are its columns, declared as ordinary input fields and
@@ -84,8 +103,34 @@ default) and is stored, exported and hand-editable exactly like any other collec
 
 The shipped **`:social` builtin** — the Group Deception & Persuasion tracker — is
 exactly this: a manual character table plus one action that rolls 1d20 + the group
-bonus over whoever is present. Add `{:type :builtin :id :social}` to `:plugins` to
-use it.
+bonus over whoever is present, declaring its table in its own loot-spec. Add
+`{:type :builtin :id :social}` to `:tools` to use it.
+
+### Pages
+
+By default every plugin gets a page of its own in the UI. To use several plugins
+together (say, something rolled every combat round alongside something rolled on one
+character's turn), group them on a **page** and each gets its own form and result
+side by side:
+
+```clojure
+{:tools [{:type :data :id :lair-actions :generator {:hidden? true} :data {:source "data/lair.edn"}}
+         {:type :cli :id :weather :cli {:command ["python3" "weather.py"]}}
+         {:type :page :id :combat :label "Combat round" :section "Combat"
+          :page {:tools [:lair-actions :weather]}}]}
+```
+
+A page is an entry in `:tools` like any other, so it sits on the rail wherever you list
+it. `:label` defaults to the id, and `:section` works as it does for a plugin (`Loot`
+when absent). A page lists plugins only, not other pages. A plugin may appear on
+several pages; its inputs, result and history are shared between them. A plugin on no
+page keeps its own page in its section, so hidden plugins can be shown on a page while
+staying off the rail.
+
+Ids must be unique across every tool, pages included, and every listed plugin must
+exist — the app refuses to start otherwise. A page cannot appear on the `:loot-table`.
+Rolling the `:loot-table` shows the result on the page already on screen if it holds
+the rolled type, otherwise on the first page that does.
 
 ### Result history
 
@@ -103,13 +148,11 @@ drop one, **Clear** to empty the plugin's history. When `:history` says so, a
 | `:button`    | Only when **Save to history** is pressed. The default. |
 | `:never`     | Not at all.                                    |
 
-Set it globally in config, and override it per plugin in that plugin's loot-spec
-(`:data` specs set it in the spec file; `:cli`/`:ffi`/`:wasm` plugins on their config entry,
-as with `:utility?`):
+Set it globally in config, and override it per plugin under `:generator`:
 
 ```clojure
 {:history :on-report
- :plugins [{:type :data :id :uniques :data {:source "data/uniques.edn"}}]}
+ :tools   [{:type :data :id :uniques :data {:source "data/uniques.edn"} :generator {:history :always}}]}
 ```
 
 `history` is reserved: don't name a plugin's own `:store/collections` after it.
@@ -240,14 +283,14 @@ and extend without depending on the app.
 
 ### `LootGenerator` (required)
 ```clojure
-(loot-spec [this])   ; => {:id :relics :label "Relic" :inputs [...]}
+(loot-spec [this])   ; => {:inputs [...]}, or {} — the :generator keys, all optional
 (generate  [this ctx]) ; => a view-model
 ```
 
 `ctx` is `{:rng :store :config :inputs}`:
 - `:rng` — a randy RNG (or use randy's default-rng functions).
 - `:store` — the `Store` (see below) for stateful loot.
-- `:inputs` — values collected from the loot-spec's declared `:inputs`.
+- `:inputs` — values collected from the declared `:inputs`.
 
 There is no renderer on the context, because there is no rendering on the
 server: return templates plus their vars, and the browser renders them.
@@ -313,11 +356,12 @@ See [docs/storage.md](docs/storage.md).
 
 ---
 
-## `loot-spec` inputs (drive the generic form)
+## `:inputs` (drive the generic form)
+
+Declared under a tool's `:generator`, or in a plugin's loot-spec:
 
 ```clojure
-{:id :relics :label "Relic"
- :inputs [{:id :character :label "Character" :type :enum :options ["Thoros" "Simo"]}
+{:inputs [{:id :character :label "Character" :type :enum :options ["Thoros" "Simo"]}
           {:id :lucky? :label "Lucky" :type :bool}]}
 ```
 Field `:type` is one of `:enum` `:int` `:decimal` `:text` `:bool`. The collected
@@ -500,8 +544,8 @@ filesystem path) — or written straight into the config under `:inline`, which
 takes precedence over `:source` when both are given:
 
 ```clojure
-{:label    "Unique"
- :inputs   []                              ; optional loot-spec inputs
+{:inputs   []                              ; optional; :generator {:inputs …} overrides
+ :history  :always                         ; optional; :generator {:history …} overrides
  :items    [{:name "Pacifist's Vow" :base "armour"
              :mods [{:effect "+1 AB…" :metadata ["accuracy"]}]}]
  :take     1                               ; how many to draw (default 1)
@@ -609,13 +653,13 @@ The one exception is `loot/actions`, covered below.
   which shows `item/vars` and `loot/state` across an action.
 
 An external plugin has no loot-spec of its own, so it declares the form fields it
-needs on its **config entry**, in the same shape as a loot-spec's `:inputs`; the
-engine renders the form and sends the collected values as the request's `inputs`
+needs under its config entry's **`:generator`**, in the same shape as a loot-spec's
+`:inputs`; the engine renders the form and sends the collected values as the request's `inputs`
 (an `:int` or `:decimal` field arrives as a JSON number, not the form's string):
 
 ```json
-{"type": "cli", "id": "insight", "label": "Insight Checks", "utility?": true,
- "inputs": [{"id": "socialBonus", "label": "Speaker's social bonus", "type": "int"}],
+{"type": "cli", "id": "insight", "label": "Insight Checks", "section": "Utilities",
+ "generator": {"inputs": [{"id": "socialBonus", "label": "Speaker's social bonus", "type": "int"}]},
  "cli": {"command": ["./5e-cli", "-data", "data", "insight"]}}
 ```
 
@@ -681,7 +725,7 @@ key. The engine applies it only once the output has validated, so a plugin that
 errors changes nothing. Every backend works the same way, including `:browser` —
 the plugin never learns which is configured, and never parses or writes EDN.
 
-Declare state one of two ways on the config entry:
+Declare state one of two ways under the config entry's `generator`:
 
 - **`store/collections`** — the collections to read, e.g. `["crystals"]`.
 - **`store/manual`** — a DM-maintained table the UI renders an editor for, held
@@ -690,12 +734,12 @@ Declare state one of two ways on the config entry:
   owns several records.
 
 ```json
-{"type": "cli", "id": "crystals", "label": "Crystal Flares", "utility?": true,
+{"type": "cli", "id": "crystals", "label": "Crystal Flares", "section": "Utilities",
  "cli": {"command": ["./5e-cli", "crystal", "procs"]},
- "inputs": [{"id": "rounds", "label": "Combat rounds", "type": "int", "default": 10}],
- "store/manual": {"key-label": "Character",
-                  "fields": [{"id": "chance", "label": "Flare chance (%)", "type": "int",
-                              "default": 10}]}}
+ "generator": {"inputs": [{"id": "rounds", "label": "Combat rounds", "type": "int", "default": 10}],
+               "store/manual": {"key-label": "Character",
+                                "fields": [{"id": "chance", "label": "Flare chance (%)", "type": "int",
+                                            "default": 10}]}}}
 ```
 
 `examples/cli-plugin/tally.py` is a runnable version of both directions.
@@ -715,15 +759,18 @@ Depend on this module, implement `LootGenerator`, and expose a factory:
 
 (defn generator [_plugin-config]
   (reify p/LootGenerator
-    (loot-spec [_] {:id :custom :label "Custom"})
+    (loot-spec [_] {})                    ; or any :generator keys, e.g. {:inputs [...]}
     (generate  [_ ctx] {:loot/title "Hello from a jar"})))
 ```
 
 Build a jar, point `:jar {:path ... :entrypoint ...}` at it, and it loads at startup.
+Its id, label and section come from the config entry; its loot-spec only declares
+`:generator` keys, and the config entry's `:generator` overrides those.
 
 A plugin with no Clojure in it (e.g. pure Java/Kotlin) can skip the factory var:
 implement the `sns.sdk.LootGenerator` interface on a class with a 0-arity
-constructor and name it with `:class` instead:
+constructor and name it with `:class` instead. `lootSpec()` defaults to an empty
+`Models.LootSpec`, so override it only to declare `:generator` keys:
 
 ```clojure
 {:type :jar :id :custom :jar {:path "plugins/custom.jar" :class "my.plugin.CustomLoot"}}

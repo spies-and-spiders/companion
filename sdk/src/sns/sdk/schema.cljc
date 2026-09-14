@@ -8,6 +8,22 @@
     [malli.transform :as mt]
     [malli.util :as mu]))
 
+(defn- tool
+  "A config `:tools` entry of `type`: the keys every tool shares, plus `entries`."
+  [type & entries]
+  (into [:map
+         [:type [:= type]]
+         [:id keyword?]
+         [:label {:optional true} string?]
+         ;; The UI rail section it is listed under ("Loot" when absent).
+         [:section {:optional true} string?]]
+        entries))
+
+(defn- generator-tool
+  "A `tool` that generates loot, so it may configure its `:generator`."
+  [type & entries]
+  (apply tool type [:generator {:optional true} ::loot-spec] entries))
+
 (def schemas
   "The project's named schemas, keyed by qualified keyword."
   {;; --- loot specifications (drive the generic input forms) ---
@@ -23,17 +39,15 @@
    ;; generation, only when reported, only on the manual button, or not at all.
    ::history [:enum :always :on-report :button :never]
 
+   ;; What a loot generator declares about itself, beyond its config's `:id`,
+   ;; `:label` and `:section`. A plugin's `loot-spec` returns it, and a tool's
+   ;; config entry sets it under `:generator`, key by key overriding the
+   ;; plugin's own. The engine adds the config's id, label and section to what
+   ;; the UI receives.
    ::loot-spec [:map
-                [:id keyword?]
-                [:label string?]
-                 ;; Utilities are session tools (e.g. the group social roller)
-                 ;; rather than loot: grouped separately in the UI and barred
-                 ;; from the :loot-table.
-                [:utility? {:optional true} boolean?]
                  ;; Hidden types are kept out of the UI picker, so they are only
                  ;; reached by rolling the :loot-table (or by another type's
-                 ;; action). Set on the plugin's config entry; the engine folds
-                 ;; it into the spec the UI receives.
+                 ;; action), or from a page.
                 [:hidden? {:optional true} boolean?]
                  ;; Overrides the UI's "Generate <label>" button text — useful
                  ;; when generating means something else (e.g. "Add character").
@@ -48,6 +62,7 @@
                 [:store/manual {:optional true} ::manual-state]
                  ;; Overrides the config's global `:history` for this type.
                 [:history {:optional true} ::history]
+                 ;; The form fields whose collected values are sent as `inputs`.
                 [:inputs {:optional true} [:sequential ::field]]]
 
    ;; --- manually-managed state (the `:store/manual` editor) ---
@@ -229,8 +244,6 @@
                    [:item ::data-item]]
 
    ::data-spec [:map
-                [:label string?]
-                [:utility? {:optional true} boolean?]
                 [:history {:optional true} ::history]
                 [:inputs {:optional true} [:sequential ::field]]
                 [:items [:sequential [:map-of keyword? any?]]]
@@ -252,95 +265,56 @@
 
    ;; Dispatch coerces `:type` to a keyword so a JSON config (where it is the
    ;; string "data" etc.) routes to the right branch during decoding.
-   ;; `:hidden?` works on every plugin type — it is applied by the engine rather
-   ;; than the generator, so even a compiled :jar plugin can be hidden.
-   ::plugin [:multi {:dispatch (fn [p] (some-> (:type p) keyword))}
-                 ;; Keys every plugin shares stay at the top level; the ones
-                 ;; only its :type understands nest under that type's key.
-                 ;; A :data plugin's spec comes either from a :source file or
-                 ;; written :inline (which wins when both are given).
-             [:data [:map
-                     [:type [:= :data]]
-                     [:id keyword?]
-                     [:hidden? {:optional true} boolean?]
-                     [:data [:and
-                             [:map
-                              [:source {:optional true} string?]
-                              [:inline {:optional true} ::data-spec]]
-                             [:fn {:error/message "a :data plugin needs a :source or an :inline spec"}
-                              (fn [d] (boolean (or (:source d) (:inline d))))]]]]]
-             [:cli [:map
-                    [:type [:= :cli]]
-                    [:id keyword?]
-                    [:hidden? {:optional true} boolean?]
-                    [:cli [:map [:command [:sequential string?]]]]
-                    [:utility? {:optional true} boolean?]
-                    [:history {:optional true} ::history]
-                    [:label {:optional true} string?]
-                    [:store/collections {:optional true} [:sequential keyword?]]
-                    [:store/manual {:optional true} ::manual-state]
-                        ;; An external plugin has no loot-spec of its own, so it
-                        ;; declares its input fields here; the engine folds them
-                        ;; into the spec and sends the collected values as
-                        ;; `inputs`.
-                    [:inputs {:optional true} [:sequential ::field]]]]
-             ;; A :wasm plugin is a WASI command module run on GraalWASM,
-             ;; sharing the stdio JSON contract with :cli. `:args` are its
-             ;; program arguments and `:dirs` maps guest paths it may read to
-             ;; host directories (none means no filesystem). Works in native
-             ;; images (unlike :jar), in-process (unlike :cli).
-             [:wasm [:map
-                     [:type [:= :wasm]]
-                     [:id keyword?]
-                     [:hidden? {:optional true} boolean?]
-                     [:wasm [:map
-                             [:module string?]
-                             [:args {:optional true} [:sequential string?]]
-                             [:dirs {:optional true} [:map-of [:or keyword? string?] string?]]]]
-                     [:utility? {:optional true} boolean?]
-                     [:history {:optional true} ::history]
-                     [:label {:optional true} string?]
-                     [:store/collections {:optional true} [:sequential keyword?]]
-                     [:store/manual {:optional true} ::manual-state]
-                     [:inputs {:optional true} [:sequential ::field]]]]
-                 ;; An :ffi plugin calls a C-ABI symbol in a shared library
-                 ;; (.so/.dylib/.dll): `(char* request_json) -> char* output_json`.
-                 ;; If `free-symbol` is given it is called on the returned pointer
-                 ;; after the output is read; otherwise the library owns that
-                 ;; memory. Works in native images (unlike :jar).
-             [:ffi [:map
-                    [:type [:= :ffi]]
-                    [:id keyword?]
-                    [:hidden? {:optional true} boolean?]
-                    [:ffi [:map
-                           [:library string?]
-                           [:symbol string?]
-                           [:free-symbol {:optional true} string?]]]
-                    [:utility? {:optional true} boolean?]
-                    [:history {:optional true} ::history]
-                    [:label {:optional true} string?]
-                    [:store/collections {:optional true} [:sequential keyword?]]
-                    [:store/manual {:optional true} ::manual-state]
-                    [:inputs {:optional true} [:sequential ::field]]]]
-                 ;; A :jar plugin names its generator either as a Clojure
-                 ;; :entrypoint factory var or as a :class with a 0-arity
-                 ;; constructor (for pure-JVM-language plugins).
-             [:jar [:map
-                    [:type [:= :jar]]
-                    [:id keyword?]
-                    [:hidden? {:optional true} boolean?]
-                    [:jar [:and
-                           [:map
-                            [:path string?]
-                            [:entrypoint {:optional true} symbol?]
-                            [:class {:optional true} string?]]
-                           [:fn {:error/message "a :jar plugin needs an :entrypoint or a :class"}
-                            (fn [j] (boolean (or (:entrypoint j) (:class j))))]]]]]
-             [:builtin [:map
-                        [:type [:= :builtin]]
-                        [:id keyword?]
-                        [:hidden? {:optional true} boolean?]
-                        [:builtin {:optional true} [:map [:entrypoint {:optional true} symbol?]]]]]]
+   ;; `:type`, `:id`, `:label` and `:section` apply to every tool and sit at the
+   ;; top level; what only one :type understands nests under that type's key,
+   ;; and what every loot generator shares nests under `:generator`.
+   ::tool [:multi {:dispatch (fn [p] (some-> (:type p) keyword))}
+           ;; A :page shows other (non-page) tools side by side; a plugin no
+           ;; page lists gets a page of its own.
+           [:page (tool :page [:page [:map [:tools [:sequential {:min 1} keyword?]]]])]
+           ;; A :data plugin's spec comes either from a :source file or
+           ;; written :inline (which wins when both are given).
+           [:data (generator-tool :data
+                                  [:data [:and
+                                          [:map
+                                           [:source {:optional true} string?]
+                                           [:inline {:optional true} ::data-spec]]
+                                          [:fn {:error/message "a :data plugin needs a :source or an :inline spec"}
+                                           (fn [d] (boolean (or (:source d) (:inline d))))]]])]
+           [:cli (generator-tool :cli [:cli [:map [:command [:sequential string?]]]])]
+           ;; A :wasm plugin is a WASI command module run on GraalWASM,
+           ;; sharing the stdio JSON contract with :cli. `:args` are its
+           ;; program arguments and `:dirs` maps guest paths it may read to
+           ;; host directories (none means no filesystem). Works in native
+           ;; images (unlike :jar), in-process (unlike :cli).
+           [:wasm (generator-tool :wasm
+                                  [:wasm [:map
+                                          [:module string?]
+                                          [:args {:optional true} [:sequential string?]]
+                                          [:dirs {:optional true} [:map-of [:or keyword? string?] string?]]]])]
+           ;; An :ffi plugin calls a C-ABI symbol in a shared library
+           ;; (.so/.dylib/.dll): `(char* request_json) -> char* output_json`.
+           ;; If `free-symbol` is given it is called on the returned pointer
+           ;; after the output is read; otherwise the library owns that
+           ;; memory. Works in native images (unlike :jar).
+           [:ffi (generator-tool :ffi
+                                 [:ffi [:map
+                                        [:library string?]
+                                        [:symbol string?]
+                                        [:free-symbol {:optional true} string?]]])]
+           ;; A :jar plugin names its generator either as a Clojure
+           ;; :entrypoint factory var or as a :class with a 0-arity
+           ;; constructor (for pure-JVM-language plugins).
+           [:jar (generator-tool :jar
+                                 [:jar [:and
+                                        [:map
+                                         [:path string?]
+                                         [:entrypoint {:optional true} symbol?]
+                                         [:class {:optional true} string?]]
+                                        [:fn {:error/message "a :jar plugin needs an :entrypoint or a :class"}
+                                         (fn [j] (boolean (or (:entrypoint j) (:class j))))]]])]
+           [:builtin (generator-tool :builtin
+                                     [:builtin {:optional true} [:map [:entrypoint {:optional true} symbol?]]])]]
 
    ::loot-entry [:map [:id keyword?] [:weight {:optional true} number?]]
 
@@ -351,7 +325,7 @@
    ::randoms [:map-of keyword? [:sequential any?]]
 
    ;; --- reporting (send a generated item to an external destination) ---
-   ;; A `:multi` like `::plugin` so new backends slot in; dispatch coerces the
+   ;; A `:multi` like `::tool` so new backends slot in; dispatch coerces the
    ;; backend to a keyword for JSON configs.
    ::reporting [:multi {:dispatch (fn [r] (some-> (:backend r) keyword))}
                 [:discord [:map
@@ -364,7 +338,7 @@
    ::config [:map
              [:server {:optional true} ::server]
              [:storage {:optional true} ::storage]
-             [:plugins [:sequential ::plugin]]
+             [:tools [:sequential ::tool]]
              [:randoms {:optional true} ::randoms]
              [:words {:optional true} [:sequential string?]]
              [:extra-words {:optional true} [:sequential string?]]
