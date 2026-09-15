@@ -47,7 +47,7 @@
                :sending "Sending…"
                :sent    "Sent ✓"
                (or (:report-label state) "Send"))])])
-       (render/history id rows (get-in state [:history-hover id]))])))
+       (render/history id rows (state/previewed state id) (= id (first (:history-lock state))))])))
 
 (defn- view [state]
   (let [ids (state/page-tools state (:page state))]
@@ -70,5 +70,11 @@
 (defn init! []
   (r/set-dispatch! (fn [event-data actions] (nxr/dispatch state/store event-data actions)))
   (add-watch state/store ::render (fn [_ _ _ state] (render! state)))
+  (let [lock! #(nxr/dispatch state/store {} [[:ui/history-lock %]])]
+    (js/addEventListener "keydown" #(when (= "Alt" (.-key %)) (lock! true)))
+    (js/addEventListener "keyup" #(when (and (= "Alt" (.-key %))
+                                             (not (js/document.querySelector ".history__preview:hover")))
+                                    (lock! false)))
+    (js/addEventListener "blur" #(lock! false)))
   (nxr/dispatch state/store {} [[:fx/load-loot-types] [:fx/load-capabilities]])
   (render! @state/store))

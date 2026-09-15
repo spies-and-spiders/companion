@@ -219,7 +219,11 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   padding: 1.4rem;
   border: var(--rule);
   border-radius: var(--radius);
+  max-height: 50vh;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
+.card > * { flex-shrink: 0; }
 
 .summon { display: flex; flex-direction: column; gap: 1rem; }
 .summon__eyebrow {
@@ -314,7 +318,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 
 /* --- result history -------------------------------------------------------- */
 
-.history { position: relative; margin-top: 1.6rem; }
+.history { margin-top: 1.6rem; }
 .history__head { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; }
 .history__list {
   list-style: none;
@@ -349,16 +353,19 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   text-align: right;
   font-family: var(--mono); font-size: 0.66rem; color: var(--gilt);
 }
-/* the hovered row, rendered in full as a popup above the list — out of flow, so
-   revealing it never resizes the page and pulls the cursor off the row. A
-   sibling of the list rather than a child, so its scroller cannot clip it. */
+/* the hovered row, rendered in full at the centre of the screen — fixed, so
+   revealing it never resizes the page and no card scroller can clip it */
 .history__preview {
-  position: absolute; z-index: 5;
-  bottom: calc(100% + 0.45rem); left: 0; right: 0;
-  max-height: 50vh; overflow: hidden;
+  position: fixed; z-index: 5;
+  top: 50%; left: 50%; translate: -50% -50%;
+  width: min(40rem, calc(100vw - 2rem));
+  max-height: 80vh; overflow: hidden;
   pointer-events: none;
   filter: drop-shadow(0 8px 20px rgb(0 0 0 / 0.55));
 }
+.history__preview--locked { pointer-events: auto; }
+/* the preview clips its overflow, so the bubble opens downwards, into the box */
+.history__preview .words__text { bottom: auto; top: calc(100% + 0.45rem); }
 .history__preview .sigil { animation: none; }
 /* while a preview is up, dim whatever is on the bench so the two do not read as
    one item. `> .sigil` is the bench copy only — the preview's own is nested. */

@@ -463,7 +463,7 @@
         ;; so it stays off the rail — except while it is the page on screen,
         ;; where it appears (in its config position) so the rail keeps showing
         ;; what the workbench holds.
-        plugins (for [spec (state/unpaged state)
+        plugins (for [spec (:loot-types state)
                       :when (and (or (not (:hidden? spec)) (= page (:id spec)))
                                  (match? (:label spec)))]
                   (assoc spec :glyph "◆"))]
@@ -515,15 +515,21 @@
 (defn- history-preview
   "The hovered row's result, rendered as it appears on the bench — the whole
    item, for when the one-line row is not enough to recognise it. Actions are
-   dropped: this is a look at a stored result, not the bench copy of it."
-  [vm]
+   dropped: this is a look at a stored result, not the bench copy of it. A
+   pinned preview takes the pointer, so its text can be selected."
+  [vm locked?]
   (when vm
-    [:div.history__preview (result (dissoc vm :loot/actions))]))
+    [:div.history__preview
+     (when locked?
+       {:class "history__preview--locked"
+        :on    {:mouseleave [[:ui/history-lock [:event/alt?]]]}})
+     (result (dissoc vm :loot/actions))]))
 
 (defn history
   "The stored results for loot type `plugin`, newest first. Clicking one puts it
-   back on the bench; hovering one previews it in full above the list."
-  [plugin entries hovered]
+   back on the bench; hovering one previews it in full, and holding Alt pins
+   that preview."
+  [plugin entries hovered locked?]
   (when (seq entries)
     [:section.history
      [:div.history__head
@@ -533,7 +539,7 @@
       (map-indexed
         (fn [idx {:keys [at view-model]}]
           [:li.history__row {:replicant/key (str at "-" idx)
-                             :on            {:mouseenter [[:ui/history-hover plugin idx]]
+                             :on            {:mouseenter [[:ui/history-hover plugin idx [:event/alt?]]]
                                              :mouseleave [[:ui/history-hover plugin nil]]}}
            [:button.history__entry {:on {:click [[:ui/history-restore plugin idx]]}}
             [:span.history__time (.toLocaleString (js/Date. at))]
@@ -546,4 +552,4 @@
                                      :on   {:click [[:ui/history-delete plugin idx]]}}
             "✕"]])
         entries)]
-     (history-preview (when hovered (:view-model (nth (vec entries) hovered nil))))]))
+     (history-preview (when hovered (:view-model (nth (vec entries) hovered nil))) locked?)]))

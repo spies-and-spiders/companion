@@ -123,14 +123,14 @@ side by side:
 A page is an entry in `:tools` like any other, so it sits on the rail wherever you list
 it. `:label` defaults to the id, and `:section` works as it does for a plugin (`Loot`
 when absent). A page lists plugins only, not other pages. A plugin may appear on
-several pages; its inputs, result and history are shared between them. A plugin on no
-page keeps its own page in its section, so hidden plugins can be shown on a page while
-staying off the rail.
+several pages; its inputs, result and history are shared between them. Every plugin
+also keeps its own page in its section; set `:generator {:hidden? true}` to show it
+only on its pages.
 
 Ids must be unique across every tool, pages included, and every listed plugin must
 exist — the app refuses to start otherwise. A page cannot appear on the `:loot-table`.
 Rolling the `:loot-table` shows the result on the page already on screen if it holds
-the rolled type, otherwise on the first page that does.
+the rolled type, otherwise on the type's own page.
 
 ### Result history
 

@@ -14,7 +14,8 @@
          :results       {}    ; loot-type id -> its view-model on the bench (session-only)
          :history       {}    ; the store's history collection: id name -> [{:at :view-model}]
          :history-mode  :button ; when generated results join the history
-         :history-hover {}    ; loot-type id -> index of the history row under the cursor
+         :history-hover nil   ; [loot-type id, row index] of the history row under the cursor
+         :history-lock  nil   ; the same, pinned on screen while Alt is held
          :error         nil
          :loading       {}    ; loot-type id -> generating?
          :report?       false ; whether a reporter (e.g. Discord) is configured
@@ -29,22 +30,25 @@
 (defn spec [{:keys [loot-types]} id]
   (some #(when (= id (:id %)) %) loot-types))
 
-(defn unpaged
-  "The loot-type specs no configured page lists; each is a page of its own."
-  [{:keys [loot-types pages]}]
-  (let [paged (into #{} (mapcat :tools) pages)]
-    (remove (comp paged :id) loot-types)))
+(defn previewed
+  "The index of loot type `id`'s history row on preview: the pinned row while Alt
+   is held, otherwise the hovered one."
+  [{:keys [history-hover history-lock]} id]
+  (let [[row-id idx] (or history-lock history-hover)]
+    (when (= id row-id) idx)))
 
-(defn- all-pages [state]
-  (concat (:pages state) (map (fn [{:keys [id]}] {:id id :tools [id]}) (unpaged state))))
+(defn- all-pages
+  "The configured pages, plus a page of its own for every loot type."
+  [state]
+  (concat (:pages state) (map (fn [{:keys [id]}] {:id id :tools [id]}) (:loot-types state))))
 
 (defn page-tools [state page]
   (some #(when (= page (:id %)) (:tools %)) (all-pages state)))
 
 (defn page-for
   "Where loot type `id` is shown: the page on screen if it is there already,
-   otherwise the first page holding it."
+   otherwise its own page."
   [state id]
   (if (some #{id} (page-tools state (:page state)))
     (:page state)
-    (some #(when (some #{id} (:tools %)) (:id %)) (all-pages state))))
+    id))

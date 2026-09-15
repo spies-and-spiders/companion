@@ -26,6 +26,10 @@
                            (fn [{:replicant/keys [dom-event]}]
                              (some-> dom-event .-key)))
 
+(nxr/register-placeholder! :event/alt?
+                           (fn [{:replicant/keys [dom-event]}]
+                             (some-> dom-event .-altKey)))
+
 (nxr/register-placeholder! :event/raw
                            (fn [{:replicant/keys [dom-event]}]
                              dom-event))
@@ -404,8 +408,16 @@
                               (into (subvec rows 0 idx) (subvec rows (inc idx)))]]))))
 
 (nxr/register-action! :ui/history-hover
-                      (fn [_state id idx]
-                        [[:fx/assoc-in [:history-hover id] idx]]))
+                      (fn [state id idx alt?]
+                        (let [row (when idx [id idx])]
+                          (cond-> [[:fx/assoc-in [:history-hover] row]]
+                            (and alt? row (not (:history-lock state)))
+                            (conj [:fx/assoc-in [:history-lock] row])))))
+
+(nxr/register-action! :ui/history-lock
+                      (fn [state lock?]
+                        [[:fx/assoc-in [:history-lock]
+                          (when lock? (or (:history-lock state) (:history-hover state)))]]))
 
 ;; A nil row retracts the key, so clearing leaves nothing behind in the store.
 (nxr/register-action! :ui/history-clear
