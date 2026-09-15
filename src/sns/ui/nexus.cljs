@@ -379,6 +379,20 @@
                                vec)]
                          [:fx/assoc-in [:report-status id] nil]]))
 
+(nxr/register-action! :ui/add-result-item
+                      (fn [state id si]
+                        (let [path [:results id :loot/sections si :section/items]]
+                          [[:fx/assoc-in path (conj (vec (get-in state path)) {:item/body ""})]
+                           [:fx/assoc-in [:report-status id] nil]])))
+
+(nxr/register-action! :ui/remove-result-item
+                      (fn [state id si ii]
+                        (let [path  [:results id :loot/sections si :section/items]
+                              items (vec (get-in state path))]
+                          (when (< ii (count items))
+                            [[:fx/assoc-in path (into (subvec items 0 ii) (subvec items (inc ii)))]
+                             [:fx/assoc-in [:report-status id] nil]]))))
+
 ;; Dispatched directly from a view-model's :action/event vector. Sends the
 ;; current (possibly DM-edited) result alongside the action's own static
 ;; params, so the plugin can see edits made since generation (issue #8).
@@ -411,8 +425,8 @@
                       (fn [state id idx alt?]
                         (let [row (when idx [id idx])]
                           (cond-> [[:fx/assoc-in [:history-hover] row]]
-                            (and alt? row (not (:history-lock state)))
-                            (conj [:fx/assoc-in [:history-lock] row])))))
+                                  (and alt? row (not (:history-lock state)))
+                                  (conj [:fx/assoc-in [:history-lock] row])))))
 
 (nxr/register-action! :ui/history-lock
                       (fn [state lock?]

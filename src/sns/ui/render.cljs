@@ -301,7 +301,13 @@
   [:details.fold {:replicant/key (str "text-" si "-" ii)}
    [:summary.fold__summary
     [:span.fold__preview preview]
-    [:span.fold__hint "text"]]
+    [:span.fold__hint "text"]
+    ;; inside the summary, so preventing the default keeps the fold from toggling
+    [:button.list-row__remove
+     {:type  "button"
+      :title "Remove item"
+      :on    {:click [[:fx/prevent-default [:event/raw]] [:ui/remove-result-item plugin si ii]]}}
+     "✕"]]
    [:div.fold__body
     (edit-field plugin "Item title" [:loot/sections si :section/items ii :item/title] title false)
     (edit-field plugin "Body" [:loot/sections si :section/items ii :item/body] body true)
@@ -310,7 +316,7 @@
 (defn- edit-item [plugin loot-vars si ii {:item/keys [title body vars] :as item}]
   (let [all     (merge loot-vars vars)
         rendered #(some-> % (template/render all) str str/trim not-empty)
-        preview (str (some-> (rendered title) (str ": ")) (rendered body))]
+        preview (or (not-empty (str (some-> (rendered title) (str ": ")) (rendered body))) "New item")]
     [:li.entry.entry--edit {:replicant/key ii}
      (var-grid plugin "entry__vars" [:loot/sections si :section/items ii :item/vars] vars)
      (edit-text plugin si ii item preview)]))
@@ -329,7 +335,11 @@
      [:span.field__label "Secret"]
      (control nil secret? {:type :bool}
               [:ui/edit-result plugin [:loot/sections si :section/secret?] :bool])]]
-   [:ul.entries (map-indexed (fn [ii item] (edit-item plugin loot-vars si ii item)) items)]])
+   [:ul.entries (map-indexed (fn [ii item] (edit-item plugin loot-vars si ii item)) items)]
+   [:button.list-field__add
+    {:type "button"
+     :on   {:click [[:ui/add-result-item plugin si]]}}
+    "+ Add item"]])
 
 (defn result-editor
   "Render plugin `plugin`'s result view-model as an editable form. Behavioural
