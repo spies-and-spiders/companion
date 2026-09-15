@@ -36,16 +36,19 @@
 (defn- add-section
   "Renders one section's items, and its metadata keyed by whatever the reader
    can see: the item's title, the heading of a section holding it alone, or —
-   failing both — a number put in front of the body."
+   failing both — a number put in front of the body. Once one item needs a
+   number, every unkeyed item in the section gets one, keeping the list intact."
   [acc {:section/keys [heading items]}]
-  (let [single? (= 1 (count items))
-        step    (fn [[texts n metas] {:item/keys [title metadata] :as item}]
-                  (let [k      (or title (when single? heading))
-                        number (when (and (seq metadata) (nil? k)) (inc n))]
-                    [(conj texts (item-text number item))
-                     (or number n)
-                     (cond-> metas
-                             (seq metadata) (conj (str "**" (or k number) "** " (chips metadata))))]))
+  (let [single?   (= 1 (count items))
+        key-of    (fn [{:item/keys [title]}] (or title (when single? heading)))
+        numbered? (some #(and (seq (:item/metadata %)) (nil? (key-of %))) items)
+        step      (fn [[texts n metas] {:item/keys [metadata] :as item}]
+                    (let [k      (key-of item)
+                          number (when (and numbered? (nil? k)) (inc n))]
+                      [(conj texts (item-text number item))
+                       (or number n)
+                       (cond-> metas
+                               (seq metadata) (conj (str "**" (or k number) "** " (chips metadata))))]))
         [texts n metas] (reduce step [[] (:n acc) []] items)]
     (-> (assoc acc :n n)
         (update :sections conj {:heading heading :items texts})

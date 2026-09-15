@@ -75,7 +75,15 @@
       (is (str/includes? (content message) "1. first affix"))
       (is (str/includes? (content message) "2. second affix"))
       (is (str/includes? (content message) "**1** `[1; +6/1]`"))
-      (is (str/includes? (content message) "**2** `[4; +1/4]`")))))
+      (is (str/includes? (content message) "**2** `[4; +1/4]`"))))
+  (testing "an item without metadata keeps its place in a numbered list"
+    (let [[message] (discord/view-model->messages
+                      {:loot/title    "Relic"
+                       :loot/sections [{:section/items [{:item/body "A" :item/metadata ["a"]}
+                                                        {:item/body "B"}
+                                                        {:item/body "C" :item/metadata ["c"]}]}]})]
+      (is (str/includes? (content message) "1. A\n\n2. B\n\n3. C"))
+      (is (str/includes? (content message) "**3** `c`")))))
 
 (deftest minimal-view-model
   (testing "a title-only view-model still produces a single valid message"
