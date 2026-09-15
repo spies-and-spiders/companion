@@ -143,9 +143,9 @@
                                   (mapv #(build-section rng entry-vars % entries single) sections)))))
 
 (defn generator
-  "Build a `LootGenerator` for a `:data` plugin from an inline `spec`."
+  "Build a `Generator` for a `:data` plugin from an inline `spec`."
   [_id spec]
-  (reify p/LootGenerator
+  (reify p/Generator
     (loot-spec [_]
       (select-keys spec [:history :inputs]))
     (generate [_ ctx]
@@ -158,12 +158,12 @@
    :default false})
 
 (defn file-generator
-  "Build a `LootGenerator` for a `:data` plugin whose spec is loaded from
+  "Build a `Generator` for a `:data` plugin whose spec is loaded from
    `source`. Holds the spec in an atom and exposes a `:__reload?` input that,
    when set, re-reads `source` into that atom before generating."
   [_id source]
   (let [spec-atom (atom (load-spec source))]
-    (reify p/LootGenerator
+    (reify p/Generator
       (loot-spec [_]
         (let [spec @spec-atom]
           (-> (select-keys spec [:history])

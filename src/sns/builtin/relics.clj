@@ -3,7 +3,7 @@
    ranked up over time. Each relic carries a mod whose vars hold their own
    ranks, and its template — with `{{#gte}}` for the parts that appear
    once a var is high enough — is rendered in the browser against them. This
-   exercises the full Store + LootAction loop.
+   exercises the full Store + Action loop.
 
    Also the worked example of collection-based state: each relic is one entry in
    the `:relics` collection, keyed by its id, with its ranks a plain map, read
@@ -87,13 +87,13 @@
 (defn generator
   [_plugin]
   (reify
-    p/LootGenerator
+    p/Generator
     (loot-spec [_] {})
     (generate [_ {:keys [rng]}]
       (let [template (r/sample rng templates)
             relic    (assoc template :id (str (random-uuid)) :ranks {})]
         (persisting relic (view-model rng relic))))
-    p/LootAction
+    p/Action
     (handle-action [_ {:keys [store rng]} action {:keys [relic-id choice]}]
       (case action
         :rank-up

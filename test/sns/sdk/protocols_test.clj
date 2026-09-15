@@ -10,7 +10,7 @@
     [sns.sdk.schema :as schema])
   (:import
     (sns.sdk Models$Action Models$Field Models$Item Models$ItemVar
-             Models$LootSpec Models$ManualState Models$Section Models$ViewModel)))
+             Models$Spec Models$ManualState Models$Section Models$ViewModel)))
 
 (def ^:private view-model->clj #'p/view-model->clj)
 (def ^:private clj->view-model #'p/clj->view-model)
@@ -62,11 +62,11 @@
 
 (deftest java-loot-spec-carries-the-whole-schema
   (let [spec (loot-spec->clj
-               (Models$LootSpec. true "Add character"
-                                 [(Models$Field. "who" "Who" "text" nil nil true)]
-                                 "always" ["relics" "tally"]
-                                 (Models$ManualState. "Character" true
-                                                      [(Models$Field. "chance" "Chance" "int")])))]
+               (Models$Spec. true "Add character"
+                             [(Models$Field. "who" "Who" "text" nil nil true)]
+                             "always" ["relics" "tally"]
+                             (Models$ManualState. "Character" true
+                                                  [(Models$Field. "chance" "Chance" "int")])))]
     (is (schema/validate ::schema/loot-spec spec))
     (is (= {:hidden?           true
             :generate-label    "Add character"
@@ -82,4 +82,4 @@
   (testing "a minimal record produces no empty keys, so the spec and view-model
             validate as the sparse maps they are"
     (is (= {:loot/title "Bare"} (view-model->clj (Models$ViewModel. "Bare"))))
-    (is (= {} (loot-spec->clj (Models$LootSpec.))))))
+    (is (= {} (loot-spec->clj (Models$Spec.))))))

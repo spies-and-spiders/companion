@@ -76,7 +76,7 @@
       (finally (.close ctx true)))))
 
 (defn generator
-  "Build a `LootGenerator`/`LootAction` from a `:wasm` plugin config entry,
+  "Build a `Generator`/`Action` from a `:wasm` plugin config entry,
    running the WASI module at `:module`. `:args` are the program arguments (the
    module's own name is prepended), and `:dirs` maps guest paths the module may
    read to host directories — a module with no `:dirs` gets no filesystem at all.
@@ -88,10 +88,10 @@
         argv  (into [(name id)] args)
         colls (io/collections plugin)]
     (reify
-      p/LootGenerator
+      p/Generator
       (loot-spec [_] {})
       (generate [_ ctx]
         (run id src argv dirs (io/with-state ctx colls {:inputs (:inputs ctx)})))
-      p/LootAction
+      p/Action
       (handle-action [_ ctx action params]
         (run id src argv dirs (io/with-state ctx colls (io/action-request ctx action params)))))))

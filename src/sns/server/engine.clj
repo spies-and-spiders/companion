@@ -360,7 +360,7 @@
   [{:keys [registry rng] :as engine} id action params view-model]
   (let [generator (or (get registry id)
                       (throw (ex-info "Unknown loot type" {:id id})))]
-    (when-not (satisfies? p/LootAction generator)
+    (when-not (satisfies? p/Action generator)
       (throw (ex-info "Loot type does not support actions" {:id id})))
     (randoms/with-rng rng
       (->> (p/handle-action generator (assoc (ctx engine nil) :view-model view-model) action params)

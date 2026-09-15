@@ -31,7 +31,7 @@
   "An in-process plugin that names a preset instead of drawing the value, the
    way an external one may."
   [_plugin]
-  (reify p/LootGenerator
+  (reify p/Generator
     (loot-spec [_] {:id :unresolved :label "Unresolved"})
     (generate [_ _]
       {:loot/title    "{{ colour }}"
@@ -109,7 +109,7 @@
   "A generator whose loot-spec claims an id, label and section of its own, and
    routes its action to that claimed id."
   [_plugin]
-  (reify p/LootGenerator
+  (reify p/Generator
     (loot-spec [_] {:id     :claimed                                :label "Claimed" :section "Claimed" :history :never
                     :inputs [{:id :word :label "Word" :type :text}]})
     (generate [_ _]
@@ -167,7 +167,7 @@
                           {:type :builtin :id :dup :builtin {:entrypoint 'sns.builtin.dust/generator}}]}))))
 
 (defn echo-inputs-generator [_plugin]
-  (reify p/LootGenerator
+  (reify p/Generator
     (loot-spec [_] {:id :echo :label "Echo" :inputs [{:id :word :label "Word" :type :text}]})
     (generate [_ {:keys [inputs]}] {:loot/title (str (:word inputs))})))
 
@@ -320,10 +320,10 @@
 ;; --- issue #8: the current view-model reaches the action -----------------------
 
 (defrecord ^:private EchoStateGenerator []
-  p/LootGenerator
+  p/Generator
   (loot-spec [_] {:id :echo-state :label "Echo State"})
   (generate [_ _ctx] {:loot/title "Echo State" :loot/state {:count 0}})
-  p/LootAction
+  p/Action
   ;; Reads its own state back off the view-model it was handed, rather than
   ;; from :params — the campaign5 pattern.
   (handle-action [_ {:keys [view-model]} _action _params]
@@ -350,7 +350,7 @@
   "A generator returning `view-model` verbatim, for exercising the engine's
    handling of the writes a plugin declares on it."
   [view-model]
-  (reify p/LootGenerator
+  (reify p/Generator
     (loot-spec [_] {:id :writer :label "Writer"})
     (generate [_ _] view-model)))
 

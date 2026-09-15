@@ -68,7 +68,7 @@
   (FunctionDescriptor/ofVoid (into-array MemoryLayout [ValueLayout/ADDRESS])))
 
 (defn generator
-  "Build a `LootGenerator`/`LootAction` from an `:ffi` plugin config entry, bound
+  "Build a `Generator`/`Action` from an `:ffi` plugin config entry, bound
    to its `:symbol` (and optional `:free-symbol`) in the shared library at
    `:library`. The library stays loaded for the app's lifetime (a global arena).
    Like `:cli`, it is described entirely by its `:generator` config: the
@@ -84,10 +84,10 @@
                  (downcall linker lookup (str free-symbol) (ptr->void)))
         colls  (io/collections plugin)]
     (reify
-      p/LootGenerator
+      p/Generator
       (loot-spec [_] {})
       (generate [_ ctx]
         (call id handle free (io/with-state ctx colls {:inputs (:inputs ctx)})))
-      p/LootAction
+      p/Action
       (handle-action [_ ctx action params]
         (call id handle free (io/with-state ctx colls (io/action-request ctx action params)))))))

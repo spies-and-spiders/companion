@@ -40,7 +40,7 @@
 
 (defn construct
   "Instantiate `class-name` from `loader` via its 0-arity constructor. Used for
-   `:jar` plugins that name a class (e.g. a Java `LootGenerator` implementation)
+   `:jar` plugins that name a class (e.g. a Java `Generator` implementation)
    instead of a Clojure `:entrypoint` var."
   [^ClassLoader loader ^String class-name]
   (let [cls (Class/forName class-name true loader)]

@@ -23,11 +23,11 @@ public final class Models {
      * label and section come from config alone. {@code storeCollections} defaults to
      * one named after the tool's id. {@code history} is always/on-report/button/never.
      */
-    public record LootSpec(boolean hidden, String generateLabel, List<Field> inputs,
+    public record Spec(boolean hidden, String generateLabel, List<Field> inputs,
                            String history, List<String> storeCollections,
                            ManualState storeManual) {
-        public LootSpec() { this(null); }
-        public LootSpec(List<Field> inputs) { this(false, null, inputs, null, null, null); }
+        public Spec() { this(null); }
+        public Spec(List<Field> inputs) { this(false, null, inputs, null, null, null); }
     }
 
     /** {@code type} is enum/int/decimal/text/bool; {@code list} collects several. */
@@ -104,7 +104,7 @@ public final class Models {
     }
 
     /**
-     * A follow-up button routed back to {@link LootAction#handleAction}. These
+     * A follow-up button routed back to {@link sns.sdk.Action#handleAction}. These
      * three fields rather than an event vector: the engine fills in the id this
      * plugin was registered under.
      */

@@ -11,7 +11,7 @@
    `action`/`params` request (rather than `inputs`), so an external plugin can
    drive stateful follow-ups (e.g. ranking up) entirely in its own language.
    The action request also carries the current, possibly DM-edited `view-model`,
-   exactly as `LootAction/handle-action` receives it — that is what carries
+   exactly as `Action/handle-action` receives it — that is what carries
    `:loot/state` back, and what makes the displayed values the source of truth.
 
    State round-trips the same way. An external plugin never reaches the store —

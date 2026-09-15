@@ -80,11 +80,11 @@
                                             :type    :bool
                                             :default true}]}}]
     (reify
-      p/LootGenerator
+      p/Generator
       (loot-spec [_] spec)
       (generate [_ {:keys [store]}]
         (view id (p/read-collection store id) nil))
-      p/LootAction
+      p/Action
       (handle-action [_ {:keys [store rng]} action {:keys [skill]}]
         (when-not (= :roll action)
           (throw (ex-info "Unknown action" {:action action})))

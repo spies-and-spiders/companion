@@ -259,7 +259,7 @@ or
 
 `:action/event` is dispatched verbatim by the frontend; for stateful follow-ups it
 should be `[:loot/action {:id <loot-type> :action <kw> :params <map>}]`, which the
-backend routes to your `LootAction/handle-action`.
+backend routes to your `Action/handle-action`.
 
 ---
 ### TODO: Update the below slop
@@ -273,7 +273,7 @@ part of this repo with a stable contract.
 
 | Namespace | What it gives you |
 |---|---|
-| `sns.sdk.protocols` | the protocols you implement (`LootGenerator`, `LootAction`, `Reporter`, `Store`), and the Java interfaces they are bridged onto |
+| `sns.sdk.protocols` | the protocols you implement (`Generator`, `Action`, `Reporter`, `Store`), and the Java interfaces they are bridged onto |
 | `sns.sdk.schema` | the malli schemas for every shape crossing the boundary (loot-spec, view-model, mod, config) |
 | `sns.sdk.randoms` | the `random` template filter and its preset vocabulary |
 | `sns.sdk.rank` | ranks: what a var's rank means, and which vars can still take one |
@@ -281,7 +281,7 @@ part of this repo with a stable contract.
 The first two are contracts you implement; the last two are shared logic you can use
 and extend without depending on the app.
 
-### `LootGenerator` (required)
+### `Generator` (required)
 ```clojure
 (loot-spec [this])   ; => {:inputs [...]}, or {} — the :generator keys, all optional
 (generate  [this ctx]) ; => a view-model
@@ -295,7 +295,7 @@ and extend without depending on the app.
 There is no renderer on the context, because there is no rendering on the
 server: return templates plus their vars, and the browser renders them.
 
-### `LootAction` (optional — stateful follow-ups)
+### `Action` (optional — stateful follow-ups)
 ```clojure
 (handle-action [this ctx action params]) ; => an updated view-model
 ```
@@ -751,14 +751,14 @@ A plugin that declares neither is sent no `state` and costs no reads.
 
 ## Writing a `:jar` plugin
 
-Depend on this module, implement `LootGenerator`, and expose a factory:
+Depend on this module, implement `Generator`, and expose a factory:
 
 ```clojure
 (ns my.plugin
   (:require [sns.sdk.protocols :as p]))
 
 (defn generator [_plugin-config]
-  (reify p/LootGenerator
+  (reify p/Generator
     (loot-spec [_] {})                    ; or any :generator keys, e.g. {:inputs [...]}
     (generate  [_ ctx] {:loot/title "Hello from a jar"})))
 ```
@@ -768,9 +768,9 @@ Its id, label and section come from the config entry; its loot-spec only declare
 `:generator` keys, and the config entry's `:generator` overrides those.
 
 A plugin with no Clojure in it (e.g. pure Java/Kotlin) can skip the factory var:
-implement the `sns.sdk.LootGenerator` interface on a class with a 0-arity
+implement the `sns.sdk.Generator` interface on a class with a 0-arity
 constructor and name it with `:class` instead. `lootSpec()` defaults to an empty
-`Models.LootSpec`, so override it only to declare `:generator` keys:
+`Models.Spec`, so override it only to declare `:generator` keys:
 
 ```clojure
 {:type :jar :id :custom :jar {:path "plugins/custom.jar" :class "my.plugin.CustomLoot"}}
@@ -778,7 +778,7 @@ constructor and name it with `:class` instead. `lootSpec()` defaults to an empty
 
 The `Models` records cover the schemas in full, so the Java path loses nothing a
 Clojure one can express: `Models.Item` carries `vars`, and `Models.ViewModel`
-carries `vars`, `state` and `mutations`. Implement `sns.sdk.LootAction` for
+carries `vars`, `state` and `mutations`. Implement `sns.sdk.Action` for
 follow-ups — its `ctx.get("view-model")` is the displayed, possibly DM-edited
 result as a `Models.ViewModel`.
 

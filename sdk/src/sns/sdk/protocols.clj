@@ -4,9 +4,9 @@
   (:import
     (java.util HashMap)
     (sns.sdk Models$Action Models$Field Models$Item Models$ItemVar
-             Models$LootSpec Models$ManualState Models$Section Models$ViewModel)))
+             Models$Spec Models$ManualState Models$Section Models$ViewModel)))
 
-(defprotocol LootGenerator
+(defprotocol Generator
   "A loot type. Implementations are resolved from config by the registry."
   (loot-spec [this]
     "Static, data-only description of this loot type. Conforms to
@@ -18,7 +18,7 @@
      `ctx` is `{:rng :store :inputs :config}` — see the engine.
      Stateful types read/write via `(:store ctx)`."))
 
-(defprotocol LootAction
+(defprotocol Action
   "Optional. Stateful follow-up operations on previously generated loot
    (e.g. ranking a relic up). Surfaced to the UI via view-model `:loot/actions`."
   (handle-action [this ctx action params]
@@ -76,7 +76,7 @@
           (.keyLabel m) (assoc :key-label (.keyLabel m))
           (.list m)     (assoc :list? true)))
 
-(defn- loot-spec->clj [^Models$LootSpec ls]
+(defn- loot-spec->clj [^Models$Spec ls]
   (cond-> {}
           (.hidden ls)                 (assoc :hidden? true)
           (.generateLabel ls)          (assoc :generate-label (.generateLabel ls))
@@ -177,15 +177,15 @@
     (HashMap.)
     m))
 
-(extend-type sns.sdk.LootGenerator
-  LootGenerator
+(extend-type sns.sdk.Generator
+  Generator
   (loot-spec [this] (loot-spec->clj (.lootSpec this)))
   (generate [this ctx] (->> (clj->java-map ctx)
                             (.generate this)
                             view-model->clj)))
 
-(extend-type sns.sdk.LootAction
-  LootAction
+(extend-type sns.sdk.Action
+  Action
   (handle-action [this ctx action params]
     ;; `:view-model` is the result the UI had on screen, DM edits included. It
     ;; goes over as a `Models$ViewModel` rather than raw Clojure data, so a Java

@@ -1,5 +1,5 @@
 (ns sns.server.registry
-  "Resolves config plugin entries into `LootGenerator` instances. Each plugin
+  "Resolves config plugin entries into `Generator` instances. Each plugin
    `:type` has a `build-generator` method."
   (:require
     [flatland.ordered.map :refer [ordered-map]]
@@ -27,12 +27,12 @@
       (throw (ex-info "Could not resolve plugin entrypoint" {:entrypoint sym}))))
 
 (defmulti build-generator
-  "Construct a `LootGenerator` from a single plugin config entry."
+  "Construct a `Generator` from a single plugin config entry."
   :type)
 
 (defmethod build-generator :builtin [{:keys [id builtin] :as plugin}]
   ;; With an :entrypoint, resolve it as a factory fn: (entrypoint plugin) ->
-  ;; LootGenerator. Without one, the :id names a registered builtin.
+  ;; Generator. Without one, the :id names a registered builtin.
   (if-let [entrypoint (:entrypoint builtin)]
     ((resolve-fn entrypoint) plugin)
     (if-let [factory (get builtins id)]
@@ -67,7 +67,7 @@
   (throw (ex-info "Unsupported plugin type" {:type type :plugin plugin})))
 
 (defn build
-  "Resolve every plugin in `:tools` into a map of loot-type id -> LootGenerator,
+  "Resolve every plugin in `:tools` into a map of loot-type id -> Generator,
    ordered as they appear in config. Pages are not generators, so they are left
    out, but their ids must still be unique across every tool."
   [{:keys [tools]}]

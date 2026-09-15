@@ -27,7 +27,7 @@
     (io/read-output id out)))
 
 (defn generator
-  "Build a `LootGenerator`/`LootAction` from a `:cli` plugin config entry, running
+  "Build a `Generator`/`Action` from a `:cli` plugin config entry, running
    its `:cli` `:command` (a vector of program + args). Having no loot-spec of its
    own, it is described entirely by its `:generator` config: the collections that
    declares are read and sent as `state`, and the `mutations` the script returns
@@ -35,10 +35,10 @@
   [{:keys [id] {:keys [command]} :cli :as plugin}]
   (let [colls (io/collections plugin)]
     (reify
-      p/LootGenerator
+      p/Generator
       (loot-spec [_] {})
       (generate [_ ctx]
         (run id command (io/with-state ctx colls {:inputs (:inputs ctx)})))
-      p/LootAction
+      p/Action
       (handle-action [_ ctx action params]
         (run id command (io/with-state ctx colls (io/action-request ctx action params)))))))

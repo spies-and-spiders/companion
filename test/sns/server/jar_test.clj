@@ -1,6 +1,6 @@
 (ns sns.server.jar-test
   "End-to-end test of external JAR plugin loading: builds a tiny jar containing a
-   LootGenerator at runtime, then loads and invokes it through the registry."
+   Generator at runtime, then loads and invokes it through the registry."
   (:require
     [clojure.java.io :as io]
     [clojure.java.shell :as shell]
@@ -14,11 +14,11 @@
   "(ns testplugin.loot
      (:require [sns.sdk.protocols :as p]))
    (defn generator [_plugin]
-     (reify p/LootGenerator
+     (reify p/Generator
        (loot-spec [_] {:history :never})
        (generate [_ _ctx] {:loot/title \"From a JAR\"})))
    (defn other-generator [_plugin]
-     (reify p/LootGenerator
+     (reify p/Generator
        (loot-spec [_] {})
        (generate [_ _ctx] {:loot/title \"Also from a JAR\"})))")
 
@@ -39,11 +39,11 @@
 
    import java.util.List;
    import java.util.Map;
-   import sns.sdk.LootAction;
-   import sns.sdk.LootGenerator;
+   import sns.sdk.Action;
+   import sns.sdk.Generator;
    import sns.sdk.Models;
 
-   public class JavaLoot implements LootGenerator, LootAction {
+   public class JavaLoot implements Generator, Action {
        private static Models.ViewModel blade(int keen) {
            return new Models.ViewModel(
                \"From Java\", null,
@@ -68,7 +68,7 @@
    }")
 
 (defn- build-java-plugin-jar!
-  "Compile a pure-Java `LootGenerator` (no Clojure entrypoint) and jar it."
+  "Compile a pure-Java `Generator` (no Clojure entrypoint) and jar it."
   []
   (let [dir (io/file (System/getProperty "java.io.tmpdir")
                      (str "sns-jar-test-java-" (System/currentTimeMillis)))
