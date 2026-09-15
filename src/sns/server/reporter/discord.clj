@@ -116,28 +116,31 @@
   "Render a view-model as one or more Components V2 message bodies. Sections are
    kept whole; a lone section is split between its items instead. The spoilered
    content is the engine-drawn `:loot/words`, so the reader sees the same handle
-   the UI showed. Metadata rides in a second, quieter container."
-  [{:loot/keys [title subtitle words] :as vm}]
-  (let [{:keys [sections meta]} (reduce add-section
-                                        {:n 0 :sections [] :meta []}
-                                        (:loot/sections vm))
-        head     (text (cond-> (str "# " (or title "Loot"))
-                               subtitle (str "\n-# " subtitle)))
-        spoiler  (when (seq words) (text (str "||" (str/join \space words) "||")))
-        metas    (when (seq meta) (meta-container meta))
-        fixed    (+ (count (:content head))
-                    (count (:content spoiler ""))
-                    (count (get-in metas [:components 0 :content] "")))
-        batches  (batch fixed (units sections))
-        loot     (mapv #(vector (container (into [head] (blocks %))))
-                       (if (seq batches) batches [[]]))
-        bodies   (cond-> loot metas (update (dec (count loot)) conj metas))]
-    (into []
-          (map-indexed (fn [i components]
-                         {:flags      components-v2
-                          :components (cond->> components
-                                               (and spoiler (zero? i)) (into [spoiler]))}))
-          bodies)))
+   the UI showed. Metadata rides in a second, quieter container. Secret sections
+   are left out unless `include-secret?`."
+  ([vm] (view-model->messages vm false))
+  ([{:loot/keys [title subtitle words] :as vm} include-secret?]
+   (let [{:keys [sections meta]} (reduce add-section
+                                         {:n 0 :sections [] :meta []}
+                                         (cond->> (:loot/sections vm)
+                                                  (not include-secret?) (remove :section/secret?)))
+         head     (text (cond-> (str "# " (or title "Loot"))
+                                subtitle (str "\n-# " subtitle)))
+         spoiler  (when (seq words) (text (str "||" (str/join \space words) "||")))
+         metas    (when (seq meta) (meta-container meta))
+         fixed    (+ (count (:content head))
+                     (count (:content spoiler ""))
+                     (count (get-in metas [:components 0 :content] "")))
+         batches  (batch fixed (units sections))
+         loot     (mapv #(vector (container (into [head] (blocks %))))
+                        (if (seq batches) batches [[]]))
+         bodies   (cond-> loot metas (update (dec (count loot)) conj metas))]
+     (into []
+           (map-indexed (fn [i components]
+                          {:flags      components-v2
+                           :components (cond->> components
+                                                (and spoiler (zero? i)) (into [spoiler]))}))
+           bodies))))
 
 (defn payload
   "One webhook body, identifying the poster."
@@ -148,7 +151,7 @@
 
 (defn create
   "Build a Discord `Reporter` posting to `webhook-url`."
-  [{:keys [webhook-url] :as config}]
+  [{:keys [webhook-url include-secret?] :as config}]
   (when (str/blank? webhook-url)
     (throw (ex-info "Discord reporting requires a :webhook-url" {})))
   (let [client (hc/build-http-client {:connect-timeout 10000})]
@@ -162,5 +165,5 @@
                                       :query-params {:with_components true}
                                       :body         (-> (payload config message)
                                                         j/write-value-as-string)}))
-              (view-model->messages view-model))
+              (view-model->messages view-model include-secret?))
         nil))))

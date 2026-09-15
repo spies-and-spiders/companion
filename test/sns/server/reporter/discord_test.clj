@@ -144,3 +144,14 @@
   (testing "creating a reporter without a webhook URL throws"
     (is (thrown? Exception (discord/create "")))
     (is (thrown? Exception (discord/create nil)))))
+
+(deftest secret-sections
+  (let [vm {:loot/title    "Loot"
+            :loot/sections [{:section/heading "Public" :section/items [{:item/body "a"}]}
+                            {:section/heading "Hidden" :section/secret? true :section/items [{:item/body "b"}]}]}]
+    (testing "are left out by default"
+      (let [text (str/join (map content (discord/view-model->messages vm)))]
+        (is (str/includes? text "## Public"))
+        (is (not (str/includes? text "## Hidden")))))
+    (testing "are sent when include-secret?"
+      (is (str/includes? (str/join (map content (discord/view-model->messages vm true))) "## Hidden")))))

@@ -174,6 +174,7 @@ The UI renders this shape generically — a new loot type needs **no** UI code, 
  :loot/vars     {:name {:value "Pacifist's Vow"} ; context for the two above
                  :base {:value "armour"}}
  :loot/sections [{:section/heading "Mods"        ; heading optional
+                  :section/secret? false         ; optional — true keeps it out of reports
                   :section/items [{:item/title nil               ; optional
                                    :item/body  "+{{ ab }} {{ x }} damage" ; required
                                    :item/metadata ["accuracy"]   ; optional
@@ -328,6 +329,9 @@ is configured the UI hides its per-item report button. One built-in backend:
 ```clojure
 :reporting {:backend :discord :discord {:webhook-url #env DISCORD_WEBHOOK_URL}}
 ```
+
+Sections marked `:section/secret?` are left out of Discord reports; set
+`:include-secret? true` under `:discord` to send them anyway.
 
 `POST /api/report` `{:view-model …}` forwards the (validated) view-model to the
 reporter; `GET /api/capabilities` tells the UI whether to show the button.

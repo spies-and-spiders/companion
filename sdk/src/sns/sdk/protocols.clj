@@ -119,7 +119,8 @@
 
 (defn- section->clj [^Models$Section s]
   (cond-> {:section/items (mapv item->clj (.items s))}
-          (.heading s) (assoc :section/heading (.heading s))))
+          (.heading s) (assoc :section/heading (.heading s))
+          (.secret s)  (assoc :section/secret? true)))
 
 (defn- action->clj
   "An action whose event the engine addresses to the tool that returned it."
@@ -152,8 +153,8 @@
 (defn- clj->item [{:item/keys [title body metadata vars]}]
   (Models$Item. title body metadata (clj->item-vars vars)))
 
-(defn- clj->section [{:section/keys [heading items]}]
-  (Models$Section. heading (mapv clj->item items)))
+(defn- clj->section [{:section/keys [heading items secret?]}]
+  (Models$Section. heading (mapv clj->item items) (boolean secret?)))
 
 (defn- clj->action [{:action/keys [label event]}]
   (let [{:keys [action params]} (second event)]

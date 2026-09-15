@@ -135,7 +135,9 @@
 
    ::section [:map
               [:section/heading {:optional true} [:maybe string?]]
-              [:section/items [:sequential ::item]]]
+              [:section/items [:sequential ::item]]
+              ;; Shown and kept in history, but left out by reporters unless configured otherwise.
+              [:section/secret? {:optional true} boolean?]]
 
    ::view-model [:map
                  [:loot/title string?]
@@ -333,7 +335,8 @@
                            [:discord [:map
                                       [:webhook-url string?]
                                       [:username {:optional true} string?]
-                                      [:avatar-url {:optional true} string?]]]]]]
+                                      [:avatar-url {:optional true} string?]
+                                      [:include-secret? {:optional true} boolean?]]]]]]
 
    ::config [:map
              [:server {:optional true} ::server]

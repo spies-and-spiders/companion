@@ -315,15 +315,20 @@
      (var-grid plugin "entry__vars" [:loot/sections si :section/items ii :item/vars] vars)
      (edit-text plugin si ii item preview)]))
 
-(defn- edit-block [plugin loot-vars si {:section/keys [heading items]}]
+(defn- edit-block [plugin loot-vars si {:section/keys [heading items secret?]}]
   [:section.block.block--edit {:replicant/key si}
-   ;; Styled as the heading it is, so the sections stay legible as structure
-   ;; while still editing in place.
-   [:input.block__heading.block__heading--edit
-    {:type  "text"
-     :value (str heading)
-     :on    {:input [[:ui/edit-result plugin [:loot/sections si :section/heading] :text
-                      [:event.target/value]]]}}]
+   [:div.block__head
+    ;; Styled as the heading it is, so the sections stay legible as structure
+    ;; while still editing in place.
+    [:input.block__heading.block__heading--edit
+     {:type  "text"
+      :value (str heading)
+      :on    {:input [[:ui/edit-result plugin [:loot/sections si :section/heading] :text
+                       [:event.target/value]]]}}]
+    [:label.field.field--bool.block__secret {:title "Left out of reports"}
+     [:span.field__label "Secret"]
+     (control nil secret? {:type :bool}
+              [:ui/edit-result plugin [:loot/sections si :section/secret?] :bool])]]
    [:ul.entries (map-indexed (fn [ii item] (edit-item plugin loot-vars si ii item)) items)]])
 
 (defn result-editor

@@ -203,7 +203,8 @@
  ;;
  ;; :webhook-url is a secret — read it from the environment via #env rather than
  ;; committing it. :username and :avatar-url are optional overrides for how the
- ;; bot message appears.
+ ;; bot message appears. Sections marked :section/secret? are left out unless
+ ;; :include-secret? is true.
  ;;
  ;; Note that #env tags are not supported from .json config files, so these values
  ;; would need to be inlined

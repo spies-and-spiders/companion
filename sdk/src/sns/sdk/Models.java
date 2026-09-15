@@ -70,7 +70,10 @@ public final class Models {
         }
     }
 
-    public record Section(String heading, List<Item> items) { }
+    /** A {@code secret} section is shown and kept in history, but reporters leave it out by default. */
+    public record Section(String heading, List<Item> items, boolean secret) {
+        public Section(String heading, List<Item> items) { this(heading, items, false); }
+    }
 
     /**
      * {@code title} and {@code body} are templates rendered in the browser
