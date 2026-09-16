@@ -331,7 +331,9 @@ is configured the UI hides its per-item report button. One built-in backend:
 ```
 
 Sections marked `:section/secret?` are left out of Discord reports; set
-`:include-secret? true` under `:discord` to send them anyway.
+`:include-secret? true` under `:discord` to send them anyway. An item whose
+body renders empty is left out too, along with any section that has no items
+left — both stay in the result editor, where they can be filled in.
 
 `POST /api/report` `{:view-model …}` forwards the (validated) view-model to the
 reporter; `GET /api/capabilities` tells the UI whether to show the button.

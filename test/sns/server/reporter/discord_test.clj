@@ -163,3 +163,34 @@
         (is (not (str/includes? text "## Hidden")))))
     (testing "are sent when include-secret?"
       (is (str/includes? (str/join (map content (discord/view-model->messages vm true))) "## Hidden")))))
+
+(deftest empty-sections
+  (testing "a section with no items, or none that render anything, is left out"
+    (let [text (->> (discord/view-model->messages
+                      {:loot/title    "Loot"
+                       :loot/sections [{:section/heading "Kept" :section/items [{:item/body "a"}]}
+                                       {:section/heading "Blanked"
+                                        :section/items   [{:item/body "" :item/metadata ["gone"]}
+                                                          {:item/body "  "}]}
+                                       {:section/heading "Emptied" :section/items []}]})
+                    (map content)
+                    str/join)]
+      (is (str/includes? text "## Kept"))
+      (is (not (str/includes? text "## Blanked")))
+      (is (not (str/includes? text "## Emptied")))
+      (is (not (str/includes? text "gone"))
+          "a dropped item takes its metadata with it")))
+  (testing "a blank item neither shows nor takes a number from the ones that do"
+    (let [[message] (discord/view-model->messages
+                      {:loot/title    "Relic"
+                       :loot/sections [{:section/items [{:item/body "A" :item/metadata ["a"]}
+                                                        {:item/body ""}
+                                                        {:item/body "C" :item/metadata ["c"]}]}]})]
+      (is (str/includes? (content message) "1. A\n\n2. C"))
+      (is (str/includes? (content message) "**2** `c`"))))
+  (testing "a view-model whose sections all drop still posts one valid message"
+    (let [messages (discord/view-model->messages
+                     {:loot/title    "Loot"
+                      :loot/sections [{:section/heading "Emptied" :section/items []}]})]
+      (is (= 1 (count messages)))
+      (is (= ["# Loot"] (mapv content messages))))))
