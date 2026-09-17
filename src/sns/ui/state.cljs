@@ -25,6 +25,7 @@
          :editing       {}    ; loot-type id -> manually editing its result in place?
          :manual        {}    ; loot-type id -> its manual-state collection
          :manual-key    {}    ; loot-type id -> the key being typed into the blank "add" row
+         :spies         {}    ; spies.tools page -> its entries by lowercased name, or :loading
          :browser-storage? false ; state lives in IndexedDB and travels with each request
          :loot-die-size 100}))  ; sides on the loot die (from the backend's config)
 

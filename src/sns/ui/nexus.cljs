@@ -7,6 +7,7 @@
     [sns.ui.api :as api]
     [sns.ui.export :as export]
     [sns.ui.idb :as idb]
+    [sns.ui.spies :as spies]
     [sns.ui.state :as state]
     [sns.ui.template :as template]))
 
@@ -67,6 +68,16 @@
                                                   ;; history lives in this browser
                                                   [:fx/load-history]]))
                                      (fn [_err] nil))))
+
+;; A failed fetch is forgotten, so the next hover tries again.
+(nxr/register-effect! :fx/spies-load
+                      (fn [{:keys [dispatch]} system page]
+                        (swap! system assoc-in [:spies page] :loading)
+                        (-> (js/fetch (spies/data-url page))
+                            (.then #(.json %))
+                            (.then #(dispatch [[:fx/assoc-in [:spies page]
+                                                (spies/index page (js->clj % :keywordize-keys true))]]))
+                            (.catch #(swap! system update :spies dissoc page)))))
 
 ;; --- result history ---------------------------------------------------------
 ;; One row per loot type in the `:history` collection, so it lives wherever the
@@ -347,6 +358,11 @@
 (nxr/register-action! :ui/report
                       (fn [_state id]
                         [[:fx/report id]]))
+
+(nxr/register-action! :ui/spies-preview
+                      (fn [state page]
+                        (when-not (get-in state [:spies page])
+                          [[:fx/spies-load page]])))
 
 (nxr/register-action! :ui/toggle-edit
                       (fn [state id]

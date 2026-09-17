@@ -6,6 +6,7 @@
     [clojure.string :as str]
     [sns.sdk.rank :as rank]
     [sns.ui.link :as link]
+    [sns.ui.spies :as spies]
     [sns.ui.state :as state]
     [sns.ui.template :as template]))
 
@@ -120,6 +121,18 @@
 
 ;; --- view-model renderer (the signature surface) -----------------------------
 
+(defn- linked
+  "Rendered text with its links, spies.tools ones previewing their entry on
+   hover once `spies` (`:spies` in state) has its data."
+  [spies s]
+  (for [x (link/linkify s)]
+    (if-let [[page n] (and spies (vector? x) (spies/target (get-in x [1 :href])))]
+      [:span.spies {:on {:mouseenter [[:ui/spies-preview page]]}}
+       x
+       (when-some [e (get-in spies [page n])]
+         (spies/card page e))]
+      x)))
+
 ;; `:item/title`/`:item/body` are templates; the values they interpolate travel
 ;; beside them as `:item/vars`, so a var edited in the browser re-renders here
 ;; with no round trip to the server. `:loot/vars` are ambient — every template
@@ -129,18 +142,18 @@
 ;; An item whose body renders to nothing is left out — a mod the DM emptied, or
 ;; one whose text only appears at a higher rank. It is untouched in
 ;; `result-editor`, so it comes back the moment it renders something again.
-(defn- entry [loot-vars {:item/keys [title body metadata vars]}]
+(defn- entry [spies loot-vars {:item/keys [title body metadata vars]}]
   (let [vars (merge loot-vars vars)
         body (template/render body vars)]
     (when-not (str/blank? body)
       [:li.entry
-       (when title [:h4.entry__title (link/linkify (template/render title vars))])
-       [:p.entry__body (link/linkify body)]
+       (when title [:h4.entry__title (linked spies (template/render title vars))])
+       [:div.entry__body (linked spies body)]
        (when (seq metadata)
          [:ul.tags (for [t metadata] [:li.tag t])])])))
 
-(defn- block [loot-vars {:section/keys [heading items]}]
-  (when-let [entries (seq (keep (partial entry loot-vars) items))]
+(defn- block [spies loot-vars {:section/keys [heading items]}]
+  (when-let [entries (seq (keep (partial entry spies loot-vars) items))]
     [:section.block
      (when heading [:h3.block__heading heading])
      [:ul.entries entries]]))
@@ -159,20 +172,22 @@
 
 (defn result
   "Render a view-model. The whole article is keyed on the title so a fresh loot
-   result re-mounts and replays the materialise animation."
-  [vm]
-  (when vm
-    [:article.sigil {:replicant/key (:loot/title vm)}
-     [:div.sigil__frame
-      (words-badge (:loot/words vm))
-      (when (:loot/subtitle vm)
-        [:p.sigil__eyebrow (template/render (:loot/subtitle vm) (:loot/vars vm))])
-      [:h2.sigil__title (template/render (:loot/title vm) (:loot/vars vm))]
-      [:div.sigil__body
-       (keep (partial block (:loot/vars vm)) (:loot/sections vm))]
-      (when (seq (:loot/actions vm))
-        [:div.sigil__actions
-         (map action (:loot/actions vm))])]]))
+   result re-mounts and replays the materialise animation. Links preview only
+   given `spies`."
+  ([vm] (result vm nil))
+  ([vm spies]
+   (when vm
+     [:article.sigil {:replicant/key (:loot/title vm)}
+      [:div.sigil__frame
+       (words-badge (:loot/words vm))
+       (when (:loot/subtitle vm)
+         [:p.sigil__eyebrow (template/render (:loot/subtitle vm) (:loot/vars vm))])
+       [:h2.sigil__title (template/render (:loot/title vm) (:loot/vars vm))]
+       [:div.sigil__body
+        (keep (partial block spies (:loot/vars vm)) (:loot/sections vm))]
+       (when (seq (:loot/actions vm))
+         [:div.sigil__actions
+          (map action (:loot/actions vm))])]])))
 
 (defn error-overlay
   "An error view-model, shown over the card until clicked away."

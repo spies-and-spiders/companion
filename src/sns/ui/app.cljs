@@ -30,7 +30,7 @@
            (or (:generate-label spec) (str "Generate " (:label spec))))]]
        (if editing?
          (render/result-editor id result)
-         (render/result result))
+         (render/result result (:spies state)))
        (render/error-overlay id (get-in state [:errors id]))
        (when result
          [:div.result-actions
