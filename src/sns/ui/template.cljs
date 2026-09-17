@@ -7,9 +7,6 @@
    collection (a numeric segment needs the brackets — `{{ x.0 }}` is a parse
    error), `{{#if flag}}…{{/if}}` for a conditional."
   (:require
-    [clojure.string :as str]
-    [sns.sdk.rank :as rank]
-    ["handlebars" :as handlebars]
     ["@budibase/handlebars-helpers/lib/array" :as array-helpers]
     ["@budibase/handlebars-helpers/lib/collection" :as collection-helpers]
     ["@budibase/handlebars-helpers/lib/comparison" :as comparison-helpers]
@@ -19,7 +16,10 @@
     ["@budibase/handlebars-helpers/lib/number" :as number-helpers]
     ["@budibase/handlebars-helpers/lib/object" :as object-helpers]
     ["@budibase/handlebars-helpers/lib/regex" :as regex-helpers]
-    ["@budibase/handlebars-helpers/lib/string" :as string-helpers]))
+    ["@budibase/handlebars-helpers/lib/string" :as string-helpers]
+    ["handlebars" :as handlebars]
+    [clojure.string :as str]
+    [sns.sdk.rank :as rank]))
 
 ;; handlebars-helpers (the @budibase fork — upstream 0.10.0 lazy-requires its
 ;; deps in a way shadow-cljs cannot bundle), minus the groups that need node
@@ -29,6 +29,24 @@
                math-helpers misc-helpers number-helpers object-helpers regex-helpers
                string-helpers]]
   (handlebars/registerHelper group))
+
+(defn- spies-link
+  "A helper linking to a spies.tools `page` entry, as the markdown link
+   `sns.ui.link` renders: `{{sns-spell \"Earth Tremor\"}}` or
+   `{{#sns-spell}}Earth Tremor{{/sns-spell}}`. Brackets are encoded so they
+   cannot close the link early."
+  [page]
+  (fn [^js arg options]
+    (this-as ctx
+             (let [text (if options arg (.fn arg ctx))
+                   slug (-> (str/lower-case text)
+                            js/encodeURIComponent
+                            (str/replace "(" "%28")
+                            (str/replace ")" "%29"))]
+               (str "[" text "](https://spies.tools/" page ".html#" slug "_sns)")))))
+
+(handlebars/registerHelper "sns-spell" (spies-link "spells"))
+(handlebars/registerHelper "sns-maneuver" (spies-link "maneuvers"))
 
 ;; Handlebars caches compilation on the function it returns, so compiling per
 ;; call throws that away — measured ~70x the cost of rendering an already

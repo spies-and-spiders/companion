@@ -90,12 +90,17 @@ smoke: ## Boot a native image binary and drive its HTTP API (BIN=path, default: 
 test: prep ## Run the Clojure test suite
 	clojure -M:test
 
+.PHONY: test-cljs
+test-cljs: ## Run the ClojureScript test suite (on Node)
+	npx shadow-cljs compile test
+	node target/cljs-test/test.js
+
 .PHONY: reflection
 reflection: prep ## Fail if any backend namespace compiles with reflection
 	clojure -M:reflect
 
 .PHONY: check
-check: test reflection ## Run tests + the reflection guard
+check: test test-cljs reflection ## Run tests + the reflection guard
 
 # --- artifacts ---------------------------------------------------------------
 

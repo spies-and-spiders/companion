@@ -5,6 +5,7 @@
   (:require
     [clojure.string :as str]
     [sns.sdk.rank :as rank]
+    [sns.ui.link :as link]
     [sns.ui.state :as state]
     [sns.ui.template :as template]))
 
@@ -133,8 +134,8 @@
         body (template/render body vars)]
     (when-not (str/blank? body)
       [:li.entry
-       (when title [:h4.entry__title (template/render title vars)])
-       [:p.entry__body body]
+       (when title [:h4.entry__title (link/linkify (template/render title vars))])
+       [:p.entry__body (link/linkify body)]
        (when (seq metadata)
          [:ul.tags (for [t metadata] [:li.tag t])])])))
 
