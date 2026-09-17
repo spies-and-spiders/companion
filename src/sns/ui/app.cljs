@@ -31,6 +31,7 @@
        (if editing?
          (render/result-editor id result)
          (render/result result))
+       (render/error-overlay id (get-in state [:errors id]))
        (when result
          [:div.result-actions
           [:button.action-btn

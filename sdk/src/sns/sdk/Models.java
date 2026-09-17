@@ -59,14 +59,20 @@ public final class Models {
      * cannot be read off the item, since a DM may have edited the displayed
      * {@link Item#vars()}. {@code mutations} are store writes
      * ({@code {collection: {key: value}}}, null retracting) applied only once
-     * this view-model validates, so a failing call changes nothing.
+     * this view-model validates, so a failing call changes nothing. An {@code error}
+     * result shows as an overlay and is never saved to history automatically.
      */
     public record ViewModel(String title, String subtitle, List<Section> sections, List<Action> actions,
                             Map<String, ItemVar> vars, List<String> words, Object state,
-                            Map<String, Map<String, Object>> mutations) {
+                            Map<String, Map<String, Object>> mutations, boolean error) {
         public ViewModel(String title) { this(title, null, null, null); }
         public ViewModel(String title, String subtitle, List<Section> sections, List<Action> actions) {
             this(title, subtitle, sections, actions, null, null, null, null);
+        }
+        public ViewModel(String title, String subtitle, List<Section> sections, List<Action> actions,
+                         Map<String, ItemVar> vars, List<String> words, Object state,
+                         Map<String, Map<String, Object>> mutations) {
+            this(title, subtitle, sections, actions, vars, words, state, mutations, false);
         }
     }
 

@@ -12,6 +12,7 @@
          :inputs        {}    ; loot-type id -> collected input-form values
          :drag          nil   ; in-progress list-input reorder: {:plugin :field :from}
          :results       {}    ; loot-type id -> its view-model on the bench (session-only)
+         :errors        {}    ; loot-type id -> an error view-model shown over its bench
          :history       {}    ; the store's history collection: id name -> [{:at :view-model}]
          :history-mode  :button ; when generated results join the history
          :history-hover nil   ; [loot-type id, row index] of the history row under the cursor

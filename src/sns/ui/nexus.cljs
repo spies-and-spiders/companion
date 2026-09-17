@@ -141,17 +141,21 @@
 
 (defn- history-fx
   "Effects recording `vm` against loot type `id`, when the mode in force says
-   `trigger` is what stores it."
+   `trigger` is what stores it. An error result never is."
   [state id vm trigger]
-  (when (and id vm (= trigger (history-mode state id)))
+  (when (and id vm (not (:loot/error? vm)) (= trigger (history-mode state id)))
     [[:fx/history id (with-entry (rows-for state id) vm)]]))
 
 (defn- result-fx
-  "Effects putting `vm` on loot type `id`'s bench."
+  "Effects putting `vm` on loot type `id`'s bench. An error goes over the bench
+   instead, leaving what is on it for when the error is dismissed."
   [id vm]
-  [[:fx/assoc-in [:results id] vm]
-   [:fx/assoc-in [:editing id] false]
-   [:fx/assoc-in [:report-status id] nil]])
+  (if (:loot/error? vm)
+    [[:fx/assoc-in [:errors id] vm]]
+    [[:fx/assoc-in [:results id] vm]
+     [:fx/assoc-in [:errors id] nil]
+     [:fx/assoc-in [:editing id] false]
+     [:fx/assoc-in [:report-status id] nil]]))
 
 (defn- result-effect
   "Run `req` and put the view-model it returns on loot type `id`'s bench, filing
@@ -408,6 +412,10 @@
                       (fn [state id]
                         (when-let [result (get-in state [:results id])]
                           [[:fx/history id (with-entry (rows-for state id) result)]])))
+
+(nxr/register-action! :ui/dismiss-error
+                      (fn [_state id]
+                        [[:fx/assoc-in [:errors id] nil]]))
 
 (nxr/register-action! :ui/history-restore
                       (fn [state id idx]

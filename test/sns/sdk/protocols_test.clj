@@ -29,7 +29,8 @@
     {"n" (Models$ItemVar. 2 "int")}
     ["yard" "congenial"]
     {"tier" 2}
-    {"relics" {"Quincy" {"flares" 3} "Viktor" nil}}))
+    {"relics" {"Quincy" {"flares" 3} "Viktor" nil}}
+    true))
 
 (deftest java-view-model-carries-the-whole-schema
   (let [vm (view-model->clj java-view-model)]
@@ -38,6 +39,7 @@
       (is (= {:n {:value 2 :type :int}} (:loot/vars vm)))
       (is (= ["yard" "congenial"] (:loot/words vm)))
       (is (= {"tier" 2} (:loot/state vm)) "opaque, so it travels untouched")
+      (is (true? (:loot/error? vm)))
       (is (= {:relics {"Quincy" {"flares" 3} "Viktor" nil}} (:store/mutations vm))
           "collection names keywordise; the keys within a collection do not"))
     (testing "an item's vars, with every optional component"

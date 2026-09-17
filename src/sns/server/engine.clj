@@ -14,7 +14,8 @@
     [sns.server.registry :as registry]
     [sns.server.reporter :as reporter]
     [sns.server.store :as store]
-    [sns.server.store.edn :as edn-store])
+    [sns.server.store.edn :as edn-store]
+    [taoensso.telemere :as t])
   (:import
     (java.io PushbackReader)
     (java.util.random RandomGeneratorFactory)))
@@ -282,6 +283,17 @@
     (assoc vm :loot/words w)
     vm))
 
+(defn- or-error
+  "What calling plugin `f` returns, or, when it throws, the view-model attached
+   as the exception's `:view-model`, else one built from the exception itself."
+  [f]
+  (try (f)
+       (catch Exception ex
+         (t/log! {:level :warn :id ::plugin-error :error ex} (ex-message ex))
+         (assoc (or (:view-model (ex-data ex))
+                    {:loot/title (str (ex-message ex)) :loot/subtitle (.getName (class ex))})
+                :loot/error? true))))
+
 (defn generate
   "Generate loot of type `id` with `inputs`, returning a validated view-model."
   ([engine id] (generate engine id {}))
@@ -289,8 +301,7 @@
    (let [inputs (apply-input-defaults (tool-spec engine id) inputs)]
      ;; Vars draw from the request's rng, wherever downstream the draw happens.
      (randoms/with-rng rng
-       (->> (ctx engine inputs)
-            (p/generate (get registry id))
+       (->> (or-error #(p/generate (get registry id) (ctx engine inputs)))
             (address-actions id)
             (with-words engine nil)
             (vars/resolve-view-model rng)
@@ -363,7 +374,7 @@
     (when-not (satisfies? p/Action generator)
       (throw (ex-info "Loot type does not support actions" {:id id})))
     (randoms/with-rng rng
-      (->> (p/handle-action generator (assoc (ctx engine nil) :view-model view-model) action params)
+      (->> (or-error #(p/handle-action generator (assoc (ctx engine nil) :view-model view-model) action params))
            (address-actions id)
            (with-words engine (:loot/words view-model))
            (vars/resolve-view-model rng)

@@ -186,6 +186,7 @@ The UI renders this shape generically — a new loot type needs **no** UI code, 
  :loot/actions  [{:action/label "Level up"
                   :action/event [:loot/action {:id :relics :action :rank-up}]}]
  :loot/state    {…}                              ; optional, opaque
+ :loot/error?   false                            ; optional — true marks a failure
  :store/mutations {:relics {"r1" {…}}}}          ; optional — writes to apply
 ```
 
@@ -220,6 +221,14 @@ and hand back with the next action (as `ctx`'s `:view-model`). Keep it to
 bookkeeping that has no place in the rendered item — a stored id, the data entry
 a mod came from. Everything the DM can *see* should be read back off the
 view-model itself, a var's rank included.
+
+`:loot/error?` marks a result as a failure to report rather than loot (no
+relics left to draw, say). The UI shows it as an overlay over the card, which a
+click dismisses, leaving the previous result where it was; it is never saved to
+history, whatever the `:history` mode. A generator or action that
+throws gets one for free: the `:view-model` in the exception's `ex-data` if it
+carries one, otherwise the exception's message as the title and its class as the
+subtitle.
 
 `:store/mutations` is how a stateful type writes: `{<collection> {<key>
 <value>}}`, a nil value retracting that key. The engine applies it *after* this

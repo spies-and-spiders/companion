@@ -137,6 +137,7 @@
           (seq (.actions vm))   (assoc :loot/actions (mapv action->clj (.actions vm)))
           (seq (.words vm))     (assoc :loot/words (vec (.words vm)))
           (some? (.state vm))   (assoc :loot/state (.state vm))
+          (.error vm)           (assoc :loot/error? true)
           (seq (.mutations vm)) (assoc :store/mutations (mutations->clj (.mutations vm)))))
 
 (defn- clj->item-var [{:keys [value type label random args options context? step rank] mx :max}]
@@ -160,7 +161,7 @@
   (let [{:keys [action params]} (second event)]
     (Models$Action. label (some-> action name) params)))
 
-(defn- clj->view-model [{:loot/keys  [title subtitle sections actions vars words state]
+(defn- clj->view-model [{:loot/keys  [title subtitle sections actions vars words state error?]
                          :store/keys [mutations]}]
   (Models$ViewModel. title subtitle
                      (when sections (mapv clj->section sections))
@@ -168,7 +169,8 @@
                      (clj->item-vars vars)
                      (when (seq words) (vec words))
                      state
-                     (when (seq mutations) (update-keys mutations name))))
+                     (when (seq mutations) (update-keys mutations name))
+                     (boolean error?)))
 
 (defn- clj->java-map [m]
   (reduce-kv

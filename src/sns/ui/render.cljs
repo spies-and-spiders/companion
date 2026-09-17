@@ -173,6 +173,13 @@
         [:div.sigil__actions
          (map action (:loot/actions vm))])]]))
 
+(defn error-overlay
+  "An error view-model, shown over the card until clicked away."
+  [plugin vm]
+  (when vm
+    [:div.error-overlay {:on {:click [[:ui/dismiss-error plugin]]}}
+     (result vm)]))
+
 ;; --- result editor (manual tweaks before re-rendering / reporting) -----------
 ;; Edits write straight back into plugin `plugin`'s result view-model at `path`,
 ;; so the read-only view and the reported payload always reflect the latest text.

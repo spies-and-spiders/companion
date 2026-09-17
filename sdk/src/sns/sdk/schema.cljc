@@ -158,6 +158,9 @@
                  ;; and are the source of truth for everything else, so keep
                  ;; this to what genuinely cannot be read back off the item.
                  [:loot/state {:optional true} any?]
+                 ;; The result is a failure to report rather than loot: shown as
+                 ;; an overlay, and never saved to history automatically.
+                 [:loot/error? {:optional true} boolean?]
                  ;; Writes the plugin wants made. Declared rather than performed,
                  ;; so the engine can apply them only once this view-model has
                  ;; validated — a call that fails changes nothing.

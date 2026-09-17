@@ -175,8 +175,9 @@
           (let [resp (post app "/api/action" {:id     :relics
                                               :action :rank-up
                                               :params {:relic-id id}})]
-            (is (= 400 (:status resp)))
-            (is (= "Unknown relic" (:error (body resp))))))
+            (is (= 200 (:status resp)))
+            (is (= {:loot/title "Unknown relic" :loot/error? true}
+                   (select-keys (body resp) [:loot/title :loot/error?])))))
         (testing "sending the state back lets the action resolve and advance"
           (let [choice (-> vm :loot/actions first :action/event second :params :choice)
                 vm'    (body (post app "/api/action" {:id     :relics

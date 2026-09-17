@@ -354,6 +354,27 @@
     (loot-spec [_] {:id :writer :label "Writer"})
     (generate [_ _] view-model)))
 
+(defn- throwing [ex]
+  (reify
+    p/Generator
+    (loot-spec [_] {:id :thrower :label "Thrower"})
+    (generate [_ _] (throw ex))
+    p/Action
+    (handle-action [_ _ _ _] (throw ex))))
+
+(deftest a-throwing-plugin-returns-an-error-view-model
+  (let [eng #(assoc-in (engine/create {:tools []}) [:registry :thrower] (throwing %))]
+    (testing "built from the exception"
+      (let [eng (eng (IllegalStateException. "No relics left"))]
+        (is (= {:loot/title "No relics left" :loot/subtitle "java.lang.IllegalStateException" :loot/error? true}
+               (dissoc (engine/generate eng :thrower) :loot/words)
+               (dissoc (engine/handle-action eng :thrower :again {} nil) :loot/words)))))
+    (testing "or the view-model the exception carries"
+      (let [eng (eng (ex-info "boom" {:view-model {:loot/title "Out of stock"}}))]
+        (is (= {:loot/title "Out of stock" :loot/error? true}
+               (dissoc (engine/generate eng :thrower) :loot/words)
+               (dissoc (engine/handle-action eng :thrower :again {} nil) :loot/words)))))))
+
 (deftest declared-writes-are-applied-after-validation
   (let [store (doto (edn-store/create {:backend :memory}) p/setup!)
         eng   (-> (engine/create {:tools []} {:store store})

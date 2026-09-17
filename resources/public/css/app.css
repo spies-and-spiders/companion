@@ -355,7 +355,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 }
 /* the hovered row, rendered in full at the centre of the screen — fixed, so
    revealing it never resizes the page and no card scroller can clip it */
-.history__preview {
+.history__preview, .error-overlay {
   position: fixed; z-index: 5;
   top: 50%; left: 50%; translate: -50% -50%;
   width: min(40rem, calc(100vw - 2rem));
@@ -364,16 +364,19 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   filter: drop-shadow(0 8px 20px rgb(0 0 0 / 0.55));
 }
 .history__preview--locked { pointer-events: auto; }
+.error-overlay { pointer-events: auto; cursor: pointer; }
+.error-overlay .sigil__frame { border-color: var(--ember); }
+.error-overlay .sigil__frame::before, .error-overlay .sigil__frame::after { border-color: var(--ember); }
 /* the preview clips its overflow, so the bubble opens downwards, into the box */
-.history__preview .words__text { bottom: auto; top: calc(100% + 0.45rem); }
+.history__preview .words__text, .error-overlay .words__text { bottom: auto; top: calc(100% + 0.45rem); }
 .history__preview .sigil { animation: none; }
 /* while a preview is up, dim whatever is on the bench so the two do not read as
    one item. `> .sigil` is the bench copy only — the preview's own is nested. */
 .card > .sigil { transition: opacity 0.15s ease; }
-.card:has(.history__preview) > .sigil { opacity: 0.25; }
+.card:has(.history__preview, .error-overlay) > .sigil { opacity: 0.25; }
 /* the bench copy is roomy; a popup wants to fit above the list */
-.history__preview .sigil__frame { padding: 1.1rem 1.3rem; }
-.history__preview .sigil__title { font-size: 1.5rem; margin-bottom: 0.8rem; }
+.history__preview .sigil__frame, .error-overlay .sigil__frame { padding: 1.1rem 1.3rem; }
+.history__preview .sigil__title, .error-overlay .sigil__title { font-size: 1.5rem; margin-bottom: 0.8rem; }
 .history__remove {
   padding: 0 0.6rem;
   background: transparent;
