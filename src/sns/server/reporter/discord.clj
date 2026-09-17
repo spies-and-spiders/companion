@@ -79,7 +79,7 @@
 
 (defn- unit-size [{:keys [heading items]}]
   (+ (if heading (+ 3 (count heading)) 0)
-     (count (str/join "\n\n" items))))
+     (count (str/join "\n" items))))
 
 (defn- fits?
   "Whether `units` still clear both ceilings once the fixed per-message parts —
@@ -112,7 +112,7 @@
         (comp (partition-by :idx)
               (mapcat (fn [group]
                         (let [heading (:heading (first group))
-                              items (str/join "\n\n" (eduction (mapcat :items) group))]
+                              items (str/join "\n" (eduction (mapcat :items) group))]
                           (-> [rule]
                               (cond-> heading (conj (text (str "## " heading))))
                               (conj (text items)))))))

@@ -82,7 +82,7 @@
                        :loot/sections [{:section/items [{:item/body "A" :item/metadata ["a"]}
                                                         {:item/body "B"}
                                                         {:item/body "C" :item/metadata ["c"]}]}]})]
-      (is (str/includes? (content message) "1. A\n\n2. B\n\n3. C"))
+      (is (str/includes? (content message) "1. A\n2. B\n3. C"))
       (is (str/includes? (content message) "**3** `c`")))))
 
 (deftest minimal-view-model
@@ -186,7 +186,7 @@
                        :loot/sections [{:section/items [{:item/body "A" :item/metadata ["a"]}
                                                         {:item/body ""}
                                                         {:item/body "C" :item/metadata ["c"]}]}]})]
-      (is (str/includes? (content message) "1. A\n\n2. C"))
+      (is (str/includes? (content message) "1. A\n2. C"))
       (is (str/includes? (content message) "**2** `c`"))))
   (testing "a view-model whose sections all drop still posts one valid message"
     (let [messages (discord/view-model->messages
