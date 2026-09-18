@@ -19,7 +19,8 @@
     ["@budibase/handlebars-helpers/lib/string" :as string-helpers]
     ["handlebars" :as handlebars]
     [clojure.string :as str]
-    [sns.sdk.rank :as rank]))
+    [sns.sdk.rank :as rank]
+    [sns.ui.dice :as dice]))
 
 ;; handlebars-helpers (the @budibase fork — upstream 0.10.0 lazy-requires its
 ;; deps in a way shadow-cljs cannot bundle), minus the groups that need node
@@ -44,6 +45,8 @@
                             (str/replace "(" "%28")
                             (str/replace ")" "%29"))]
                (str "[" text "](https://spies.tools/" page ".html#" slug "_sns)")))))
+
+(handlebars/registerHelper "die-size" (fn [x _options] (dice/die-size x)))
 
 (handlebars/registerHelper "sns-spell" (spies-link "spells"))
 (handlebars/registerHelper "sns-maneuver" (spies-link "maneuvers"))

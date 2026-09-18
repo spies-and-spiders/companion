@@ -22,6 +22,13 @@
     (is (= "Cast [Foo (Bar)](https://spies.tools/spells.html#foo%20%28bar%29_sns)."
            (template/render "Cast {{sns-spell s}}." {:s {:value "Foo (Bar)"}})))))
 
+(deftest die-size
+  (testing "a rung, from a literal or a ranked var"
+    (is (= "3d4" (template/render "{{die-size 6}}" {})))
+    (is (= "3d6 fire" (template/render "{{die-size dmg}} fire" {:dmg {:value 7 :step 1 :rank 3}}))))
+  (testing "a var that is not a rung renders as nothing"
+    (is (= "" (template/render "{{die-size dmg}}" {:dmg {:value ""}})))))
+
 (deftest render-view-model
   (let [vm (template/render-view-model
              {:loot/title    "{{ name }}"
