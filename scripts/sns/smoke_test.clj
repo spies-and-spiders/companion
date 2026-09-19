@@ -333,13 +333,13 @@
     (let [choice (-> gen :loot/actions first :action/event second :params :choice)
           acted  (expect-200! (request base-url :post "/api/action"
                                        {:id     :relics
-                                        :action :level-up
+                                        :action :rank-up
                                         :params (cond-> {:relic-id id} choice (assoc :choice choice))
                                         :state  {:relics {id relic}}})
-                              "action :relics :level-up")]
+                              "action :relics :rank-up")]
       (when-not (get-in acted [:store/mutations :relics id])
-        (fail! "browser storage returned no mutation for the levelled relic" {:body acted}))
-      (println "  action :relics :level-up -> state travelled both ways")))
+        (fail! "browser storage returned no mutation for the ranked-up relic" {:body acted}))
+      (println "  action :relics :rank-up -> state travelled both ways")))
   (let [rolled (expect-200! (request base-url :post "/api/roll" {}) "roll")]
     ;; A roll wraps the view-model; its writes must still sit at the top level.
     (when (contains? (:view-model rolled) :store/mutations)
