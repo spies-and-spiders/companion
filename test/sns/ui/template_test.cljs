@@ -17,7 +17,16 @@
     (is (= "[Earth Tremor](https://spies.tools/spells.html#earth%20tremor_sns)"
            (template/render "{{sns-spell \"Earth Tremor\"}}" {})))
     (is (= "[Blackguard's Blight](https://spies.tools/maneuvers.html#blackguard's%20blight_sns)"
-           (template/render "{{#sns-maneuver}}Blackguard's Blight{{/sns-maneuver}}" {}))))
+           (template/render "{{#sns-maneuver}}Blackguard's Blight{{/sns-maneuver}}" {})))
+    (is (= "[Blinded](https://spies.tools/conditions.html#blinded_sns)"
+           (template/render "{{sns-condition \"Blinded\"}}" {}))))
+  (testing "a second argument overrides the text shown"
+    (is (= "[blinding](https://spies.tools/conditions.html#blinded_sns)"
+           (template/render "{{sns-condition \"blinded\" \"blinding\"}}" {})))
+    (is (= "[Foo](https://spies.tools/spells.html#earth%20tremor_sns)"
+           (template/render "{{sns-spell \"Earth Tremor\" t}}" {:t {:value "Foo"}})))
+    (is (= "[blinding](https://spies.tools/conditions.html#blinded_sns)"
+           (template/render "{{#sns-condition \"blinded\"}}blinding{{/sns-condition}}" {}))))
   (testing "a var as the name, with brackets encoded"
     (is (= "Cast [Foo (Bar)](https://spies.tools/spells.html#foo%20%28bar%29_sns)."
            (template/render "Cast {{sns-spell s}}." {:s {:value "Foo (Bar)"}})))))

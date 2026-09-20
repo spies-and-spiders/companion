@@ -34,13 +34,18 @@
 (defn- spies-link
   "A helper linking to a spies.tools `page` entry, as the markdown link
    `sns.ui.link` renders: `{{sns-spell \"Earth Tremor\"}}` or
-   `{{#sns-spell}}Earth Tremor{{/sns-spell}}`. Brackets are encoded so they
-   cannot close the link early."
+   `{{#sns-spell}}Earth Tremor{{/sns-spell}}`. A second argument (or a block
+   body alongside the name) is the text to show instead of the entry's name:
+   `{{sns-condition \"blinded\" \"blinding\"}}` links *blinded* as \"blinding\".
+   Brackets are encoded so they cannot close the link early."
   [page]
-  (fn [^js arg options]
+  (fn [& args]
     (this-as ctx
-             (let [text (if options arg (.fn arg ctx))
-                   slug (-> (str/lower-case text)
+             (let [^js options (last args)
+                   [entry display] (butlast args)
+                   body (when (.-fn options) (.fn options ctx))
+                   text (or display body entry)
+                   slug (-> (str/lower-case (or entry body))
                             js/encodeURIComponent
                             (str/replace "(" "%28")
                             (str/replace ")" "%29"))]
@@ -50,6 +55,7 @@
 
 (handlebars/registerHelper "sns-spell" (spies-link "spells"))
 (handlebars/registerHelper "sns-maneuver" (spies-link "maneuvers"))
+(handlebars/registerHelper "sns-condition" (spies-link "conditions"))
 
 ;; Handlebars caches compilation on the function it returns, so compiling per
 ;; call throws that away — measured ~70x the cost of rendering an already

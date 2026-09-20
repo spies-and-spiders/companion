@@ -4,9 +4,10 @@
     [sns.ui.spies :as spies]))
 
 (deftest target
-  (testing "spell and maneuver links name their page and entry"
+  (testing "spell, maneuver and condition links name their page and entry"
     (is (= ["spells" "earth tremor"] (spies/target "https://spies.tools/spells.html#earth%20tremor_sns")))
     (is (= ["maneuvers" "blackguard's blight"] (spies/target "https://spies.tools/maneuvers.html#blackguard's%20blight_sns")))
+    (is (= ["conditions" "blinded"] (spies/target "https://spies.tools/conditions.html#blinded_sns")))
     (is (= ["spells" "foo (bar)"] (spies/target "https://spies.tools/spells.html#foo%20%28bar%29_sns"))))
   (testing "anything else is not previewed"
     (is (nil? (spies/target "https://spies.tools/bestiary.html#imp_sns")))
@@ -15,7 +16,11 @@
 
 (deftest index
   (is (= {"earth tremor" {:name "Earth Tremor"}}
-         (spies/index "spells" {:spell [{:name "Earth Tremor"}]}))))
+         (spies/index "spells" {:spell [{:name "Earth Tremor"}]})))
+  (testing "conditions share a data file with diseases and statuses"
+    (is (= "https://spies.tools/data/conditionsdiseases.json" (spies/data-url "conditions")))
+    (is (= {"blinded" {:name "Blinded"}}
+           (spies/index "conditions" {:condition [{:name "Blinded"}] :disease [{:name "Cackle Fever"}]})))))
 
 (deftest card
   (testing "a spell's level and school, and its text with tags shown as text"
@@ -42,4 +47,10 @@
     (is (= "Basic maneuver · 0 points" (get-in (spies/card "maneuvers" {:degree 0}) [2 1])))
     (is (= "1st degree maneuver · 1 point" (get-in (spies/card "maneuvers" {:degree 1 :points 1}) [2 1])))
     (is (= "2nd degree Adamant Mountain maneuver · 3 points"
-           (get-in (spies/card "maneuvers" {:degree 2 :traditions ["Adamant Mountain"] :points 3}) [2 1])))))
+           (get-in (spies/card "maneuvers" {:degree 2 :traditions ["Adamant Mountain"] :points 3}) [2 1]))))
+  (testing "a condition has no meta line"
+    (is (= [:div.spies__card
+            [:div.spies__name "Blinded"]
+            nil
+            [[:ul [[:li "Can't see."]]]]]
+           (spies/card "conditions" {:name "Blinded" :entries [{:type "list" :items ["Can't see."]}]})))))

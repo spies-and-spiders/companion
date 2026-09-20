@@ -1,10 +1,11 @@
 (ns sns.ui.spies
-  "Hover previews for spies.tools spell and maneuver links: which entry a link
-   points at, and a compact card for it, rendered from the site's own data."
+  "Hover previews for spies.tools spell, maneuver and condition links: which
+   entry a link points at, and a compact card for it, rendered from the site's
+   own data."
   (:require
     [clojure.string :as str]))
 
-(def ^:private data-keys {"spells" :spell "maneuvers" :maneuver})
+(def ^:private data-keys {"spells" :spell "maneuvers" :maneuver "conditions" :condition})
 
 (defn- decode [s]
   (try
@@ -13,14 +14,16 @@
     (catch #?(:clj Exception :cljs :default) _ nil)))
 
 (defn target
-  "`[page name]` for a spies.tools spell or maneuver link, the name lowercased
-   as the link's hash carries it, or nil for any other link."
+  "`[page name]` for a spies.tools spell, maneuver or condition link, the name
+   lowercased as the link's hash carries it, or nil for any other link."
   [href]
-  (when-let [[_ page hash] (re-matches #"https://spies\.tools/(spells|maneuvers)\.html#(.+)_sns" href)]
+  (when-let [[_ page hash] (re-matches #"https://spies\.tools/(spells|maneuvers|conditions)\.html#(.+)_sns" href)]
     (some->> (decode hash) (vector page))))
 
 (defn data-url [page]
-  (str "https://spies.tools/data/" page "/" page "-sns.json"))
+  (if (= "conditions" page)
+    "https://spies.tools/data/conditionsdiseases.json"
+    (str "https://spies.tools/data/" page "/" page "-sns.json")))
 
 (defn index
   "A page's data file, keyed by lowercased name as `target` returns it."
@@ -68,17 +71,20 @@
                  (= 3 (mod n 10)) "rd"
                  :else            "th"))))
 
-(defn- subtitle [page {:keys [level school degree traditions points]}]
-  (if (= "spells" page)
-    (let [school (schools school school)]
-      (if (zero? level) (str school " Cantrip") (str "Level " level " " school)))
-    (str (str/join " " (remove nil? [(if (zero? degree) "Basic" (str (ordinal degree) " degree"))
-                                     (some->> (seq traditions) (str/join ", "))
-                                     "maneuver"]))
-         " · " (or points 0) (if (= 1 points) " point" " points"))))
+(defn- subtitle
+  "The line under the name, or nil for a page whose entries carry no meta."
+  [page {:keys [level school degree traditions points]}]
+  (case page
+    "spells"    (let [school (schools school school)]
+                  (if (zero? level) (str school " Cantrip") (str "Level " level " " school)))
+    "maneuvers" (str (str/join " " (remove nil? [(if (zero? degree) "Basic" (str (ordinal degree) " degree"))
+                                                 (some->> (seq traditions) (str/join ", "))
+                                                 "maneuver"]))
+                     " · " (or points 0) (if (= 1 points) " point" " points"))
+    nil))
 
 (defn card [page e]
   [:div.spies__card
    [:div.spies__name (:name e)]
-   [:div.spies__meta (subtitle page e)]
+   (when-let [s (subtitle page e)] [:div.spies__meta s])
    (map entry (concat (:entries e) (:entriesHigherLevel e)))])
