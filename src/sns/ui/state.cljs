@@ -27,7 +27,17 @@
          :manual-key    {}    ; loot-type id -> the key being typed into the blank "add" row
          :spies         {}    ; spies.tools page -> its entries by lowercased name, or :loading
          :browser-storage? false ; state lives in IndexedDB and travels with each request
-         :loot-die-size 100}))  ; sides on the loot die (from the backend's config)
+         :loot-die-size 100    ; sides on the loot die (from the backend's config)
+         :loot-table    []    ; [{:id :ranges [[from to] ...]}] — where each loot type sits on the loot die
+         :rolled        []}))  ; loot-type ids the last loot-table roll landed on
+
+(def loot-table-page
+  "The page id of the loot-table view, namespaced apart from any tool id."
+  :sns/loot-table)
+
+(def rolled-page
+  "The page showing a roll that landed on several types no other page holds."
+  :sns/rolled)
 
 (defn spec [{:keys [loot-types]} id]
   (some #(when (= id (:id %)) %) loot-types))
@@ -40,17 +50,24 @@
     (when (= id row-id) idx)))
 
 (defn- all-pages
-  "The configured pages, plus a page of its own for every loot type."
+  "The configured pages, a page of its own for every loot type, and the page of
+   the last roll."
   [state]
-  (concat (:pages state) (map (fn [{:keys [id]}] {:id id :tools [id]}) (:loot-types state))))
+  (concat (:pages state)
+          (map (fn [{:keys [id]}] {:id id :tools [id]}) (:loot-types state))
+          [{:id rolled-page :tools (:rolled state)}]))
 
 (defn page-tools [state page]
   (some #(when (= page (:id %)) (:tools %)) (all-pages state)))
 
 (defn page-for
-  "Where loot type `id` is shown: the page on screen if it is there already,
-   otherwise its own page."
-  [state id]
-  (if (some #{id} (page-tools state (:page state)))
-    (:page state)
-    id))
+  "Where loot types `ids` are shown together: the page on screen if it holds
+   them all already, a lone type's own page, the first configured page holding
+   them all, or else the page of the last roll."
+  [state ids]
+  (let [holds? (fn [page] (every? (set (page-tools state page)) ids))]
+    (cond
+      (holds? (:page state)) (:page state)
+      (= 1 (count ids))      (first ids)
+      :else                  (or (some #(when (holds? (:id %)) (:id %)) (:pages state))
+                                 rolled-page))))

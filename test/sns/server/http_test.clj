@@ -56,7 +56,7 @@
     (let [app  (http/app (engine/create config {:store (edn-store/create {:backend :memory})}))
           resp (app {:request-method :get :uri "/api/capabilities"})]
       (is (= 200 (:status resp)))
-      (is (= {:browser-storage? false :loot-die-size 100 :sections [:divine-dust :relics]} (body resp)))))
+      (is (= {:browser-storage? false :loot-die-size 100 :sections [:divine-dust :relics] :loot-table [{:id :divine-dust :ranges [[1 100]]}]} (body resp)))))
   (testing "with a reporter -> report? surfaced"
     (let [app  (http/app (engine/create config {:store    (edn-store/create {:backend :memory})
                                                 :reporter (recording-reporter (atom nil))}))
@@ -64,17 +64,18 @@
       (is (= {:browser-storage? false
               :loot-die-size    100
               :sections         [:divine-dust :relics]
+              :loot-table       [{:id :divine-dust :ranges [[1 100]]}]
               :report?          true
               :report-label     "Send to Discord"} (body resp)))))
   (testing ":history is surfaced only when the config sets it"
     (let [app  (http/app (engine/create (assoc config :history :on-report)
                                         {:store (edn-store/create {:backend :memory})}))
           resp (app {:request-method :get :uri "/api/capabilities"})]
-      (is (= {:browser-storage? false :loot-die-size 100 :sections [:divine-dust :relics] :history :on-report} (body resp)))))
+      (is (= {:browser-storage? false :loot-die-size 100 :sections [:divine-dust :relics] :loot-table [{:id :divine-dust :ranges [[1 100]]}] :history :on-report} (body resp)))))
   (testing ":browser storage -> the client ships state with each request"
     (let [app  (http/app (engine/create (assoc config :storage {:backend :browser})))
           resp (app {:request-method :get :uri "/api/capabilities"})]
-      (is (= {:browser-storage? true :loot-die-size 100 :sections [:divine-dust :relics]} (body resp))))))
+      (is (= {:browser-storage? true :loot-die-size 100 :sections [:divine-dust :relics] :loot-table [{:id :divine-dust :ranges [[1 100]]}]} (body resp))))))
 
 (deftest report-endpoint
   (let [sink (atom nil)
@@ -200,13 +201,13 @@
         server  (http/app (engine/create rolled {:store (edn-store/create {:backend :memory})}))]
     (testing "under :browser they sit beside :view-model, not inside it"
       (let [resp (body (post browser "/api/roll" {}))]
-        (is (= :relics (:id resp)))
+        (is (= [:relics] (mapv :id (:results resp))))
         (is (contains? (:store/mutations resp) :relics))
-        (is (not (contains? (:view-model resp) :store/mutations)))))
+        (is (not-any? #(contains? (:view-model %) :store/mutations) (:results resp)))))
     (testing "under a server-side backend they are stripped, having been persisted"
       (let [resp (body (post server "/api/roll" {}))]
         (is (not (contains? resp :store/mutations)))
-        (is (not (contains? (:view-model resp) :store/mutations)))))))
+        (is (not-any? #(contains? (:view-model %) :store/mutations) (:results resp)))))))
 
 (deftest export-round-trips-into-a-file-store
   ;; The acceptance criterion for export: the ZIP unzips into a directory a

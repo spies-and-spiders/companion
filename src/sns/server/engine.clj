@@ -18,7 +18,7 @@
     [taoensso.telemere :as t])
   (:import
     (java.io PushbackReader)
-    (java.util.random RandomGeneratorFactory)))
+    (java.util.random RandomGenerator RandomGeneratorFactory)))
 
 (def ^:private default-words
   (-> (io/resource "words.edn") io/reader PushbackReader. edn/read))
@@ -47,6 +47,22 @@
               {:acc 0 :entries []}
               table))))
 
+(defn- ranged? [table]
+  (boolean (some :ranges table)))
+
+(defn- loot-ranges
+  "Each entry's inclusive `[from to]` ranges on the loot die: as configured, or
+   laid out from the weights, where an entry too light for a side of its own
+   gets none."
+  [table size]
+  (if (ranged? table)
+    (mapv #(select-keys % [:id :ranges]) table)
+    (let [entries (allocation table size)]
+      (mapv (fn [prev {:keys [id max]}]
+              {:id id :ranges (if (< prev max) [[(inc prev) max]] [])})
+            (cons 0 (map :max entries))
+            entries))))
+
 (defn- install-randoms!
   "Install each config-declared preset as a `randoms/preset` method, so a DM's
    `:randoms` and a plugin's own presets are the same mechanism. Config is
@@ -55,14 +71,33 @@
   (doseq [[id values] randoms]
     (defmethod randoms/preset id [_ _] values)))
 
+(defn- validate-ranges!
+  "A ranged table gives every entry its ranges, all of them on the die, and
+   leaves no side of the die unassigned."
+  [table size]
+  (when-some [bare (seq (remove :ranges table))]
+    (throw (ex-info "Every loot-table entry needs :ranges once one has them"
+                    {:missing (mapv :id bare)})))
+  (doseq [{:keys [id ranges]} table
+          [from to :as rng] ranges]
+    (when-not (<= 1 from to size)
+      (throw (ex-info (str "Loot-table range must run upwards within 1-" size)
+                      {:id id :range rng :loot-die-size size}))))
+  (let [covered? (fn [n] (some (fn [[from to]] (<= from n to)) (mapcat :ranges table)))]
+    (when-some [gaps (seq (remove covered? (range 1 (inc size))))]
+      (throw (ex-info "Loot-table ranges leave sides of the loot die unassigned"
+                      {:unassigned (vec gaps) :loot-die-size size})))))
+
 (defn- validate-table!
   "Every loot-table entry must reference a registered loot type, and the table
    has to fit on the loot die, or some entry could never be rolled."
   [registry table size]
-  (when (> (count table) size)
-    (throw (ex-info "Loot-table has more entries than the loot die has sides; raise :loot-die-size"
-                    {:entries       (count table)
-                     :loot-die-size size})))
+  (if (ranged? table)
+    (validate-ranges! table size)
+    (when (> (count table) size)
+      (throw (ex-info "Loot-table has more entries than the loot die has sides; raise :loot-die-size"
+                      {:entries       (count table)
+                       :loot-die-size size}))))
   (doseq [{:keys [id]} table]
     (when-not (contains? registry id)
       (throw (ex-info "Loot-table references an unknown loot type"
@@ -102,21 +137,21 @@
      ;; Config-declared random presets, usable from any plugin's vars as
      ;; `{:random :<preset>}`.
      (install-randoms! (:randoms config))
-     {:config          config
-      :registry        registry
-      :entries         (into {} (map (juxt :id identity)) (:tools config))
-      :words           (build-words config)
-      :store           store
-      :reporter        (or reporter (reporter/from-config (:reporting config)))
-      :rng             rng
+     {:config        config
+      :registry      registry
+      :entries       (into {} (map (juxt :id identity)) (:tools config))
+      :words         (build-words config)
+      :store         store
+      :reporter      (or reporter (reporter/from-config (:reporting config)))
+      :rng           rng
       ;; Missing weights default to 1, so a table without weights is sampled
-      ;; uniformly (and partial weights mix evenly-weighted entries in).
-      :loot-sampler    (when (seq table)
-                         (r/alias-method-sampler (mapv :id table)
-                                                 (mapv #(or (:weight %) 1) table)))
-      ;; The same weights, laid out as a die lookup for number-driven rolls.
-      :loot-die-size   size
-      :loot-allocation (when (seq table) (allocation table size))})))
+      ;; uniformly (and partial weights mix evenly-weighted entries in). A
+      ;; ranged table has no weights: it rolls the die instead.
+      :loot-sampler  (when (and (seq table) (not (ranged? table)))
+                       (r/alias-method-sampler (mapv :id table)
+                                               (mapv #(or (:weight %) 1) table)))
+      :loot-die-size size
+      :loot-ranges   (when (seq table) (loot-ranges table size))})))
 
 (defn- ctx
   "Assemble the per-request context handed to a generator."
@@ -308,31 +343,38 @@
             (schema/assert! ::schema/view-model)
             (persist! (:store engine)))))))
 
-(defn- roll->id
-  "Resolve the entered roll `n` (1-`size`) to a loot type via the allocation."
-  [loot-allocation size n]
+(defn- roll->ids
+  "Every loot type whose ranges hold the entered roll `n` (1-`size`)."
+  [loot-ranges size n]
   (when-not (and (integer? n) (<= 1 n size))
     (throw (ex-info (str "Roll must be an integer between 1 and " size) {:n n :loot-die-size size})))
-  (some (fn [{:keys [id max]}] (when (<= n max) id)) loot-allocation))
+  (into [] (keep (fn [{:keys [id ranges]}] (when (some (fn [[from to]] (<= from n to)) ranges) id)))
+        loot-ranges))
 
 (defn roll
-  "Roll the top-level loot table and generate the chosen loot type. With no `n`,
-   the table is sampled randomly by weight; given `n` (a 1-`:loot-die-size`
-   result), the type is resolved from its allocation on the table. `inputs` is
-   keyed by loot-type id, so the chosen type generates with its own. Returns the
-   chosen `:id` alongside its `:view-model` so callers (e.g. the UI) can reflect
-   which discipline was rolled."
+  "Roll the top-level loot table and generate every loot type the roll lands on.
+   With no `n`, a weighted table is sampled by weight and a ranged one rolls the
+   loot die; given `n` (a 1-`:loot-die-size` result), the types are those whose
+   ranges hold it. `inputs` is keyed by loot-type id, so each type generates with
+   its own. Returns `{:results [{:id :view-model} ...]}` so callers (e.g. the UI)
+   can reflect what was rolled, with every result's writes merged at the top."
   ([engine] (roll engine {} nil))
   ([engine inputs] (roll engine inputs nil))
-  ([{:keys [loot-sampler loot-allocation loot-die-size] :as engine} inputs n]
-   (when-not loot-sampler
+  ([{:keys [loot-sampler loot-ranges loot-die-size rng] :as engine} inputs n]
+   (when-not loot-ranges
      (throw (ex-info "No loot-table configured" {})))
-   (let [id (if (some? n) (roll->id loot-allocation loot-die-size n) (loot-sampler))
-         vm (generate engine id (get inputs id {}))]
-     ;; Writes ride at the top of the result, where a plain generate leaves
-     ;; them, rather than buried inside the wrapper this adds.
-     (cond-> {:id id :view-model (dissoc vm :store/mutations)}
-             (:store/mutations vm) (assoc :store/mutations (:store/mutations vm))))))
+   (let [ids       (cond
+                     (some? n)    (roll->ids loot-ranges loot-die-size n)
+                     loot-sampler [(loot-sampler)]
+                     :else        (roll->ids loot-ranges loot-die-size
+                                             (inc (.nextInt ^RandomGenerator rng (int loot-die-size)))))
+         ;; ponytail: each type generates against the state the request arrived
+         ;; with, so under :browser two types sharing a collection do not see
+         ;; each other's writes. Thread the writes through if that ever matters.
+         vms       (mapv #(generate engine % (get inputs % {})) ids)
+         mutations (apply merge-with merge (keep :store/mutations vms))]
+     (cond-> {:results (mapv (fn [id vm] {:id id :view-model (dissoc vm :store/mutations)}) ids vms)}
+             mutations (assoc :store/mutations mutations)))))
 
 (defn capabilities
   "UI-facing flags describing optional features enabled by config: whether the
@@ -340,12 +382,14 @@
    client ships it with each request and applies the writes that come back), and
    when generated results join the browser-side history (absent = the client's
    default, `:button`). `:sections` is every tool id in config order, which the
-   UI lists the rail by, and `:pages` the configured pages."
-  [{:keys [reporter config loot-die-size]}]
+   UI lists the rail by, `:pages` the configured pages, and `:loot-table` the
+   inclusive `[from to]` `:ranges` of the loot die each loot type is rolled on."
+  [{:keys [reporter config loot-die-size loot-ranges]}]
   (cond-> {:browser-storage? (store/browser? config)
            :loot-die-size    loot-die-size
            :sections         (mapv :id (:tools config))}
           (:history config) (assoc :history (:history config))
+          loot-ranges (assoc :loot-table loot-ranges)
           (seq (pages config)) (assoc :pages (mapv (fn [{:keys [page] :as p}]
                                                      (-> (select-keys p [:id :section])
                                                          (assoc :label (label (:id p) p) :tools (:tools page))))

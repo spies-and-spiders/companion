@@ -10,6 +10,9 @@
   {:tools      [{:type :builtin :id :divine-dust :builtin {:entrypoint 'sns.builtin.dust/generator}}]
    :loot-table [{:id :divine-dust :weight 100}]})
 
+(defn- rolled-ids [result]
+  (mapv :id (:results result)))
+
 (deftest builds-registry-and-generates
   (let [eng (engine/create test-config)]
     (testing "loot-specs lists the registered type, with its collections defaulted"
@@ -20,10 +23,10 @@
               :loot/subtitle "A pinch of divine residue"}
              (dissoc (engine/generate eng :divine-dust) :loot/words))))
     (testing "roll picks from the loot-table, returning the chosen id and view-model"
-      (is (= {:id         :divine-dust
-              :view-model {:loot/title    "Divine Dust"
-                           :loot/subtitle "A pinch of divine residue"}}
-             (update (engine/roll eng) :view-model dissoc :loot/words))))
+      (is (= [{:id         :divine-dust
+               :view-model {:loot/title    "Divine Dust"
+                            :loot/subtitle "A pinch of divine residue"}}]
+             (mapv #(update % :view-model dissoc :loot/words) (:results (engine/roll eng))))))
     (testing "an unknown loot type is rejected"
       (is (thrown? Exception (engine/generate eng :nonexistent))))))
 
@@ -55,7 +58,7 @@
     (let [eng (engine/create
                 {:tools      [{:type :builtin :id :divine-dust :builtin {:entrypoint 'sns.builtin.dust/generator}}]
                  :loot-table [{:id :divine-dust}]})]
-      (is (= :divine-dust (:id (engine/roll eng)))))))
+      (is (= [:divine-dust] (rolled-ids (engine/roll eng)))))))
 
 (deftest roll-by-number-resolves-via-allocation
   (let [eng (engine/create
@@ -63,10 +66,10 @@
                             {:type :builtin :id :other :builtin {:entrypoint 'sns.builtin.dust/generator}}]
                :loot-table [{:id :divine-dust :weight 40} {:id :other :weight 60}]})]
     (testing "a number lands in the weighted slice it belongs to (1-40 vs 41-100)"
-      (is (= :divine-dust (:id (engine/roll eng {} 1))))
-      (is (= :divine-dust (:id (engine/roll eng {} 40))))
-      (is (= :other (:id (engine/roll eng {} 41))))
-      (is (= :other (:id (engine/roll eng {} 100)))))
+      (is (= [:divine-dust] (rolled-ids (engine/roll eng {} 1))))
+      (is (= [:divine-dust] (rolled-ids (engine/roll eng {} 40))))
+      (is (= [:other] (rolled-ids (engine/roll eng {} 41))))
+      (is (= [:other] (rolled-ids (engine/roll eng {} 100)))))
     (testing "out-of-range and non-integer rolls are rejected"
       (is (thrown? Exception (engine/roll eng {} 0)))
       (is (thrown? Exception (engine/roll eng {} 101)))
@@ -79,10 +82,10 @@
                               {:type :builtin :id :b :builtin {:entrypoint 'sns.builtin.dust/generator}}
                               {:type :builtin :id :c :builtin {:entrypoint 'sns.builtin.dust/generator}}]
                  :loot-table [{:id :a} {:id :b} {:id :c}]})]
-      (is (= :a (:id (engine/roll eng {} 1))))
-      (is (= :a (:id (engine/roll eng {} 34))))
-      (is (= :b (:id (engine/roll eng {} 35))))
-      (is (= :c (:id (engine/roll eng {} 100)))))))
+      (is (= [:a] (rolled-ids (engine/roll eng {} 1))))
+      (is (= [:a] (rolled-ids (engine/roll eng {} 34))))
+      (is (= [:b] (rolled-ids (engine/roll eng {} 35))))
+      (is (= [:c] (rolled-ids (engine/roll eng {} 100)))))))
 
 (deftest custom-loot-die-size
   (let [plugins [{:type :builtin :id :a :builtin {:entrypoint 'sns.builtin.dust/generator}}
@@ -92,18 +95,45 @@
                    :loot-die-size 20
                    :loot-table    [{:id :a :weight 3} {:id :b :weight 1}]})]
     (testing "the allocation is scaled to the configured die"
-      (is (= :a (:id (engine/roll eng {} 15))))
-      (is (= :b (:id (engine/roll eng {} 16))))
-      (is (= :b (:id (engine/roll eng {} 20)))))
+      (is (= [:a] (rolled-ids (engine/roll eng {} 15))))
+      (is (= [:b] (rolled-ids (engine/roll eng {} 16))))
+      (is (= [:b] (rolled-ids (engine/roll eng {} 20)))))
     (testing "rolls past the die are rejected"
       (is (thrown? Exception (engine/roll eng {} 21))))
     (testing "the die size reaches the UI via capabilities"
       (is (= 20 (:loot-die-size (engine/capabilities eng)))))
+    (testing "each entry's span of the die reaches the UI via capabilities"
+      (is (= [{:id :a :ranges [[1 15]]} {:id :b :ranges [[16 20]]}]
+             (:loot-table (engine/capabilities eng)))))
     (testing "a table with more entries than the die has sides fails at startup"
       (is (thrown? Exception
                    (engine/create {:tools         plugins
                                    :loot-die-size 1
                                    :loot-table    [{:id :a} {:id :b}]}))))))
+
+(deftest ranged-loot-table
+  (let [tools [{:type :builtin :id :a :builtin {:entrypoint 'sns.builtin.dust/generator}}
+               {:type :builtin :id :b :builtin {:entrypoint 'sns.builtin.dust/generator}}]
+        table [{:id :a :ranges [[1 12] [20 20]]} {:id :b :ranges [[10 19]]}]
+        eng   (engine/create {:tools tools :loot-die-size 20 :loot-table table})]
+    (testing "a roll lands on every entry whose ranges hold it"
+      (is (= [:a] (rolled-ids (engine/roll eng {} 1))))
+      (is (= [:a :b] (rolled-ids (engine/roll eng {} 11))))
+      (is (= [:b] (rolled-ids (engine/roll eng {} 19))))
+      (is (= [:a] (rolled-ids (engine/roll eng {} 20)))))
+    (testing "a random roll lands somewhere on the table"
+      (is (seq (rolled-ids (engine/roll eng)))))
+    (testing "the configured ranges reach the UI as they are"
+      (is (= table (:loot-table (engine/capabilities eng)))))
+    (testing "a table is rejected at startup when"
+      (let [create #(engine/create {:tools tools :loot-die-size 20 :loot-table %})]
+        (testing "only some entries have :ranges"
+          (is (thrown? Exception (create [{:id :a :ranges [[1 20]]} {:id :b}]))))
+        (testing "a range runs backwards or off the die"
+          (is (thrown? Exception (create [{:id :a :ranges [[1 10] [20 11]]}])))
+          (is (thrown? Exception (create [{:id :a :ranges [[1 21]]}]))))
+        (testing "a side of the die is left unassigned"
+          (is (thrown? Exception (create [{:id :a :ranges [[1 10] [12 20]]}]))))))))
 
 (defn- self-describing-generator
   "A generator whose loot-spec claims an id, label and section of its own, and
@@ -156,7 +186,7 @@
       (is (= [true nil] (mapv :hidden? (engine/loot-specs eng)))))
     (testing "a hidden type is still listed (the UI needs its spec) and still rollable"
       (is (= [:divine-dust :other] (mapv :id (engine/loot-specs eng))))
-      (is (= :divine-dust (:id (engine/roll eng)))))
+      (is (= [:divine-dust] (rolled-ids (engine/roll eng)))))
     (testing "and is still generable by id, e.g. for a follow-up action"
       (is (= "Divine Dust" (:loot/title (engine/generate eng :divine-dust)))))))
 
@@ -175,7 +205,7 @@
   (let [eng (engine/create {:tools      [{:type :builtin :id :echo :builtin {:entrypoint `echo-inputs-generator}}]
                             :loot-table [{:id :echo}]})]
     (is (= "rolled" (-> (engine/roll eng {:echo {:word "rolled"} :other {:word "ignored"}})
-                        :view-model :loot/title)))))
+                        :results first :view-model :loot/title)))))
 
 (deftest validates-pages-at-startup
   (let [plugins [{:type :builtin :id :divine-dust :builtin {:entrypoint 'sns.builtin.dust/generator}}

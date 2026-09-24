@@ -217,7 +217,10 @@
  ;; The weighted draw used by the "random loot" button. Each :id must match a
  ;; plugin above; :weight is the relative chance (defaults to 1 when omitted).
  ;; :loot-die-size is the die the DM rolls against this table (default 100); the
- ;; table cannot hold more entries than the die has sides.
+ ;; table cannot hold more entries than the die has sides. Entries can instead
+ ;; take :ranges of the die, e.g. {:id :relics :ranges [[1 20] [99 100]]}, in
+ ;; place of :weight; then every entry needs them, and together they must cover
+ ;; the whole die. Overlapping ranges roll every entry they share.
  :loot-die-size 100
  :loot-table    [{:id :divine-dust :weight 40}
                  {:id :uniques :weight 25}

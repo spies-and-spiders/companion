@@ -39,6 +39,21 @@ the top level; what every plugin shares nests under `:generator`, and what only 
 The die defaults to a d100; set `:loot-die-size` to roll a different one. The table cannot have
 more entries than the die has sides — the app refuses to start if it does.
 
+Instead of weights, entries may pin themselves to sides of the die with `:ranges` (inclusive
+`[from to]` pairs, not necessarily consecutive). An entry takes `:weight` or `:ranges`, not both,
+and once one entry has `:ranges` they all need them. Every side of the die must belong to some
+entry; where ranges overlap, a roll there generates every entry it lands on.
+
+```clojure
+:loot-table [{:id :uniques :ranges [[1 60] [99 100]]}
+             {:id :relics  :ranges [[61 98]]}
+             {:id :rings   :ranges [[95 100]]}]   ; 95-98 rolls a relic and rings
+```
+
+**Loot table**, at the top of the rail, lists every entry against its numbers; entering a
+roll highlights what it lands on, and generates it on Enter (or **Generate all** when it
+lands on several).
+
 A tool's `:id`, `:label` and `:section` come from its config entry alone; a plugin cannot
 set them for itself. `:label` defaults to one derived from the id (`:divine-dust` shows as
 "Divine dust").
@@ -130,7 +145,8 @@ only on its pages.
 Ids must be unique across every tool, pages included, and every listed plugin must
 exist — the app refuses to start otherwise. A page cannot appear on the `:loot-table`.
 Rolling the `:loot-table` shows the result on the page already on screen if it holds
-the rolled type, otherwise on the type's own page.
+every rolled type, otherwise on the type's own page. A roll landing on several types goes to
+the first page holding them all, or to a page of its own when none does.
 
 ### Result history
 

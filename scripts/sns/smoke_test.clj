@@ -341,10 +341,10 @@
         (fail! "browser storage returned no mutation for the ranked-up relic" {:body acted}))
       (println "  action :relics :rank-up -> state travelled both ways")))
   (let [rolled (expect-200! (request base-url :post "/api/roll" {}) "roll")]
-    ;; A roll wraps the view-model; its writes must still sit at the top level.
-    (when (contains? (:view-model rolled) :store/mutations)
+    ;; A roll wraps the view-models; their writes must still sit at the top level.
+    (when (some #(contains? (:view-model %) :store/mutations) (:results rolled))
       (fail! "roll left mutations buried inside :view-model" {:body rolled}))
-    (println "  roll ->" (:id rolled)
+    (println "  roll ->" (mapv :id (:results rolled))
              (if (:store/mutations rolled) "with mutations at the top level" "(stateless type)"))))
 
 (defn- exercise-browser-manual-state!

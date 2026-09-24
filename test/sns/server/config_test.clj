@@ -28,6 +28,12 @@
       (is (= [:dust :uniques] (mapv :id (:tools cfg))))
       (is (= [40 nil] (mapv :weight (:loot-table cfg)))))))
 
+(deftest json-loot-table-ranges-decode
+  (let [f (write-temp-json
+            (str "{\"tools\":[{\"type\":\"builtin\",\"id\":\"dust\"}],"
+                 "\"loot-table\":[{\"id\":\"dust\",\"ranges\":[[1,98],[99,100]]}]}"))]
+    (is (= [{:id :dust :ranges [[1 98] [99 100]]}] (:loot-table (config/load-config f))))))
+
 (deftest json-data-plugin-keeps-its-templates
   (testing "a JSON :data item's title/body stay strings — regression: they
             decoded to keywords, and `{{result}}` read as a field reference to

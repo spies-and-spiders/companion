@@ -56,13 +56,14 @@
 (nxr/register-effect! :fx/load-capabilities
                       (fn [{:keys [dispatch]} _system]
                         (api/request {:url "/api/capabilities"}
-                                     (fn [{:keys [report? report-label browser-storage? history loot-die-size pages sections]}]
+                                     (fn [{:keys [report? report-label browser-storage? history loot-die-size loot-table pages sections]}]
                                        (dispatch [[:fx/assoc-in [:pages] (vec pages)]
                                                   [:fx/assoc-in [:sections] (vec sections)]
                                                   [:fx/assoc-in [:report?] (boolean report?)]
                                                   [:fx/assoc-in [:report-label] report-label]
                                                   [:fx/assoc-in [:browser-storage?] (boolean browser-storage?)]
                                                   [:fx/assoc-in [:loot-die-size] (or loot-die-size 100)]
+                                                  [:fx/assoc-in [:loot-table] (vec loot-table)]
                                                   [:fx/assoc-in [:history-mode] (or history :button)]
                                                   ;; only now is it known whether the
                                                   ;; history lives in this browser
@@ -221,12 +222,16 @@
                           {:method :post
                            :url    "/api/roll"
                            :body   (cond-> {:inputs inputs} (some? n) (assoc :n n))}
-                          ;; roll returns {:id ... :view-model ...} so we can jump
-                          ;; to a page showing the discipline that was rolled.
-                          (fn [{:keys [id view-model]}]
-                            (dispatch (-> (vec (history-fx @system id view-model :always))
-                                          (into (result-fx id view-model))
-                                          (conj [:ui/select-page (state/page-for @system id)]))))
+                          ;; roll returns every type the roll landed on, so we can
+                          ;; jump to a page showing them all.
+                          (fn [{:keys [results]}]
+                            (let [ids (mapv :id results)]
+                              (dispatch (-> [[:fx/assoc-in [:rolled] ids]]
+                                            (into (mapcat (fn [{:keys [id view-model]}]
+                                                            (concat (history-fx @system id view-model :always)
+                                                                    (result-fx id view-model))))
+                                                  results)
+                                            (conj [:ui/select-page (state/page-for (assoc @system :rolled ids) ids)])))))
                           (fn [err] (dispatch [[:fx/assoc-in [:error] (:error err)]])))))
 
 (nxr/register-effect! :fx/action
@@ -348,6 +353,10 @@
     [[:fx/roll inputs n]]))
 
 (nxr/register-action! :ui/roll roll-fx)
+
+(nxr/register-action! :ui/roll-die
+                      (fn [{:keys [loot-die-size]}]
+                        [[:fx/assoc-in [:roll-n] (str (inc (rand-int loot-die-size)))]]))
 
 ;; Enter inside the roll input rolls, matching the button.
 (nxr/register-action! :ui/roll-on-enter

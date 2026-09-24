@@ -54,16 +54,17 @@
   (let [ids (state/page-tools state (:page state))]
     [:div.app
      [:header.topbar
-      [:div.brand [:span.brand__mark "✦"] [:span.brand__name "sns-companion"]]]
+      [:div.brand [:span.brand__mark "✦"] [:span.brand__name "S&S Companion"]]]
      [:div.stage
       (render/picker state)
       [:main.workbench
        (when (:error state)
          [:p.notice.notice--error (:error state)])
-       (if (seq ids)
-         [:div.cards (for [id ids] (card state id))]
-         [:div.empty
-          [:p.empty__line "Choose a page, or make a loot roll."]])]]]))
+       (cond
+         (= state/loot-table-page (:page state)) (render/loot-table state)
+         (seq ids) [:div.cards (for [id ids] (card state id))]
+         :else [:div.empty
+                [:p.empty__line "Choose a page, or make a loot roll."]])]]]))
 
 (defn- render! [state]
   (r/render (js/document.getElementById "app") (view state)))

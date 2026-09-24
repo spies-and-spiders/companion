@@ -109,3 +109,8 @@
   (testing "an unknown plugin type is rejected"
     (is (not (schema/validate ::schema/config
                               {:tools [{:type :wat :id :x}]})))))
+
+(deftest loot-entry-takes-weight-or-ranges
+  (is (schema/validate ::schema/loot-entry {:id :a :weight 2}))
+  (is (schema/validate ::schema/loot-entry {:id :a :ranges [[1 20] [99 99]]}))
+  (is (not (schema/validate ::schema/loot-entry {:id :a :weight 2 :ranges [[1 20]]}))))

@@ -491,7 +491,7 @@
       (or (str/blank? q)
           (str/includes? (str/lower-case (str label)) q)))))
 
-(defn picker [{:keys [pages sections page roll-n type-filter browser-storage? loot-die-size] :as state}]
+(defn picker [{:keys [pages sections page type-filter browser-storage?] :as state}]
   (let [match?  (matcher type-filter)
         ;; A configured page matches on its own label or any of its plugins'.
         pages   (for [{:keys [label tools] :as p} pages
@@ -506,18 +506,10 @@
                                  (match? (:label spec)))]
                   (assoc spec :glyph "◆"))]
     [:nav.rail
-     [:div.roll-group
-      [:input.roll__input
-       {:type        "number"
-        :min         "1"
-        :max         (str loot-die-size)
-        :placeholder (str "d" loot-die-size)
-        :value       (str roll-n)
-        :on          {:input   [[:ui/set-roll-input [:event.target/value]]]
-                      :keydown [[:ui/roll-on-enter [:event/key]]]}}]
-      [:button.roll {:on {:click [[:ui/roll]]}}
-       (if (str/blank? (str roll-n)) "Roll Loot" (str "Roll " roll-n))]]
-     [:p.rail__hint (str "Enter 1–" loot-die-size " to roll on the table, or leave blank for random.")]
+     (when (seq (:loot-table state))
+       [:button.rail__table {:class (when (= state/loot-table-page page) "rail__table--active")
+                             :on    {:click [[:ui/select-page state/loot-table-page]]}}
+        "Loot table"])
      [:input.rail__search
       {:type        "search"
        :placeholder "Search tools…"
@@ -533,6 +525,40 @@
       (if browser-storage?
         "State lives in this browser. Download it to keep a copy or move it to a local deployment."
         "A ZIP of every collection, as the app stores them.")]]))
+
+;; --- loot table ----------------------------------------------------------------
+
+(defn- spans [ranges]
+  (or (not-empty (str/join ", " (for [[from to] ranges] (if (= from to) (str from) (str from "–" to)))))
+      "—"))
+
+(defn loot-table
+  "Every loot-table entry against its ranges on the loot die. The roll box's
+   number highlights every entry it lands on."
+  [{:keys [loot-table loot-die-size roll-n] :as state}]
+  (let [n    (parse-long (str/trim (str roll-n)))
+        hit? (fn [{:keys [ranges]}] (and n (some (fn [[from to]] (<= from n to)) ranges)))]
+    [:section.loot-table
+     [:p.summon__eyebrow "Loot table"]
+     [:div.roll-group
+      [:input.roll__input
+       {:type        "number"
+        :min         "1"
+        :max         (str loot-die-size)
+        :placeholder (str "d" loot-die-size)
+        :value       (str roll-n)
+        :on          {:input   [[:ui/set-roll-input [:event.target/value]]]
+                      :keydown [[:ui/roll-on-enter [:event/key]]]}}]
+      [:button.action-btn {:on {:click [[:ui/roll-die]]}} (str "Roll d" loot-die-size)]
+      (when (< 1 (count (filter hit? loot-table)))
+        [:button.action-btn {:on {:click [[:ui/roll]]}} "Generate all"])]
+     [:ul.loot-table__list
+      (for [{:keys [id ranges] :as entry} loot-table]
+        [:li.loot-table__row {:replicant/key id
+                              :class         (when (hit? entry) "loot-table__row--hit")}
+         [:span.loot-table__span (spans ranges)]
+         [:span.loot-table__name (or (:label (state/spec state id)) (name id))]
+         [:button.action-btn {:on {:click [[:ui/select-page id] [:ui/generate id]]}} "Generate"]])]]))
 
 ;; --- result history -----------------------------------------------------------
 

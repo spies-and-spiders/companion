@@ -321,7 +321,15 @@
            [:builtin (generator-tool :builtin
                                      [:builtin {:optional true} [:map [:entrypoint {:optional true} symbol?]]])]]
 
-   ::loot-entry [:map [:id keyword?] [:weight {:optional true} number?]]
+   ;; `:ranges` pins an entry to sides of the loot die, e.g. [[1 20] [99 99]];
+   ;; overlapping ranges roll every entry they share.
+   ::loot-entry [:and
+                 [:map
+                  [:id keyword?]
+                  [:weight {:optional true} number?]
+                  [:ranges {:optional true} [:sequential [:tuple pos-int? pos-int?]]]]
+                 [:fn {:error/message "a loot-table entry takes :weight or :ranges, not both"}
+                  (fn [e] (not (and (contains? e :weight) (contains? e :ranges))))]]
 
    ;; --- random presets (content for `sns.sdk.randoms`) ---
    ;; Named value lists any plugin's vars can draw from with
