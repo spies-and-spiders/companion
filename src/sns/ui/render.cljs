@@ -523,8 +523,8 @@
       "Download state"]
      [:p.rail__hint
       (if browser-storage?
-        "State lives in this browser. Download it to keep a copy or move it to a local deployment."
-        "A ZIP of every collection, as the app stores them.")]]))
+        "Download a copy of your local state to use it for a local deployment, or just as a backup."
+        "A ZIP of all application state data.")]]))
 
 ;; --- loot table ----------------------------------------------------------------
 
