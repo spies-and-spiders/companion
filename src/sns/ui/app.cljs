@@ -54,7 +54,7 @@
   (let [ids (state/page-tools state (:page state))]
     [:div.app
      [:header.topbar
-      [:div.brand [:span.brand__mark "✦"] [:span.brand__name "S&S Companion"]]]
+      [:div.brand [:img.brand__mark {:src "/favicon.svg" :alt ""}] [:span.brand__name "S&S Companion"]]]
      [:div.stage
       (render/picker state)
       [:main.workbench

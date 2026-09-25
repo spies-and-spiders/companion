@@ -55,8 +55,8 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   border-bottom: var(--rule);
 }
 
-.brand { display: flex; align-items: baseline; gap: 0.55rem; }
-.brand__mark { color: var(--gilt); font-size: 1.1rem; }
+.brand { display: flex; align-items: center; gap: 0.55rem; }
+.brand__mark { width: 1.6rem; height: 1.6rem; }
 .brand__name {
   font-family: var(--display);
   font-size: 1.35rem;
