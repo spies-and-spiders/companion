@@ -54,20 +54,22 @@
                                      (fn [err] (dispatch [[:fx/assoc-in [:error] (:error err)]])))))
 
 (nxr/register-effect! :fx/load-capabilities
-                      (fn [{:keys [dispatch]} _system]
+                      (fn [{:keys [dispatch]} system]
                         (api/request {:url "/api/capabilities"}
                                      (fn [{:keys [report? report-label browser-storage? history loot-die-size loot-table pages sections]}]
-                                       (dispatch [[:fx/assoc-in [:pages] (vec pages)]
-                                                  [:fx/assoc-in [:sections] (vec sections)]
-                                                  [:fx/assoc-in [:report?] (boolean report?)]
-                                                  [:fx/assoc-in [:report-label] report-label]
-                                                  [:fx/assoc-in [:browser-storage?] (boolean browser-storage?)]
-                                                  [:fx/assoc-in [:loot-die-size] (or loot-die-size 100)]
-                                                  [:fx/assoc-in [:loot-table] (vec loot-table)]
-                                                  [:fx/assoc-in [:history-mode] (or history :button)]
-                                                  ;; only now is it known whether the
-                                                  ;; history lives in this browser
-                                                  [:fx/load-history]]))
+                                       (dispatch (cond-> [[:fx/assoc-in [:pages] (vec pages)]
+                                                          [:fx/assoc-in [:sections] (vec sections)]
+                                                          [:fx/assoc-in [:report?] (boolean report?)]
+                                                          [:fx/assoc-in [:report-label] report-label]
+                                                          [:fx/assoc-in [:browser-storage?] (boolean browser-storage?)]
+                                                          [:fx/assoc-in [:loot-die-size] (or loot-die-size 100)]
+                                                          [:fx/assoc-in [:loot-table] (vec loot-table)]
+                                                          [:fx/assoc-in [:history-mode] (or history :button)]
+                                                          ;; only now is it known whether the
+                                                          ;; history lives in this browser
+                                                          [:fx/load-history]]
+                                                   (and (seq loot-table) (nil? (:page @system)))
+                                                   (conj [:ui/select-page state/loot-table-page]))))
                                      (fn [_err] nil))))
 
 ;; A failed fetch is forgotten, so the next hover tries again.
