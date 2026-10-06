@@ -156,7 +156,7 @@
 (defn- ctx
   "Assemble the per-request context handed to a generator."
   [engine inputs]
-  (-> (select-keys engine [:rng :store :config])
+  (-> (select-keys engine [:rng :store :config :registry])
       (assoc :inputs inputs)))
 
 (defn- ->decimal
