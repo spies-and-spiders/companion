@@ -212,13 +212,25 @@
        :value (str v)
        :on    {:input [[:ui/edit-result plugin path :text [:event.target/value]]]}}])])
 
-(defn- edit-metadata [plugin path metadata]
-  [:label.edit {:replicant/key (str path)}
-   [:span.edit__label "Metadata (comma-separated)"]
+(defn- edit-metadata [plugin path metadata draft]
+  [:div.edit {:replicant/key (str path)}
+   [:span.edit__label "Metadata (Enter to add)"]
+   (when (seq metadata)
+     [:ul.tags.tags--edit
+      (map-indexed (fn [i t]
+                     [:li.tag {:replicant/key i}
+                      t
+                      [:button.tag__remove
+                       {:type  "button"
+                        :title "Remove"
+                        :on    {:click [[:ui/remove-result-metadata plugin path i]]}}
+                       "✕"]])
+                   metadata)])
    [:input.edit__control
     {:type  "text"
-     :value (str/join ", " metadata)
-     :on    {:input [[:ui/edit-result-metadata plugin path [:event.target/value]]]}}]])
+     :value (str draft)
+     :on    {:input   [[:fx/assoc-in (into [:drafts plugin] path) [:event.target/value]]]
+             :keydown [[:ui/add-result-metadata plugin path [:event/key]]]}}]])
 
 ;; A var's own control, separate from the template that interpolates it — so
 ;; changing a value doesn't mean retyping the prose, and a plugin reads a value
@@ -287,16 +299,36 @@
              :on    {:input [[:ui/edit-result plugin (conj path :rank) :rank [:event.target/value]]]}}
             mx (assoc :max mx))]])
 
+(defn- step-field
+  "How far each rank moves a var. Blank falls back to the var's own value, which
+   the placeholder shows."
+  [plugin path {:keys [value step]}]
+  [:label.edit.edit--rank
+   [:span.edit__label "Step"]
+   [:input.field__control
+    {:type        "number"
+     :step        "any"
+     :placeholder (str value)
+     :value       (str step)
+     :on          {:input [[:ui/edit-result plugin (conj path :step) :decimal [:event.target/value]]]}}]])
+
 (defn- edit-var [plugin path id {:keys [label value options type] :as v}]
   (let [action [:ui/edit-result plugin (conj path :value) type]]
-    [:div.edit-var {:replicant/key (str path)}
+    [:div.edit-var {:replicant/key (str path)
+                    :class         (when (rank/upgradeable? v) "edit-var--ranked")}
      [:label.edit
       [:span.edit__label (var-label id label) (ranked-to v)]
       (if (seq options)
         (select-field value options action)
         (control nil value {:type (var-type type)} action))]
      (when (rank/upgradeable? v)
-       (rank-field plugin path v))]))
+       (list (step-field plugin path v)
+             (rank-field plugin path v)))
+     [:button.list-row__remove
+      {:type  "button"
+       :title "Remove var"
+       :on    {:click [[:ui/remove-result-var plugin path]]}}
+      "✕"]]))
 
 (defn- editable-vars
   "The vars a DM may change: what the plugin *declared*, not the entry fields
@@ -314,37 +346,61 @@
      (for [[id v] editable]
        (edit-var plugin (conj base-path id) id v))]))
 
+(defn- new-var-field
+  "Defines a var under `base-path`, named and typed here and then valued in the
+   grid."
+  [plugin base-path {var-name :name :keys [type]}]
+  (let [draft-path (into [:drafts plugin] base-path)]
+    [:div.edit
+     [:span.edit__label "New variable (Enter to add)"]
+     [:div.new-var
+      [:input.edit__control
+       {:type        "text"
+        :placeholder "variable name"
+        :value       (str var-name)
+        :on          {:input   [[:fx/assoc-in (conj draft-path :name) [:event.target/value]]]
+                      :keydown [[:ui/add-result-var plugin base-path [:event/key]]]}}]
+      [:select.field__control
+       {:title "Type"
+        :value (name (or type :decimal))
+        :on    {:change [[:fx/assoc-in (conj draft-path :type) [:event.target/value]]]}}
+       (for [[v label] [["decimal" "Number"] ["text" "Text"] ["bool" "True/false"]]]
+         [:option (cond-> {:value v} (= v (name (or type :decimal))) (assoc :selected true)) label])]]]))
+
 ;; The body field holds the template itself — `{{ x }}` where a value sits — so
 ;; the sentence and the values are edited independently and neither forces
 ;; retyping the other. What the DM types is what the plugin gets back.
 (defn- edit-text
   "An item's prose, folded away behind a summary that previews it as rendered —
    which is what a DM reads to find the item, and the edit they seldom want."
-  [plugin si ii {:item/keys [title body metadata]} preview]
-  [:details.fold {:replicant/key (str "text-" si "-" ii)}
-   [:summary.fold__summary
-    [:span.fold__preview preview]
-    [:span.fold__hint "text"]
-    ;; inside the summary, so preventing the default keeps the fold from toggling
-    [:button.list-row__remove
-     {:type  "button"
-      :title "Remove item"
-      :on    {:click [[:fx/prevent-default [:event/raw]] [:ui/remove-result-item plugin si ii]]}}
-     "✕"]]
-   [:div.fold__body
-    (edit-field plugin "Item title" [:loot/sections si :section/items ii :item/title] title false)
-    (edit-field plugin "Body" [:loot/sections si :section/items ii :item/body] body true)
-    (edit-metadata plugin [:loot/sections si :section/items ii :item/metadata] metadata)]])
+  [plugin drafts si ii {:item/keys [title body metadata]} preview]
+  (let [vars-path [:loot/sections si :section/items ii :item/vars]]
+    [:details.fold {:replicant/key (str "text-" si "-" ii)}
+     [:summary.fold__summary
+      [:span.fold__preview preview]
+      [:span.fold__hint "text"]
+      ;; inside the summary, so preventing the default keeps the fold from toggling
+      [:button.list-row__remove
+       {:type  "button"
+        :title "Remove item"
+        :on    {:click [[:fx/prevent-default [:event/raw]] [:ui/remove-result-item plugin si ii]]}}
+       "✕"]]
+     [:div.fold__body
+      (edit-field plugin "Item title" [:loot/sections si :section/items ii :item/title] title false)
+      (edit-field plugin "Body" [:loot/sections si :section/items ii :item/body] body true)
+      (let [path [:loot/sections si :section/items ii :item/metadata]]
+        (edit-metadata plugin path metadata (get-in drafts path)))
+      (new-var-field plugin vars-path (get-in drafts vars-path))]]))
 
-(defn- edit-item [plugin loot-vars si ii {:item/keys [title body vars] :as item}]
+(defn- edit-item [plugin drafts loot-vars si ii {:item/keys [title body vars] :as item}]
   (let [all     (merge loot-vars vars)
         rendered #(some-> % (template/render all) str str/trim not-empty)
         preview (or (not-empty (str (some-> (rendered title) (str ": ")) (rendered body))) "New item")]
     [:li.entry.entry--edit {:replicant/key ii}
      (var-grid plugin "entry__vars" [:loot/sections si :section/items ii :item/vars] vars)
-     (edit-text plugin si ii item preview)]))
+     (edit-text plugin drafts si ii item preview)]))
 
-(defn- edit-block [plugin loot-vars si {:section/keys [heading items secret?]}]
+(defn- edit-block [plugin drafts loot-vars si {:section/keys [heading items secret?]}]
   [:section.block.block--edit {:replicant/key si}
    [:div.block__head
     ;; Styled as the heading it is, so the sections stay legible as structure
@@ -358,7 +414,7 @@
      [:span.field__label "Secret"]
      (control nil secret? {:type :bool}
               [:ui/edit-result plugin [:loot/sections si :section/secret?] :bool])]]
-   [:ul.entries (map-indexed (fn [ii item] (edit-item plugin loot-vars si ii item)) items)]
+   [:ul.entries (map-indexed (fn [ii item] (edit-item plugin drafts loot-vars si ii item)) items)]
    [:button.list-field__add
     {:type "button"
      :on   {:click [[:ui/add-result-item plugin si]]}}
@@ -368,7 +424,7 @@
   "Render plugin `plugin`'s result view-model as an editable form. Behavioural
    `:loot/actions` are intentionally not editable (and preserved untouched in
    state)."
-  [plugin vm]
+  [plugin vm drafts]
   (when vm
     (let [loot-vars (:loot/vars vm)]
       [:article.sigil.sigil--edit {:replicant/key "result-editor"}
@@ -379,16 +435,17 @@
          [:summary.fold__summary
           ;; the *template*, since the heading above already shows it rendered
           [:span.fold__preview (:loot/title vm)]
-          [:span.fold__hint "title & subtitle"]]
+          [:span.fold__hint "title, subtitle & shared vars"]]
          [:div.fold__body
           (edit-field plugin "Title" [:loot/title] (:loot/title vm) false)
-          (edit-field plugin "Subtitle" [:loot/subtitle] (:loot/subtitle vm) false)]]
+          (edit-field plugin "Subtitle" [:loot/subtitle] (:loot/subtitle vm) false)
+          (new-var-field plugin [:loot/vars] (:loot/vars drafts))]]
         ;; Shared values, edited once: these are ambient to every template in the
         ;; view-model, so changing one here updates every item that reads it.
         (when-let [grid (var-grid plugin "entry__vars entry__vars--shared" [:loot/vars] loot-vars)]
           (list [:h3.block__heading "Shared values"] grid))
         [:div.sigil__body
-         (map-indexed (partial edit-block plugin loot-vars) (:loot/sections vm))]]])))
+         (map-indexed (partial edit-block plugin drafts loot-vars) (:loot/sections vm))]]])))
 
 ;; --- manually-managed state (a spec's `:store/manual` table) ------------------
 ;; The DM-owned rows a plugin reads: one row per key, its declared fields

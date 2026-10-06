@@ -414,7 +414,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .entry__vars {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
-  align-items: start;
+  align-items: end;
   gap: 0.5rem 0.8rem;
 }
 /* shared across every item, so it sits with the title rather than inside one */
@@ -454,8 +454,13 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .block__heading--edit:focus-visible { outline: none; color: var(--arcane); border-bottom-color: var(--arcane); }
 .edit { display: flex; flex-direction: column; gap: 0.25rem; }
 /* one grid cell per var: its value, and the rank it has been taken to */
-.edit-var { display: flex; align-items: start; gap: 0.5rem; }
+/* bottom-aligned, so a label wrapping to two lines doesn't push its control down */
+.edit-var { display: flex; align-items: end; gap: 0.5rem; }
 .edit-var > .edit { flex: 1; min-width: 0; }
+/* value, step and rank don't fit one cell */
+.edit-var--ranked { grid-column: span 2; }
+.new-var { display: flex; gap: 0.5rem; }
+.new-var > .edit__control { flex: 1; min-width: 0; }
 .edit--rank { flex: 0 0 4.5rem; }
 .edit--rank .field__control { width: 100%; }
 /* what the base value and the rank come to, so the box and the card agree */
@@ -601,6 +606,13 @@ textarea.edit__control { min-height: 4.5rem; resize: vertical; }
   padding: 0.18rem 0.5rem; color: var(--muted);
   border: 1px solid var(--ink-3); border-radius: 999px;
 }
+
+.tags--edit { margin: 0; }
+.tag__remove {
+  margin-left: 0.35rem; padding: 0; background: none; border: none;
+  color: inherit; font-size: inherit; cursor: pointer;
+}
+.tag__remove:hover { color: var(--ember); }
 
 .sigil__actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 1.6rem; }
 .action {

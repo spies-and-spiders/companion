@@ -169,6 +169,7 @@
     [[:fx/assoc-in [:results id] vm]
      [:fx/assoc-in [:errors id] nil]
      [:fx/assoc-in [:editing id] false]
+     [:fx/assoc-in [:drafts id] nil]
      [:fx/assoc-in [:report-status id] nil]]))
 
 (defn- result-effect
@@ -401,19 +402,48 @@
                         [[:fx/assoc-in (into [:results id] path) (retype type value)]
                          [:fx/assoc-in [:report-status id] nil]]))
 
-(nxr/register-action! :ui/edit-result-metadata
-                      (fn [_state id path value]
-                        [[:fx/assoc-in (into [:results id] path)
-                          (->> (str/split (or value "") #",")
-                               (map str/trim)
-                               (remove str/blank?)
-                               vec)]
-                         [:fx/assoc-in [:report-status id] nil]]))
+(nxr/register-action! :ui/add-result-metadata
+                      (fn [state id path key]
+                        (let [draft-path (into [:drafts id] path)
+                              tag        (some-> (get-in state draft-path) str/trim)
+                              path       (into [:results id] path)]
+                          (when (and (= key "Enter") (seq tag))
+                            [[:fx/assoc-in path (conj (vec (get-in state path)) tag)]
+                             [:fx/assoc-in draft-path nil]
+                             [:fx/assoc-in [:report-status id] nil]]))))
+
+(nxr/register-action! :ui/remove-result-metadata
+                      (fn [state id path i]
+                        (let [path (into [:results id] path)
+                              tags (vec (get-in state path))]
+                          [[:fx/assoc-in path (into (subvec tags 0 i) (subvec tags (inc i)))]
+                           [:fx/assoc-in [:report-status id] nil]])))
 
 (nxr/register-action! :ui/add-result-item
                       (fn [state id si]
                         (let [path [:results id :loot/sections si :section/items]]
                           [[:fx/assoc-in path (conj (vec (get-in state path)) {:item/body ""})]
+                           [:fx/assoc-in [:report-status id] nil]])))
+
+;; A var defined by hand starts blank, joining the grid for its value.
+(nxr/register-action! :ui/add-result-var
+                      (fn [state id vars-path key]
+                        (let [draft-path (into [:drafts id] vars-path)
+                              {var-name :name :keys [type]} (get-in state draft-path)
+                              var-name   (some-> var-name str/trim (str/replace #"\s+" "-"))
+                              path       (conj (into [:results id] vars-path) (keyword var-name))]
+                          (when (and (= key "Enter") (seq var-name) (nil? (get-in state path)))
+                            [[:fx/assoc-in path (case type
+                                                  "text" {:value ""}
+                                                  "bool" {:value false :type :bool}
+                                                  {:value 0 :type :decimal})]
+                             [:fx/assoc-in draft-path nil]
+                             [:fx/assoc-in [:report-status id] nil]]))))
+
+(nxr/register-action! :ui/remove-result-var
+                      (fn [state id var-path]
+                        (let [vars-path (into [:results id] (pop var-path))]
+                          [[:fx/assoc-in vars-path (dissoc (get-in state vars-path) (peek var-path))]
                            [:fx/assoc-in [:report-status id] nil]])))
 
 (nxr/register-action! :ui/remove-result-item
@@ -422,6 +452,8 @@
                               items (vec (get-in state path))]
                           (when (< ii (count items))
                             [[:fx/assoc-in path (into (subvec items 0 ii) (subvec items (inc ii)))]
+                             ;; drafts are keyed by index, so they'd shift onto the wrong items
+                             [:fx/assoc-in [:drafts id :loot/sections si] nil]
                              [:fx/assoc-in [:report-status id] nil]]))))
 
 ;; Dispatched directly from a view-model's :action/event vector. Sends the

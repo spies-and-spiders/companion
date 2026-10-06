@@ -29,7 +29,7 @@
            "Summoning…"
            (or (:generate-label spec) (str "Generate " (:label spec))))]]
        (if editing?
-         (render/result-editor id result)
+         (render/result-editor id result (get-in state [:drafts id]))
          (render/result result (:spies state)))
        (render/error-overlay id (get-in state [:errors id]))
        (when result
