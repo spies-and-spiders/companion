@@ -66,7 +66,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .stage {
   flex: 1;
   display: grid;
-  grid-template-columns: 248px 1fr;
+  grid-template-columns: 248px minmax(0, 1fr);
   gap: 0;
 }
 
@@ -697,7 +697,7 @@ textarea.edit__control { min-height: 4.5rem; resize: vertical; }
 }
 
 @media (max-width: 720px) {
-  .stage { grid-template-columns: 1fr; }
+  .stage { grid-template-columns: minmax(0, 1fr); }
   .rail {
     border-right: none; border-bottom: var(--rule);
     max-height: none; position: static;

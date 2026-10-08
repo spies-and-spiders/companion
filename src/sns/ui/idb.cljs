@@ -1,14 +1,15 @@
 (ns sns.ui.idb
-  "IndexedDB persistence for `:browser` storage. One object store per collection,
-   holding one record per key, so the shape matches the server's `:file` backend
-   and an export unzips straight into it.
+  "IndexedDB persistence for `:browser` storage: one object store holding a
+   record per `[collection key]`, so a new collection never needs a schema
+   change.
 
-   Values are stored as EDN text rather than structured clones, so keywords and
-   sets survive the round trip exactly as they do in a file."
+   Keys and values are stored as EDN text rather than structured clones, so
+   keywords and sets survive the round trip exactly as they do in a file."
   (:require
     [clojure.edn :as edn]))
 
 (def ^:private db-name "sns-state")
+(def ^:private store-name "kv")
 
 (defn- request->promise [request]
   (js/Promise.
@@ -16,62 +17,86 @@
       (set! (.-onsuccess request) (fn [_] (resolve (.-result request))))
       (set! (.-onerror request) (fn [_] (reject (.-error request)))))))
 
-(defn- open-at
-  "Open the database, at `version` when given — the only time object stores may
-   be created, so `create` names are made then."
-  [version create]
+(defn- migrate!
+  "Move every record out of the per-collection stores earlier versions kept,
+   into `kv`, and drop them. Runs inside the upgrade transaction `tx`."
+  [db ^js tx]
+  (doseq [old (array-seq (.-objectStoreNames db))
+          :when (not= store-name old)
+          :let [src (.objectStore tx old)
+                kv  (.objectStore tx store-name)
+                ks  (.getAllKeys src)]]
+    (set! (.-onsuccess ks)
+          (fn [_]
+            (let [vs (.getAll src)]
+              (set! (.-onsuccess vs)
+                    (fn [_]
+                      (doseq [[k v] (map vector (array-seq (.-result ks)) (array-seq (.-result vs)))]
+                        (.put kv v #js [old (pr-str k)]))
+                      (.deleteObjectStore db old))))))))
+
+(defn- open-at [version]
   (js/Promise.
     (fn [resolve reject]
-      (let [req (if version
-                  (.open js/indexedDB db-name version)
-                  (.open js/indexedDB db-name))]
+      (let [req (if version (.open js/indexedDB db-name version) (.open js/indexedDB db-name))]
         (set! (.-onupgradeneeded req)
               (fn [_]
                 (let [db (.-result req)]
-                  (doseq [n create
-                          :when (not (.contains (.-objectStoreNames db) n))]
-                    (.createObjectStore db n)))))
-        (set! (.-onsuccess req) (fn [_] (resolve (.-result req))))
+                  (when-not (.contains (.-objectStoreNames db) store-name)
+                    (.createObjectStore db store-name))
+                  (migrate! db (.-transaction req)))))
+        (set! (.-onblocked req)
+              (fn [_] (reject (js/Error. "Browser storage is being upgraded: close the app's other tabs and try again."))))
+        (set! (.-onsuccess req)
+              (fn [_]
+                (let [db (.-result req)]
+                  ;; never be the connection that blocks another tab's upgrade
+                  (set! (.-onversionchange db) (fn [_] (.close db)))
+                  (resolve db))))
         (set! (.-onerror req) (fn [_] (reject (.-error req))))))))
 
-(defn- store-names [db]
-  (set (array-seq (.-objectStoreNames db))))
-
-(defn- with-stores
-  "Open the database with every name in `names` present, bumping the version only
-   when some are missing — opening at a lower version than exists is an error, so
-   the current version is always read first."
-  [names]
-  (-> (open-at nil nil)
+(defn- open
+  "The database with `kv` in it, upgrading (and migrating) only when it is not."
+  []
+  (-> (open-at nil)
       (.then (fn [db]
-               (let [missing (remove (store-names db) names)]
-                 (if (empty? missing)
-                   db
-                   (let [next-version (inc (.-version db))]
-                     (.close db)
-                     (open-at next-version names))))))))
+               (if (.contains (.-objectStoreNames db) store-name)
+                 db
+                 (let [next-version (inc (.-version db))]
+                   (.close db)
+                   (open-at next-version)))))))
 
-(defn- read-from
-  "Read `names` (all known to exist) out of an open `db`."
-  [db names]
-  (if (empty? names)
-    (js/Promise.resolve {})
-    (let [tx (.transaction db (clj->js names) "readonly")]
-      (-> (js/Promise.all
-            (clj->js
-              (for [n names
-                    :let [store (.objectStore tx n)]]
-                (js/Promise.all
-                  #js [(request->promise (.getAllKeys store))
-                       (request->promise (.getAll store))]))))
-          (.then (fn [results]
-                   (into {}
-                         (map (fn [n result]
-                                [(keyword n)
-                                 (zipmap (array-seq (aget result 0))
-                                         (map edn/read-string (array-seq (aget result 1))))])
-                              names
-                              (array-seq results)))))))))
+(defn- with-store
+  "Run `(f object-store)` in a `mode` transaction, resolving to its promise's
+   result once the transaction has committed."
+  [mode f]
+  (-> (open)
+      (.then (fn [db]
+               (let [tx     (.transaction db store-name mode)
+                     result (f (.objectStore tx store-name))
+                     done   (js/Promise. (fn [resolve reject]
+                                           (set! (.-oncomplete tx) resolve)
+                                           (set! (.-onerror tx) #(reject (.-error tx)))))]
+                 (-> (js/Promise.all #js [result done])
+                     (.then (fn [[r]] r))
+                     (.finally #(.close db))))))))
+
+(defn- read-records
+  "`{<collection> {<key> <value>}}` from the records `range` selects (all of
+   them when nil)."
+  [store range]
+  (-> (js/Promise.all #js [(request->promise (.getAllKeys store range))
+                           (request->promise (.getAll store range))])
+      (.then (fn [[ks vs]]
+               (reduce (fn [acc [[coll k] v]]
+                         (assoc-in acc [(keyword coll) (edn/read-string k)] (edn/read-string v)))
+                       {}
+                       (map vector ks vs))))))
+
+(defn- collection-range [coll]
+  (let [n (name coll)]
+    ;; every [n k] sorts between [n] and [n []], as arrays sort after strings
+    (.bound js/IDBKeyRange #js [n] #js [n #js []])))
 
 (defn read-collections
   "Resolve to `{<collection> {<key> <value>}}` for `collections`. A collection
@@ -79,16 +104,10 @@
   [collections]
   (if (empty? collections)
     (js/Promise.resolve {})
-    (-> (open-at nil nil)
-        (.then (fn [db]
-                 (let [have (store-names db)
-                       present (filterv #(have (name %)) collections)]
-                   (-> (read-from db (mapv name present))
-                       (.then (fn [read]
-                                (.close db)
-                                ;; Absent collections still answer, so a plugin
-                                ;; never sees a missing key where it expects {}.
-                                (merge (zipmap collections (repeat {})) read))))))))))
+    (with-store "readonly"
+      (fn [store]
+        (-> (js/Promise.all (into-array (map #(read-records store (collection-range %)) collections)))
+            (.then #(apply merge (zipmap collections (repeat {})) %)))))))
 
 (defn apply-mutations!
   "Apply `{<collection> {<key> <value>}}`, deleting the keys whose value is nil.
@@ -96,27 +115,17 @@
   [mutations]
   (if (empty? mutations)
     (js/Promise.resolve nil)
-    (let [names (mapv name (keys mutations))]
-      (-> (with-stores names)
-          (.then (fn [db]
-                   (js/Promise.
-                     (fn [resolve reject]
-                       (let [tx (.transaction db (clj->js names) "readwrite")]
-                         (set! (.-oncomplete tx) (fn [_] (.close db) (resolve nil)))
-                         (set! (.-onerror tx) (fn [_] (.close db) (reject (.-error tx))))
-                         (doseq [[coll changes] mutations
-                                 :let [store (.objectStore tx (name coll))]
-                                 [k v] changes]
-                           (if (nil? v)
-                             (.delete store k)
-                             (.put store (pr-str v) k))))))))))))
+    (with-store "readwrite"
+      (fn [store]
+        (doseq [[coll changes] mutations
+                [k v] changes
+                :let [key #js [(name coll) (pr-str k)]]]
+          (if (nil? v)
+            (.delete store key)
+            (.put store (pr-str v) key)))
+        (js/Promise.resolve nil)))))
 
 (defn export-state
-  "Every collection currently held, for the export button — object store names
-   are the collection names, so this needs no declaration from the loot types."
+  "Every collection currently held, for the export button."
   []
-  (-> (open-at nil nil)
-      (.then (fn [db]
-               (let [names (vec (store-names db))]
-                 (-> (read-from db names)
-                     (.then (fn [state] (.close db) state))))))))
+  (with-store "readonly" #(read-records % nil)))

@@ -51,8 +51,8 @@ entry; where ranges overlap, a roll there generates every entry it lands on.
 ```
 
 **Loot table**, at the top of the rail, lists every entry against its numbers; entering a
-roll highlights what it lands on, and generates it on Enter (or **Generate all** when it
-lands on several).
+roll (or **Roll d100** for one) highlights what it lands on, and **Generate** (or Enter)
+generates every entry it lands on. Enter on an empty box has the server roll.
 
 A tool's `:id`, `:label` and `:section` come from its config entry alone; a plugin cannot
 set them for itself. `:label` defaults to one derived from the id (`:divine-dust` shows as

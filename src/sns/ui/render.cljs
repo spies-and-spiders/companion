@@ -5,6 +5,7 @@
   (:require
     [clojure.string :as str]
     [sns.sdk.rank :as rank]
+    [sns.ui.actions :as actions]
     [sns.ui.link :as link]
     [sns.ui.spies :as spies]
     [sns.ui.state :as state]
@@ -229,7 +230,7 @@
    [:input.edit__control
     {:type  "text"
      :value (str draft)
-     :on    {:input   [[:fx/assoc-in (into [:drafts plugin] path) [:event.target/value]]]
+     :on    {:input   [[:fx/assoc-in (into [:tools plugin :drafts] path) [:event.target/value]]]
              :keydown [[:ui/add-result-metadata plugin path [:event/key]]]}}]])
 
 ;; A var's own control, separate from the template that interpolates it — so
@@ -350,7 +351,7 @@
   "Defines a var under `base-path`, named and typed here and then valued in the
    grid."
   [plugin base-path {var-name :name :keys [type]}]
-  (let [draft-path (into [:drafts plugin] base-path)]
+  (let [draft-path (into [:tools plugin :drafts] base-path)]
     [:div.edit
      [:span.edit__label "New variable (Enter to add)"]
      [:div.new-var
@@ -591,9 +592,9 @@
 
 (defn loot-table
   "Every loot-table entry against its ranges on the loot die. The roll box's
-   number highlights every entry it lands on."
+   number highlights every entry it lands on, and generates them all."
   [{:keys [loot-table loot-die-size roll-n] :as state}]
-  (let [n    (parse-long (str/trim (str roll-n)))
+  (let [n    (actions/roll-number roll-n)
         hit? (fn [{:keys [ranges]}] (and n (some (fn [[from to]] (<= from n to)) ranges)))]
     [:section.loot-table
      [:p.summon__eyebrow "Loot table"]
@@ -607,8 +608,8 @@
         :on          {:input   [[:ui/set-roll-input [:event.target/value]]]
                       :keydown [[:ui/roll-on-enter [:event/key]]]}}]
       [:button.action-btn {:on {:click [[:ui/roll-die]]}} (str "Roll d" loot-die-size)]
-      (when (< 1 (count (filter hit? loot-table)))
-        [:button.action-btn {:on {:click [[:ui/roll]]}} "Generate all"])]
+      (when (and n (<= 1 n loot-die-size))
+        [:button.action-btn {:on {:click [[:ui/roll]]}} "Generate"])]
      [:ul.loot-table__list
       (for [{:keys [id ranges] :as entry} loot-table]
         [:li.loot-table__row {:replicant/key id

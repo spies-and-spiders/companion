@@ -9,7 +9,7 @@ chosen in `config.edn` under `:storage`.
 |------------|--------------------------------------------|---------------|--------------------|
 | `:memory`  | An atom; the default when unset            | no            | no                 |
 | `:file`    | One EDN file per collection under `:dir`   | yes, live     | yes                |
-| `:browser` | IndexedDB, one object store per collection | via export    | yes, per device    |
+| `:browser` | IndexedDB, one record per collection key   | via export    | yes, per device    |
 
 ```clojure
 ;; config.edn
@@ -125,7 +125,8 @@ State lives in the DM's IndexedDB and the server holds nothing. The client sends
 the collections a plugin declared with each request; the plugin runs on the
 server as usual, and the `:store/mutations` it declared travel on to the client
 to apply. Under every other backend the engine has already persisted them, so
-they are stripped from the response rather than sent.
+they are stripped from the response rather than sent. The result history is the
+exception: the client reads and writes it in IndexedDB without the server.
 
 Plugins are unaffected by this — the same `read-collection` call and the same
 declared `:store/mutations` work either way.

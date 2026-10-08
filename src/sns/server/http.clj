@@ -43,7 +43,7 @@
        (fn [e _req] {:status 400 :body {:error (ex-message e) :data (ex-data e)}})
 
        ::exception/default
-       (fn [e _req] {:status 500 :body {:error (ex-message e)}})
+       (fn [e _req] {:status 500 :body {:error (or (ex-message e) (.getName (class e)))}})
 
        ::exception/wrap
        (fn [handler e req]

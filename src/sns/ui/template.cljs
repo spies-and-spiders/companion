@@ -60,11 +60,18 @@
 ;; Handlebars caches compilation on the function it returns, so compiling per
 ;; call throws that away — measured ~70x the cost of rendering an already
 ;; compiled template. `render` runs on every replicant re-render, for every
-;; field of every item, so memoise on the template string. Unbounded is fine:
-;; the editor renders `result-editor`, not `result`, so half-typed templates
-;; never reach here — only finished ones do.
-(def ^:private compile-template
-  (memoize #(handlebars/compile % #js {:noEscape true})))
+;; field of every item, so cache on the template string. The editor's previews
+;; render every keystroke of a template being typed, hence the bound.
+;; ponytail: dropped wholesale when full, an LRU if the refill ever shows.
+(def ^:private cache-limit 1000)
+
+(defonce ^:private compiled (atom {}))
+
+(defn- compile-template [template]
+  (or (get @compiled template)
+      (let [f (handlebars/compile template #js {:noEscape true})]
+        (swap! compiled #(assoc (if (< (count %) cache-limit) % {}) template f))
+        f)))
 
 (defn- context
   "Resolved vars flattened to the `{name value}` a template is rendered
