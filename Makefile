@@ -52,6 +52,7 @@ repl: prep ## Start a backend REPL with the :dev alias
 
 .PHONY: frontend
 frontend: ## Build the optimised CLJS release bundle (resources/public/js)
+	rm -rf resources/public/js
 	npm run release
 
 .PHONY: uber

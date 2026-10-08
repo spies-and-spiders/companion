@@ -154,6 +154,22 @@
     (is (= {:history {"relics" [entry]}} (:store/mutations resp)))
     (is (= {"relics" [entry]} (:store/state resp)))))
 
+(deftest static-files
+  (let [app   (http/app (engine/create config {:store (edn-store/create {:backend :memory})}))
+        fetch #(app {:request-method :get :uri %1 :headers (or %2 {})})
+        index (fetch "/" nil)]
+    (testing "the app revalidates by date"
+      (is (= "no-cache" (get-in index [:headers "Cache-Control"])))
+      (is (= 304 (:status (fetch "/" {"if-modified-since" (get-in index [:headers "Last-Modified"])})))))
+    (testing "an unknown path is the app, for its own routes"
+      (is (= (slurp (:body index)) (slurp (:body (fetch "/some/route" nil))))))
+    (testing "a file revalidates by date"
+      (let [css (fetch "/css/app.css" nil)]
+        (is (= 200 (:status css)))
+        (is (= 304 (:status (fetch "/css/app.css" {"if-modified-since" (get-in css [:headers "Last-Modified"])}))))))
+    (testing "the API is left alone"
+      (is (nil? (get-in (fetch "/api/loot-types" nil) [:headers "Cache-Control"]))))))
+
 (deftest errors-return-edn
   (let [app (http/app (engine/create config {:store (edn-store/create {:backend :memory})}))
         resp (post app "/api/generate" {:id :nonexistent})]

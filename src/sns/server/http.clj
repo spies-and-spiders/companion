@@ -1,12 +1,15 @@
 (ns sns.server.http
   (:require
+    [clojure.string :as str]
     [muuntaja.core :as muuntaja]
     [reitit.http :as http]
     [reitit.http.interceptors.exception :as exception]
     [reitit.http.interceptors.muuntaja :as format]
     [reitit.interceptor.sieppari :as sieppari]
     [reitit.ring :as ring]
+    [ring.middleware.not-modified :as not-modified]
     [ring.util.http-response :refer [ok]]
+    [ring.util.mime-type :as mime]
     [ring.util.response :as response]
     [sns.server.engine :as engine]
     [sns.server.store :as store]
@@ -128,6 +131,38 @@
                "Content-Disposition" "attachment; filename=\"sns-state.zip\""}
      :body    (ByteArrayInputStream. (zip-bytes (edn-store/all-state (:store eng))))}))
 
+(defn- accepts-gzip? [request]
+  (some-> (get-in request [:headers "accept-encoding"]) (str/includes? "gzip")))
+
+(defn- gzipped
+  "The `.gz` the uberjar build precompressed beside a resource, when the client
+   takes gzip."
+  [resources {:keys [uri] :as request}]
+  (when (accepts-gzip? request)
+    (some-> (resources (assoc request :uri (str uri ".gz")))
+            (response/content-type (mime/ext-mime-type uri))
+            (response/header "Content-Encoding" "gzip"))))
+
+(defn- static-handler
+  "The SPA's files, each revalidated on every use, which costs a 304 when it has
+   not changed. A path matching none of them is the app's own route, so it gets
+   the app (index.html)."
+  []
+  (let [resources (ring/create-resource-handler {:path "/" :root "public"})]
+    (fn [request]
+      (some-> (or (gzipped resources request)
+                  (resources request)
+                  (resources (assoc request :uri "/")))
+              (update :headers merge {"Cache-Control" "no-cache"
+                                      "Vary"          "Accept-Encoding"})))))
+
+(def ^:private not-modified-interceptor
+  "A 304 for a GET whose response the client already holds, going by the
+   response's `Last-Modified` or `ETag`."
+  {:name  ::not-modified
+   :leave (fn [{:keys [request] :as ctx}]
+            (update ctx :response not-modified/not-modified-response request))})
+
 (defn app [eng]
   (http/ring-handler
     (http/router
@@ -145,11 +180,6 @@
                              (format/format-response-interceptor m)
                              exception-interceptor
                              (format/format-request-interceptor m)]}})
-    (ring/routes
-      (ring/create-resource-handler {:path "/" :root "public"})
-      ;; SPA fallback: unmatched GETs serve the app shell.
-      (fn [_req]
-        (or (some-> (response/resource-response "index.html" {:root "public"})
-                    (response/content-type "text/html"))
-            (response/not-found "Not found"))))
-    {:executor sieppari/executor}))
+    (static-handler)
+    {:executor     sieppari/executor
+     :interceptors [not-modified-interceptor]}))

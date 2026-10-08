@@ -8,7 +8,10 @@
     [clojure.string :as str]
     [clojure.tools.build.api :as b]
     [clojure.tools.build.tasks.uber :as uber]
-    [clojure.tools.namespace.find :as find]))
+    [clojure.tools.namespace.find :as find])
+  (:import
+    (java.io File)
+    (java.util.zip GZIPOutputStream)))
 
 (def ^:private lib 'sns/companion)
 (def ^:private version (str/trim (slurp "VERSION")))
@@ -147,6 +150,16 @@
   (sdk-javadoc)
   (println "Built" sdk-jar-file "+ pom, sources, and javadoc jars"))
 
+(defn- gzip-assets!
+  "Precompress the SPA's scripts and stylesheets beside themselves, so the server
+   sends gzip without compressing per request."
+  [dir]
+  (doseq [^File f (file-seq (io/file dir "public"))
+          :when (re-find #"\.(js|css)$" (.getName f))]
+    (with-open [in  (io/input-stream f)
+                out (GZIPOutputStream. (io/output-stream (str f ".gz")))]
+      (io/copy in out))))
+
 (defn uber [{:keys [aliases]}]
   (clean nil)
   (let [namespaces (sns-namespaces ["src" "sdk/src"])
@@ -155,6 +168,7 @@
       (b/copy-file {:src jar :target (str graal-lib-dir "/" (.getName (io/file jar)))}))
     (b/copy-dir {:src-dirs   ["src" "resources" "sdk/src"]
                  :target-dir class-dir})
+    (gzip-assets! class-dir)
     (b/compile-clj {:basis      (basis aliases)
                     :ns-compile namespaces
                     :class-dir  class-dir})
