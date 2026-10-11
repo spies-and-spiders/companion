@@ -12,10 +12,10 @@
          :page             nil     ; id of the page on screen, mirrored in the URL hash
          :type-filter      ""      ; rail search box
          :roll-n           ""      ; optional loot-die roll (blank = random)
-         ;; loot-type id -> {:inputs :result :error :loading? :editing? :drafts
-         ;;                  :report-status :saved? :manual :manual-key}
+         ;; loot-type id -> {:inputs :action-inputs :result :error :loading? :editing?
+         ;;                  :drafts :report-status :saved? :manual :manual-key}
          :tools            {}
-         :drag             nil     ; in-progress list-input reorder: {:plugin :field :from}
+         :drag             nil     ; in-progress list-input reorder: {:path :field :from}
          :history          {}      ; the store's history collection: id name -> [{:at :view-model}]
          :history-mode     :button ; when generated results join the history
          :history-hover    nil     ; [loot-type id, row index] of the history row under the cursor

@@ -8,7 +8,8 @@
 
    Actions round-trip: a returned `action` becomes a `:loot/action` event the UI
    dispatches back to the engine, which re-invokes the same plugin with an
-   `action`/`params` request (rather than `inputs`), so an external plugin can
+   `action`/`params` request (with `inputs` holding only what the action's own
+   fields collected), so an external plugin can
    drive stateful follow-ups (e.g. ranking up) entirely in its own language.
    The action request also carries the current, possibly DM-edited `view-model`,
    exactly as `Action/handle-action` receives it — that is what carries
@@ -35,11 +36,12 @@
    assigned in config — the same command can be registered under several — so the
    adapter is what knows it. The SDK's `Models.Action` gives `:jar` authors the
    same three fields."
-  [id {:keys [label action params]}]
-  {:action/label label
-   :action/event [:loot/action {:id     id
-                                :action (keyword action)
-                                :params (or params {})}]})
+  [id {:keys [label action params inputs]}]
+  (cond-> {:action/label label
+           :action/event [:loot/action {:id     id
+                                        :action (keyword action)
+                                        :params (or params {})}]}
+          (seq inputs) (assoc :action/inputs inputs)))
 
 (defn- ->mutations
   "Every JSON object key arrives keywordised. A collection name is a keyword on
@@ -67,10 +69,12 @@
 (defn action-request
   "The request body for an action call. `view-model` is the result the UI had on
    screen, DM edits included; a plugin rebuilds its item from that rather than
-   from a copy frozen into `params`."
+   from a copy frozen into `params`. `inputs` are the values entered for the
+   action's own `inputs` fields, when it declared any."
   [ctx action params]
   (cond-> {:action action
            :params params}
+          (seq (:inputs ctx)) (assoc :inputs (:inputs ctx))
           (:view-model ctx) (assoc :view-model (:view-model ctx))))
 
 (defn encode-request

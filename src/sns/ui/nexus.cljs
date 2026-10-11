@@ -129,6 +129,7 @@
                :ui/generate-on-enter      a/generate-on-enter
                :ui/generated              a/generated
                :loot/action               a/act
+               :ui/act-on-enter           a/act-on-enter
                :ui/acted                  a/acted
                :ui/report                 a/report
                :ui/reported               a/reported

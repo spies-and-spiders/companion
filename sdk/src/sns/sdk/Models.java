@@ -114,8 +114,15 @@ public final class Models {
 
     /**
      * A follow-up button routed back to {@link sns.sdk.Action#handleAction}. These
-     * three fields rather than an event vector: the engine fills in the id this
-     * plugin was registered under.
+     * fields rather than an event vector: the engine fills in the id this plugin
+     * was registered under. {@code inputs} are form fields shown beside the
+     * button, whose values arrive as {@code ctx.get("inputs")}. Their type may
+     * also be section or item, picking one of the result's rendered sections or
+     * items, which arrives as {@code {section: i}} or {@code {section: i, item: j}}.
      */
-    public record Action(String label, String action, Map<String, Object> params) { }
+    public record Action(String label, String action, Map<String, Object> params, List<Field> inputs) {
+        public Action(String label, String action, Map<String, Object> params) {
+            this(label, action, params, null);
+        }
+    }
 }

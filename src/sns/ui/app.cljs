@@ -13,7 +13,7 @@
   "Everything for one loot type: its manual table, form, result and history."
   [state id]
   (when-let [spec (state/spec state id)]
-    (let [{:keys [result editing? loading? report-status saved? error drafts inputs manual manual-key]}
+    (let [{:keys [result editing? loading? report-status saved? error drafts inputs action-inputs manual manual-key]}
           (get-in state [:tools id])
           history-mode (actions/history-mode state id)]
       [:div.card {:replicant/key id}
@@ -27,7 +27,7 @@
            (or (:generate-label spec) (str "Generate " (:label spec))))]]
        (if editing?
          (render/result-editor id result drafts)
-         (render/result result (:spies state)))
+         (render/result result (:spies state) action-inputs))
        (render/error-overlay id error)
        (when result
          [:div.result-actions

@@ -70,6 +70,19 @@
     (testing "one that changes the item does"
       (is (= 2 (count (get-in (run s (a/acted s :relics (assoc vm :loot/subtitle "rank 2"))) [:history "relics"])))))))
 
+(deftest act-sends-its-inputs
+  (let [s    (-> base
+                 (assoc-in [:tools :relics :result] vm)
+                 (assoc-in [:tools :relics :action-inputs 1] {:mod "fire"}))
+        body #(get-in (some (fn [[k m]] (when (= :fx/request k) m)) %) [:req :body])]
+    (testing "the values entered into the clicked action's own form"
+      (is (= {:mod "fire"} (:inputs (body (a/act s {:id :relics :action :replace} 1))))))
+    (testing "none for an action without a form"
+      (is (not (contains? (body (a/act s {:id :relics :action :replace})) :inputs))))
+    (testing "set-input fills an action's form by its path"
+      (is (= {:mod "cold"} (get-in (run s (a/set-input s [:tools :relics :action-inputs 1] :mod "cold"))
+                                   [:tools :relics :action-inputs 1]))))))
+
 (deftest saved
   (let [s (run base (a/generated base :relics vm))]
     (testing "an edit is no longer what was saved"

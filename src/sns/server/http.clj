@@ -78,9 +78,9 @@
       (ok (with-mutations eng (engine/roll eng (or inputs {}) n))))))
 
 (defn- action-handler [eng]
-  (fn handle-action [{{:keys [id action params view-model state]} :body-params}]
+  (fn handle-action [{{:keys [id action params view-model inputs state]} :body-params}]
     (let [eng (engine/with-state eng state)]
-      (ok (with-mutations eng (engine/handle-action eng id action params view-model))))))
+      (ok (with-mutations eng (engine/handle-action eng id action params view-model (or inputs {})))))))
 
 (defn- capabilities-handler [eng]
   (fn capabilities [_req]

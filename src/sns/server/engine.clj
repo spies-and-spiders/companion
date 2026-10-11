@@ -167,15 +167,26 @@
     (number? v) (bigdec v)
     :else v))
 
+(defn- ->position
+  "A `:section` (`\"1\"`) or `:item` (`\"1:2\"`) pick, as the browser sends
+   it, into `{:section 1}` or `{:section 1 :item 2}`."
+  [type v]
+  (let [[s i] (when (string? v) (map parse-long (str/split (str/trim v) #":")))]
+    (cond
+      (and s (= :section type)) {:section s}
+      (and s i)                 {:section s :item i}
+      :else                     v)))
+
 (defn- coerce
-  "A numeric field arrives from the browser form as a string, so parse it — a
-   plugin that declared an `:int` or a `:decimal` should be handed one. An
-   unparseable value is passed through untouched, for the generator to reject in
-   its own terms."
+  "A numeric or position field arrives from the browser form as a string, so
+   parse it — a plugin that declared an `:int` or a `:decimal` should be handed
+   one. An unparseable value is passed through untouched, for the generator to
+   reject in its own terms."
   [type v]
   (case type
     :int (if (string? v) (or (parse-long (str/trim v)) v) v)
     :decimal (->decimal v)
+    (:section :item) (->position type v)
     v))
 
 (defn- apply-input-defaults
@@ -404,6 +415,16 @@
     (throw (ex-info "Reporting is not configured" {})))
   (p/report! reporter (schema/assert! ::schema/view-model view-model)))
 
+(defn- action-fields
+  "The `:action/inputs` of the action on `view-model` that dispatches `action`
+   with `params`."
+  [view-model action params]
+  (some (fn [{:action/keys [event inputs]}]
+          (let [[k m] event]
+            (when (and (= :loot/action k) (= action (:action m)) (= params (:params m)))
+              inputs)))
+        (:loot/actions view-model)))
+
 (defn handle-action
   "Dispatch a stateful follow-up `action` (with `params`) to loot type `id`,
    returning an updated, validated view-model. `view-model` is the current
@@ -411,16 +432,19 @@
    triggered — not re-validated, since it may be mid-edit — so a generator can
    react to what's currently displayed (e.g. an edited `:item/vars` value)
    rather than only the `params` it declared for itself. Pass nil when there is
-   nothing on screen to react to."
-  [{:keys [registry rng] :as engine} id action params view-model]
-  (let [generator (or (get registry id)
-                      (throw (ex-info "Unknown loot type" {:id id})))]
-    (when-not (satisfies? p/Action generator)
-      (throw (ex-info "Loot type does not support actions" {:id id})))
-    (randoms/with-rng rng
-      (->> (or-error #(p/handle-action generator (assoc (ctx engine nil) :view-model view-model) action params))
-           (address-actions id)
-           (with-words engine (:loot/words view-model))
-           (vars/resolve-view-model rng)
-           (schema/assert! ::schema/view-model)
-           (persist! (:store engine))))))
+   nothing on screen to react to. `inputs` are the values entered for the
+   action's `:action/inputs`, resolved against those fields as `generate`'s are."
+  ([engine id action params view-model] (handle-action engine id action params view-model {}))
+  ([{:keys [registry rng] :as engine} id action params view-model inputs]
+   (let [generator (or (get registry id)
+                       (throw (ex-info "Unknown loot type" {:id id})))
+         inputs    (apply-input-defaults {:inputs (action-fields view-model action params)} inputs)]
+     (when-not (satisfies? p/Action generator)
+       (throw (ex-info "Loot type does not support actions" {:id id})))
+     (randoms/with-rng rng
+       (->> (or-error #(p/handle-action generator (assoc (ctx engine inputs) :view-model view-model) action params))
+            (address-actions id)
+            (with-words engine (:loot/words view-model))
+            (vars/resolve-view-model rng)
+            (schema/assert! ::schema/view-model)
+            (persist! (:store engine)))))))

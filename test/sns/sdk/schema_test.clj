@@ -61,6 +61,17 @@
     (is (schema/validate ::schema/loot-spec
                          {:id :social :label "Group Social" :generate-label "Add / update character"}))))
 
+(deftest action-inputs-may-pick-a-position
+  (let [vm #(hash-map :loot/title "Aegis"
+                      :loot/actions [{:action/label  "Replace"
+                                      :action/event  [:loot/action {:id :relics}]
+                                      :action/inputs [{:id :mod :label "Mod" :type %}]}])]
+    (is (schema/validate ::schema/view-model (vm :item)))
+    (is (schema/validate ::schema/view-model (vm :section)))
+    (is (not (schema/validate ::schema/view-model (vm :sword)))))
+  (testing "but a generate form may not"
+    (is (not (schema/validate ::schema/loot-spec {:inputs [{:id :mod :label "Mod" :type :item}]})))))
+
 (deftest config-schema
   (testing "config with mixed plugin types validates"
     (is (schema/validate ::schema/config

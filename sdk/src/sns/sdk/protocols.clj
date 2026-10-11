@@ -29,7 +29,9 @@
      into `params`, so the DM's edits are what the action operates on: the
      displayed values are the source of truth, and `:loot/state` carries only
      what the view-model cannot express (a stored id, the entry a mod came
-     from). A var's rank rides on the var itself, so it is not one of them."))
+     from). A var's rank rides on the var itself, so it is not one of them.
+     `ctx`'s `:inputs` holds the values entered for the action's
+     `:action/inputs`, resolved as a generate call's are."))
 
 (defprotocol Reporter
   "Optional. Sends a generated loot view-model to an external destination (e.g. a
@@ -125,9 +127,10 @@
 (defn- action->clj
   "An action whose event the engine addresses to the tool that returned it."
   [^Models$Action a]
-  {:action/label (.label a)
-   :action/event [:loot/action {:action (keyword (.action a))
-                                :params (into {} (.params a))}]})
+  (cond-> {:action/label (.label a)
+           :action/event [:loot/action {:action (keyword (.action a))
+                                        :params (into {} (.params a))}]}
+          (seq (.inputs a)) (assoc :action/inputs (mapv field->clj (.inputs a)))))
 
 (defn- view-model->clj [^Models$ViewModel vm]
   (cond-> {:loot/title (.title vm)}
@@ -157,9 +160,12 @@
 (defn- clj->section [{:section/keys [heading items secret?]}]
   (Models$Section. heading (mapv clj->item items) (boolean secret?)))
 
-(defn- clj->action [{:action/keys [label event]}]
+(defn- clj->field [{:keys [id label type default options list?]}]
+  (Models$Field. (name id) label (name type) default (when (seq options) (vec options)) (boolean list?)))
+
+(defn- clj->action [{:action/keys [label event inputs]}]
   (let [{:keys [action params]} (second event)]
-    (Models$Action. label (some-> action name) params)))
+    (Models$Action. label (some-> action name) params (when (seq inputs) (mapv clj->field inputs)))))
 
 (defn- clj->view-model [{:loot/keys  [title subtitle sections actions vars words state error?]
                          :store/keys [mutations]}]

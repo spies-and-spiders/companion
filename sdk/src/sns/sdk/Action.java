@@ -16,7 +16,8 @@ public interface Action {
      * <p>{@code ctx.get("view-model")} is the result the UI had on screen as a
      * {@link Models.ViewModel}, DM edits included. Rebuild from it rather than
      * from {@code params}, so the displayed values are what the action operates
-     * on; it is null when the caller sent nothing.
+     * on; it is null when the caller sent nothing. {@code ctx.get("inputs")}
+     * holds the values entered for the action's {@link Models.Action#inputs()}.
      */
     Models.ViewModel handleAction(Map<String, Object> ctx, String action, Map<String, Object> params);
 }

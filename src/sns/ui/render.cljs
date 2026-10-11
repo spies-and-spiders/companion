@@ -34,13 +34,26 @@
        (for [opt options]
          [:option {:value (str opt)}])])))
 
+(defn- position-select
+  "A `:section`/`:item` field's picker over `positions` (see `positions`):
+   sections flat, items grouped under their section."
+  [value type positions on-change]
+  (let [option (fn [{v :value :keys [label]}] [:option {:value v :selected (= v (str value))} label])]
+    [:select.field__control {:on {:change [(conj on-change [:event.target/value])]}}
+     [:option {:value "" :selected (str/blank? (str value))} "—"]
+     (if (= :section type)
+       (map option positions)
+       (for [{:keys [label items]} positions]
+         [:optgroup {:label label} (map option items)]))]))
+
 (defn- control
   "The bare input for one field value — shared between a scalar field and a
    single row of a list field. `on-change` is the action's fixed leading args
-   (e.g. `[:ui/set-input id]`, or `[:ui/set-list-input id idx]` for a list row);
+   (e.g. `[:ui/set-input path]`, or `[:ui/set-list-input path id idx]` for a list row);
    the DOM value placeholder is appended to complete the dispatch."
-  [dom-id value {:keys [type options]} on-change]
+  [dom-id value {:keys [type options positions]} on-change]
   (case type
+    (:section :item) (position-select value type positions on-change)
     :enum (enum-field dom-id value options (conj on-change [:event.target/value]))
     :bool [:input.field__control
            {:type    "checkbox"
@@ -65,51 +78,51 @@
 ;; count still submits a vector.
 
 (defn- dom-id
-  "A DOM id unique on the page, which may show several plugins' forms at once."
+  "A DOM id unique on the page, which may show several forms at once."
   [& parts]
-  (str/join "-" (map #(if (keyword? %) (name %) %) parts)))
+  (str/join "-" (map #(if (keyword? %) (name %) %) (flatten parts))))
 
 (defn- list-row
   "One stored entry: its control, a remove button, and — for reorderable types —
    a drag handle plus drop target covering the whole row."
-  [plugin id idx value f draggable?]
+  [path id idx value f draggable?]
   [:div.list-row
    {:replicant/key idx
     :on            (when draggable?
                      {:dragover [[:fx/prevent-default [:event/raw]]]
-                      :drop     [[:fx/prevent-default [:event/raw]] [:ui/list-drag-drop plugin id idx]]})}
+                      :drop     [[:fx/prevent-default [:event/raw]] [:ui/list-drag-drop path id idx]]})}
    (when draggable?
-     [:span.list-row__handle {:draggable "true" :on {:dragstart [[:ui/list-drag-start plugin id idx]]}} "⠿"])
-   (control (dom-id "field-options" plugin id idx) value f [:ui/set-list-input plugin id idx])
+     [:span.list-row__handle {:draggable "true" :on {:dragstart [[:ui/list-drag-start path id idx]]}} "⠿"])
+   (control (dom-id "field-options" path id idx) value f [:ui/set-list-input path id idx])
    [:button.list-row__remove
-    {:type "button" :on {:click [[:ui/remove-list-input plugin id idx]]}}
+    {:type "button" :on {:click [[:ui/remove-list-input path id idx]]}}
     "✕"]])
 
-(defn- list-field [plugin inputs {:keys [id type] :as f}]
+(defn- list-field [path inputs {:keys [id type] :as f}]
   (let [values (vec (get inputs id))
         bool?  (= :bool type)]
     [:div.list-field
      (for [[idx v] (map-indexed vector values)]
-       (list-row plugin id idx v f (not bool?)))
+       (list-row path id idx v f (not bool?)))
      (if bool?
        [:button.list-field__add
-        {:type "button" :on {:click [[:ui/set-list-input plugin id (count values) false]]}}
+        {:type "button" :on {:click [[:ui/set-list-input path id (count values) false]]}}
         "+ Add"]
        ;; a fresh, unsaved row — typing into it appends rather than overwrites
        (when (or (empty? values) (not (str/blank? (str (peek values)))))
          [:div.list-row.list-row--extra {:replicant/key (count values)}
-          (control (dom-id "field-options" plugin id (count values)) nil f
-                   [:ui/set-list-input plugin id (count values)])]))]))
+          (control (dom-id "field-options" path id (count values)) nil f
+                   [:ui/set-list-input path id (count values)])]))]))
 
-(defn- field [plugin inputs {:keys [id label type list?] :as f}]
+(defn- field [path inputs {:keys [id label type list?] :as f}]
   (if list?
     [:div.field {:replicant/key id}
      [:span.field__label label]
-     (list-field plugin inputs f)]
+     (list-field path inputs f)]
     [:label.field {:replicant/key id
                    :class         (when (= :bool type) "field--bool")}
      [:span.field__label label]
-     (control (dom-id "field-options" plugin id) (get inputs id) f [:ui/set-input plugin id])]))
+     (control (dom-id "field-options" path id) (get inputs id) f [:ui/set-input path id])]))
 
 (defn input-form
   "Render a spec's declared inputs, or nil when there are none."
@@ -118,7 +131,7 @@
     ;; Enter anywhere in the form generates, matching the button.
     [:div.fields {:on {:keydown [[:ui/generate-on-enter plugin [:event/key]]]}}
      (for [f (:inputs spec)]
-       (field plugin inputs f))]))
+       (field [:tools plugin :inputs] inputs f))]))
 
 ;; --- view-model renderer (the signature surface) -----------------------------
 
@@ -159,8 +172,43 @@
      (when heading [:h3.block__heading heading])
      [:ul.entries entries]]))
 
-(defn- action [{:action/keys [label event]}]
-  [:button.action {:on {:click [event]}} label])
+(defn- clip [s]
+  (let [s (str/trim s)]
+    (if (> (count s) 60) (str (subs s 0 59) "…") s)))
+
+(defn- positions
+  "What a `:section`/`:item` action input picks from: the sections of `vm` with
+   anything rendered in them, each holding the items that render (as `entry`
+   shows them), valued as the engine parses them back."
+  [vm]
+  (for [[s {:section/keys [heading items]}] (map-indexed vector (:loot/sections vm))
+        :let [shown (keep-indexed
+                      (fn [i {:item/keys [title body vars]}]
+                        (let [vars  (merge (:loot/vars vm) vars)
+                              title (some-> title (template/render vars))
+                              body  (template/render body vars)]
+                          (when-not (str/blank? body)
+                            {:value (str s ":" i)
+                             :label (clip (if (str/blank? title) body title))})))
+                      items)]
+        :when (seq shown)]
+    {:value (str s)
+     :label (or heading (str "Section " (inc s)))
+     :items shown}))
+
+(defn- action
+  "An action's button, behind its own form when it declares `:action/inputs`.
+   `idx` is its place on the result, which keys the values entered."
+  [vm action-inputs idx {:action/keys [label event inputs]}]
+  (if (seq inputs)
+    (let [[_ {:keys [id] :as params}] event
+          picks (positions vm)]
+      [:div.action-form
+       [:div.fields {:on {:keydown [[:ui/act-on-enter params idx [:event/key]]]}}
+        (for [f inputs]
+          (field [:tools id :action-inputs idx] (get action-inputs idx) (assoc f :positions picks)))]
+       [:button.action {:on {:click [(conj event idx)]}} label]])
+    [:button.action {:on {:click [event]}} label]))
 
 (defn- words-badge
   "The engine-drawn handle for this result, folded into a hover-revealed mark so
@@ -174,9 +222,9 @@
 (defn result
   "Render a view-model. The whole article is keyed on the title so a fresh loot
    result re-mounts and replays the materialise animation. Links preview only
-   given `spies`."
-  ([vm] (result vm nil))
-  ([vm spies]
+   given `spies`; `action-inputs` are the values entered into its actions' forms."
+  ([vm] (result vm nil nil))
+  ([vm spies action-inputs]
    (when vm
      [:article.sigil {:replicant/key (:loot/title vm)}
       [:div.sigil__frame
@@ -188,7 +236,7 @@
         (keep (partial block spies (:loot/vars vm)) (:loot/sections vm))]
        (when (seq (:loot/actions vm))
          [:div.sigil__actions
-          (map action (:loot/actions vm))])]])))
+          (map-indexed (partial action vm action-inputs) (:loot/actions vm))])]])))
 
 (defn error-overlay
   "An error view-model, shown over the card until clicked away."

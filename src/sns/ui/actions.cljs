@@ -138,15 +138,21 @@
 
 ;; Dispatched directly from a view-model's :action/event vector. Sends the
 ;; current (possibly DM-edited) result alongside the action's own static
-;; params, so the plugin can see edits made since generation.
-(defn act [state {:keys [id action params]}]
+;; params, so the plugin can see edits made since generation. `idx`, the
+;; action's place on the result, is given when it has inputs to send.
+(defn act [state {:keys [id action params]} & [idx]]
   [(tool-fx id {:loading? true :report-status nil})
    [:fx/assoc-in [:error] nil]
    (request-fx {:method :post                                                                                 :url "/api/action"
-                :body   {:id id :action action :params params :view-model (get-in state [:tools id :result])}}
+                :body   (cond-> {:id id :action action :params params :view-model (get-in state [:tools id :result])}
+                                idx (assoc :inputs (get-in state [:tools id :action-inputs idx])))}
                :collections (collections-for state id)
                :on-ok [[:ui/acted id]]
                :on-err [[:ui/failed id]])])
+
+(defn act-on-enter [state event idx key]
+  (when (= key "Enter")
+    (act state event idx)))
 
 (defn acted
   "An action reworks the item already on the bench, so it earns a history entry
@@ -268,27 +274,29 @@
         (into (select-page rolled (state/page-for rolled ids))))))
 
 ;; --- input form ----------------------------------------------------------------
+;; `path` locates the inputs map a form fills in: `[:tools id :inputs]` for a
+;; loot type's generate form, `[:tools id :action-inputs idx]` for an action's.
 
-(defn set-input [_state id field value]
-  [[:fx/assoc-in [:tools id :inputs field] value]])
+(defn set-input [_state path field value]
+  [[:fx/assoc-in (conj path field) value]])
 
 ;; A list field's value is always a vector. `idx` beyond the current end
 ;; appends (that's how the UI's trailing blank row, or a bool field's "+ Add",
 ;; grows the list); any other `idx` overwrites in place.
-(defn set-list-input [state id field idx value]
-  (let [current (vec (get-in state [:tools id :inputs field]))]
-    [[:fx/assoc-in [:tools id :inputs field]
+(defn set-list-input [state path field idx value]
+  (let [current (vec (get-in state (conj path field)))]
+    [[:fx/assoc-in (conj path field)
       (if (< idx (count current))
         (assoc current idx value)
         (conj current value))]]))
 
-(defn remove-list-input [state id field idx]
-  (let [current (vec (get-in state [:tools id :inputs field]))]
+(defn remove-list-input [state path field idx]
+  (let [current (vec (get-in state (conj path field)))]
     (when (< idx (count current))
-      [[:fx/assoc-in [:tools id :inputs field] (without current idx)]])))
+      [[:fx/assoc-in (conj path field) (without current idx)]])))
 
-(defn list-drag-start [_state id field idx]
-  [[:fx/assoc-in [:drag] {:plugin id :field field :from idx}]])
+(defn list-drag-start [_state path field idx]
+  [[:fx/assoc-in [:drag] {:path path :field field :from idx}]])
 
 (defn list-drag-end [_state]
   [[:fx/assoc-in [:drag] nil]])
@@ -303,12 +311,12 @@
         others (without v from)]
     (into (conj (subvec others 0 to) item) (subvec others to))))
 
-(defn list-drag-drop [{:keys [drag] :as state} id field to-idx]
-  (let [current (vec (get-in state [:tools id :inputs field]))
+(defn list-drag-drop [{:keys [drag] :as state} path field to-idx]
+  (let [current (vec (get-in state (conj path field)))
         from    (:from drag)]
-    (when (and drag (= [id field] [(:plugin drag) (:field drag)]) (not= from to-idx)
+    (when (and drag (= [path field] [(:path drag) (:field drag)]) (not= from to-idx)
                (< from (count current)) (< to-idx (count current)))
-      [[:fx/assoc-in [:tools id :inputs field] (move current from to-idx)]
+      [[:fx/assoc-in (conj path field) (move current from to-idx)]
        [:fx/assoc-in [:drag] nil]])))
 
 ;; --- result editor -------------------------------------------------------------

@@ -200,7 +200,9 @@ The UI renders this shape generically — a new loot type needs **no** UI code, 
                                                      :random  :damage-types
                                                      :options ["fire" "cold"]}}}]}]
  :loot/actions  [{:action/label "Level up"
-                  :action/event [:loot/action {:id :relics :action :rank-up}]}]
+                  :action/event [:loot/action {:id :relics :action :rank-up}]
+                  :action/inputs [{:id :mod :label "Mod" :type :enum ; optional
+                                   :options ["Fire" "Cold"]}]}]
  :loot/state    {…}                              ; optional, opaque
  :loot/error?   false                            ; optional — true marks a failure
  :store/mutations {:relics {"r1" {…}}}}          ; optional — writes to apply
@@ -342,6 +344,16 @@ view-model cannot express — a stored id, the data entry a mod came from —
 travels in `:loot/state`; keep it small, since anything read back from there is a
 value the DM's edits cannot reach. A var's level is not one of them: it rides on
 the var itself, so it round-trips with the item like any other edit.
+
+An action may declare **`:action/inputs`**, in the same shape as a loot-spec's
+`:inputs`: the UI renders those fields beside its button, and the values entered
+arrive as `ctx`'s `:inputs`, defaulted and coerced as a generate call's are. One
+"Replace a mod" action with a mod to choose beats a button per mod.
+
+Two more field types are open to actions alone: `:section` and `:item` let the DM
+pick one of the result's rendered sections or items, and arrive as
+`{:section <index>}` or `{:section <index> :item <index within the section>}`,
+indexing `:loot/sections` and its `:section/items`.
 
 ### `Reporter` (optional — send loot to an external destination)
 ```clojure
@@ -701,7 +713,7 @@ error in *your* keys (e.g. a missing `item/body`). Both directions are modelled 
 `plugin-request.schema.json` / `plugin-output.schema.json` so codegen tools
 (quicktype, typify, go-jsonschema) can generate request/output structs for a plugin
 written in another language. The request is a union of the two modes — a generate
-call (`inputs`) or an action call (`action` + `params` + `view-model`) — so codegen
+call (`inputs`) or an action call (`action` + `params` + `inputs` + `view-model`) — so codegen
 yields both, and the generate-vs-action split is structural rather than a
 convention you infer.
 
@@ -717,15 +729,19 @@ builds the event:
 
 ```json
 {"loot/title": "Aegis",
- "loot/actions": [{"label": "Sharpen", "action": "sharpen", "params": {"by": 1}}]}
+ "loot/actions": [{"label": "Sharpen", "action": "sharpen", "params": {"by": 1},
+                   "inputs": [{"id": "stone", "label": "Whetstone", "type": "enum",
+                               "options": ["iron", "diamond"]}]}]}
 ```
 
+`inputs` is optional, and takes the same fields as a `:generator`'s `inputs`.
+
 The engine turns each into a button; clicking it re-invokes the **same command /
-symbol / module** with an action request (note `action`/`params` instead of
-`inputs`):
+symbol / module** with an action request (note `action`/`params`, with `inputs`
+holding only what the action's own fields collected):
 
 ```json
-{"action": "sharpen", "params": {"by": 1},
+{"action": "sharpen", "params": {"by": 1}, "inputs": {"stone": "diamond"},
  "view-model": {"loot/title": "Aegis", "…": "…"}}
 ```
 

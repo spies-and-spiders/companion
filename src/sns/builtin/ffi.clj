@@ -6,7 +6,7 @@
 
    The library exports `(char* request_json) -> char* output_json`, sharing the
    contract with `:cli` (see sns.builtin.plugin-io). Generation passes
-   `{:inputs}`, an action passes `{:action :params :view-model}`; the presence of
+   `{:inputs}`, an action passes `{:action :params :inputs :view-model}`; the presence of
    `action` tells the plugin which it is. If `free-symbol` is given it
    is called on the returned pointer once its bytes are copied out; otherwise the
    library owns that memory (e.g. a reused static buffer).

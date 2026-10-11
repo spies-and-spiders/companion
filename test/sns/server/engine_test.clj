@@ -376,6 +376,39 @@
     (testing "an action invoked without a view-model still works (nil :loot/state)"
       (is (= "count=1" (:loot/title (engine/handle-action eng :echo-state :bump {} nil)))))))
 
+;; --- issue #19: actions take manual inputs -----------------------------------
+
+(defrecord ^:private ChoosingGenerator []
+  p/Generator
+  (loot-spec [_] {:id :chooser :label "Chooser"})
+  (generate [_ _ctx]
+    {:loot/title   "Chooser"
+     :loot/actions [{:action/label  "Replace"
+                     :action/event  [:loot/action {:action :replace :params {}}]
+                     :action/inputs [{:id :mod :label "Mod" :type :enum :options ["a" "b"] :default "a"}
+                                     {:id :times :label "Times" :type :int}
+                                     {:id :where :label "Where" :type :section}
+                                     {:id :what :label "What" :type :item}]}]})
+  p/Action
+  (handle-action [_ {:keys [inputs]} _action _params]
+    {:loot/title (pr-str inputs)}))
+
+(defn chooser-generator [_plugin-config] (->ChoosingGenerator))
+
+(deftest action-receives-its-inputs
+  (let [eng (engine/create {:tools [{:type :builtin :id :chooser :builtin {:entrypoint 'sns.server.engine-test/chooser-generator}}]})
+        vm  (engine/generate eng :chooser)]
+    (testing "entered values are coerced, and a blank one falls back to its default"
+      (is (= {:mod "a" :times 3 :where nil :what nil}
+             (read-string (:loot/title (engine/handle-action eng :chooser :replace {} vm {:mod "" :times "3"}))))))
+    (testing "a picked section or item arrives as its indices"
+      (is (= {:where {:section 1} :what {:section 0 :item 2}}
+             (-> (engine/handle-action eng :chooser :replace {} vm {:where "1" :what "0:2"})
+                 :loot/title read-string (select-keys [:where :what])))))
+    (testing "an action called without inputs still runs"
+      (is (= {:mod "a" :times nil :where nil :what nil}
+             (read-string (:loot/title (engine/handle-action eng :chooser :replace {} vm))))))))
+
 (defn- declaring
   "A generator returning `view-model` verbatim, for exercising the engine's
    handling of the writes a plugin declares on it."

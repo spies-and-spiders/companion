@@ -84,9 +84,19 @@
    ;; `Models.Action`, or `::plugin-action` as JSON) and its adapter builds the
    ;; event, which both keeps a plugin to its own `:loot/action` route and fills
    ;; in the config-assigned id it has no way to know.
+   ;; A form field on an action. Beyond a `::field`'s types, one may pick a
+   ;; rendered `:section` or `:item` of the result, arriving as `{:section i}`
+   ;; or `{:section i :item j}`, indices into `:loot/sections`/`:section/items`.
+   ::action-field [:merge
+                   ::field
+                   [:map [:type [:enum :enum :int :decimal :text :bool :section :item]]]]
+
+   ;; `:action/inputs` are rendered beside the button; their values reach the
+   ;; plugin as the action's `inputs`.
    ::action [:map
              [:action/label string?]
-             [:action/event vector?]]
+             [:action/event vector?]
+             [:action/inputs {:optional true} [:sequential ::action-field]]]
 
    ;; One resolved variable a template interpolates (see `sns.sdk.vars`).
    ;; Templates are rendered in the browser, so this is how a value reaches it:
@@ -176,9 +186,9 @@
    ;; `:loot/title`), so there is one output contract, not two. Only the request
    ;; is modelled here — the output *is* `::view-model`.
 
-   ;; What the engine sends the plugin, as one of two shapes (never both): a
-   ;; generate call carries `inputs`, an action call carries `action`/`params`
-   ;; plus the `view-model` the UI had on screen (DM edits included, and the
+   ;; What the engine sends the plugin, as one of two shapes: a generate call
+   ;; carries `inputs`, an action call carries `action`/`params` (and `inputs`,
+   ;; when the action declared any) plus the `view-model` the UI had on screen (DM edits included, and the
    ;; carrier of `:loot/state`). Modelled as a union so codegen emits two request
    ;; types and the generate-vs-action split is structural. Not runtime-validated
    ;; — the engine produces it.
@@ -194,7 +204,8 @@
    ::plugin-action [:map
                     [:label string?]
                     [:action string?]
-                    [:params {:optional true} [:map-of keyword? any?]]]
+                    [:params {:optional true} [:map-of keyword? any?]]
+                    [:inputs {:optional true} [:sequential ::action-field]]]
 
    ::plugin-output [:merge
                     ::view-model
@@ -207,6 +218,7 @@
                      [:map
                       [:action string?]
                       [:params {:optional true} [:map-of keyword? any?]]
+                      [:inputs {:optional true} [:map-of keyword? any?]]
                       [:view-model {:optional true} ::view-model]
                       [:state {:optional true} [:map-of keyword? [:map-of any? any?]]]]]
 

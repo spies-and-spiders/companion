@@ -5,7 +5,7 @@
    lives in `sns.builtin.plugin-io`, shared with the `:ffi` and `:wasm` adapters.
 
    Generation writes `{:inputs}` to stdin; an action writes
-   `{:action :params :view-model}` — the presence of `action` tells the script
+   `{:action :params :inputs :view-model}` — the presence of `action` tells the script
    which it is."
   (:require
     [clojure.java.shell :as shell]
