@@ -110,3 +110,16 @@
 
 (deftest failed
   (is (= "Something went wrong" (:error (run base (a/failed base nil {:error nil}))))))
+
+(deftest edit-result-metadata
+  (let [path [:loot/metadata]
+        s    (assoc-in base [:tools :relics :result :loot/metadata] ["a" "b" "c"])
+        edit (fn [s i] (run s (a/edit-result-metadata s :relics path i)))]
+    (testing "a clicked tag moves into the draft"
+      (let [s (edit s 1)]
+        (is (= ["a" "c"] (get-in s [:tools :relics :result :loot/metadata])))
+        (is (= "b" (get-in s [:tools :relics :drafts :loot/metadata])))))
+    (testing "a pending draft takes the clicked tag's place"
+      (let [s (edit (assoc-in s [:tools :relics :drafts :loot/metadata] " d ") 0)]
+        (is (= ["d" "b" "c"] (get-in s [:tools :relics :result :loot/metadata])))
+        (is (= "a" (get-in s [:tools :relics :drafts :loot/metadata])))))))

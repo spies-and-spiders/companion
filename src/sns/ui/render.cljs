@@ -220,7 +220,12 @@
      [:ul.tags.tags--edit
       (map-indexed (fn [i t]
                      [:li.tag {:replicant/key i}
-                      t
+                      [:button.tag__text
+                       {:type  "button"
+                        :title "Edit"
+                        :on    {:click [[:fx/focus-sibling-input [:event/raw]]
+                                        [:ui/edit-result-metadata plugin path i]]}}
+                       t]
                       [:button.tag__remove
                        {:type  "button"
                         :title "Remove"

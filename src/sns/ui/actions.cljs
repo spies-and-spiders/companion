@@ -356,6 +356,17 @@
     [[:fx/assoc-in path (without (vec (get-in state path)) i)]
      (edited id)]))
 
+(defn edit-result-metadata
+  "Moves tag `i` into the draft box; a pending draft takes its place."
+  [state id path i]
+  (let [draft-path (into [:tools id :drafts] path)
+        draft      (some-> (get-in state draft-path) str/trim)
+        path       (into [:tools id :result] path)
+        tags       (vec (get-in state path))]
+    [[:fx/assoc-in path (if (seq draft) (assoc tags i draft) (without tags i))]
+     [:fx/assoc-in draft-path (tags i)]
+     (edited id)]))
+
 (defn add-result-item [state id si]
   (let [path [:tools id :result :loot/sections si :section/items]]
     [[:fx/assoc-in path (conj (vec (get-in state path)) {:item/body ""})]

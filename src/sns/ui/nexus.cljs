@@ -51,6 +51,10 @@
                       (fn [_ctx _system dom-event]
                         (.preventDefault dom-event)))
 
+(nxr/register-effect! :fx/focus-sibling-input
+                      (fn [_ctx _system dom-event]
+                        (some-> (.-currentTarget dom-event) (.closest ".edit") (.querySelector "input") .focus)))
+
 (nxr/register-effect! :fx/push-route
                       (fn [_ctx _system page]
                         (.pushState js/history nil "" (state/page->hash page))))
@@ -143,6 +147,7 @@
                :ui/edit-result            a/edit-result
                :ui/add-result-metadata    a/add-result-metadata
                :ui/remove-result-metadata a/remove-result-metadata
+               :ui/edit-result-metadata   a/edit-result-metadata
                :ui/add-result-item        a/add-result-item
                :ui/add-result-var         a/add-result-var
                :ui/remove-result-var      a/remove-result-var

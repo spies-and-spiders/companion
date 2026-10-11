@@ -608,6 +608,11 @@ textarea.edit__control { min-height: 4.5rem; resize: vertical; }
 }
 
 .tags--edit { margin: 0; }
+.tag__text {
+  padding: 0; background: none; border: none;
+  color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: text;
+}
+.tag__text:hover { color: var(--vellum); }
 .tag__remove {
   margin-left: 0.35rem; padding: 0; background: none; border: none;
   color: inherit; font-size: inherit; cursor: pointer;
