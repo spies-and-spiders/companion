@@ -156,18 +156,25 @@
 ;; An item whose body renders to nothing is left out — a mod the DM emptied, or
 ;; one whose text only appears at a higher rank. It is untouched in
 ;; `result-editor`, so it comes back the moment it renders something again.
-(defn- entry [spies loot-vars {:item/keys [title body metadata vars]}]
-  (let [vars (merge loot-vars vars)
-        body (template/render body vars)]
+(defn- marked
+  "Key `node` on its text `s` and flag it when `changed?` says `s` is new, so
+   each change re-mounts it and replays the highlight."
+  [changed? s [tag & more]]
+  (into [tag {:replicant/key s :class (when (changed? s) "changed")}] more))
+
+(defn- entry [spies changed? loot-vars {:item/keys [title body metadata vars]}]
+  (let [vars  (merge loot-vars vars)
+        title (some-> title (template/render vars))
+        body  (template/render body vars)]
     (when-not (str/blank? body)
       [:li.entry
-       (when title [:h4.entry__title (linked spies (template/render title vars))])
-       [:div.entry__body (linked spies body)]
+       (when title (marked changed? title [:h4.entry__title (linked spies title)]))
+       (marked changed? body [:div.entry__body (linked spies body)])
        (when (seq metadata)
-         [:ul.tags (for [t metadata] [:li.tag t])])])))
+         [:ul.tags (map-indexed (fn [i t] [:li.tag {:replicant/key (str i t) :class (when (changed? t) "changed")} t]) metadata)])])))
 
-(defn- block [spies loot-vars {:section/keys [heading items]}]
-  (when-let [entries (seq (keep (partial entry spies loot-vars) items))]
+(defn- block [spies changed? loot-vars {:section/keys [heading items]}]
+  (when-let [entries (seq (keep (partial entry spies changed? loot-vars) items))]
     [:section.block
      (when heading [:h3.block__heading heading])
      [:ul.entries entries]]))
@@ -219,24 +226,36 @@
      [:span.words__mark "W"]
      [:span.words__text (str/join " " words)]]))
 
+(defn- changes
+  "Whether a rendered text is new since `previous`, the view-model it replaced."
+  [previous]
+  (if previous
+    (let [seen (into #{} (filter string?) (tree-seq coll? seq (template/render-view-model previous)))]
+      (fn [s] (not (contains? seen s))))
+    (constantly false)))
+
 (defn result
   "Render a view-model. The whole article is keyed on the title so a fresh loot
    result re-mounts and replays the materialise animation. Links preview only
-   given `spies`; `action-inputs` are the values entered into its actions' forms."
-  ([vm] (result vm nil nil))
-  ([vm spies action-inputs]
+   given `spies`; `action-inputs` are the values entered into its actions' forms.
+   Text that wasn't in `previous` is highlighted."
+  ([vm] (result vm nil nil nil))
+  ([vm spies action-inputs previous]
    (when vm
-     [:article.sigil {:replicant/key (:loot/title vm)}
-      [:div.sigil__frame
-       (words-badge (:loot/words vm))
-       (when (:loot/subtitle vm)
-         [:p.sigil__eyebrow (template/render (:loot/subtitle vm) (:loot/vars vm))])
-       [:h2.sigil__title (template/render (:loot/title vm) (:loot/vars vm))]
-       [:div.sigil__body
-        (keep (partial block spies (:loot/vars vm)) (:loot/sections vm))]
-       (when (seq (:loot/actions vm))
-         [:div.sigil__actions
-          (map-indexed (partial action vm action-inputs) (:loot/actions vm))])]])))
+     (let [changed? (changes previous)
+           vars     (:loot/vars vm)]
+       [:article.sigil {:replicant/key (:loot/title vm)}
+        [:div.sigil__frame
+         (words-badge (:loot/words vm))
+         (when-let [subtitle (some-> (:loot/subtitle vm) (template/render vars))]
+           (marked changed? subtitle [:p.sigil__eyebrow subtitle]))
+         (let [title (template/render (:loot/title vm) vars)]
+           (marked changed? title [:h2.sigil__title title]))
+         [:div.sigil__body
+          (keep (partial block spies changed? vars) (:loot/sections vm))]
+         (when (seq (:loot/actions vm))
+           [:div.sigil__actions
+            (map-indexed (partial action vm action-inputs) (:loot/actions vm))])]]))))
 
 (defn error-overlay
   "An error view-model, shown over the card until clicked away."

@@ -85,7 +85,7 @@
   [id vm saved?]
   (if (:loot/error? vm)
     [(tool-fx id {:error vm})]
-    [(tool-fx id {:result vm :error nil :editing? false :drafts nil :report-status nil :saved? saved?})]))
+    [(tool-fx id {:result vm :previous nil :error nil :editing? false :drafts nil :report-status nil :saved? saved?})]))
 
 (defn history-restore [state id idx]
   (when-let [vm (get-in (rows-for state id) [idx :view-model])]
@@ -156,12 +156,13 @@
 
 (defn acted
   "An action reworks the item already on the bench, so it earns a history entry
-   only when it actually changed something."
+   only when it actually changed something. What it replaced is kept as
+   `:previous` so the card can highlight the difference."
   [state id vm]
   (let [{:keys [result saved?]} (get-in state [:tools id])]
     (conj (if (= vm result)
             (bench-fx id vm saved?)
-            (arrived-fx state id vm :always))
+            (conj (arrived-fx state id vm :always) (tool-fx id {:previous result})))
           (tool-fx id {:loading? false}))))
 
 (defn report [state id]
@@ -329,7 +330,7 @@
 
 (defn toggle-edit [state id]
   ;; clear any stale "Sent ✓" so an edited item reads as unsent
-  [(tool-fx id {:editing? (not (get-in state [:tools id :editing?])) :report-status nil})])
+  [(tool-fx id {:editing? (not (get-in state [:tools id :editing?])) :report-status nil :previous nil})])
 
 (defn- retype
   "Put an edited value back into the type the plugin declared (`:type` on

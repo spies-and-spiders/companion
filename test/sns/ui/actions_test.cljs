@@ -68,7 +68,12 @@
     (testing "an action that changes nothing files nothing"
       (is (= 1 (count (get-in (run s (a/acted s :relics vm)) [:history "relics"])))))
     (testing "one that changes the item does"
-      (is (= 2 (count (get-in (run s (a/acted s :relics (assoc vm :loot/subtitle "rank 2"))) [:history "relics"])))))))
+      (is (= 2 (count (get-in (run s (a/acted s :relics (assoc vm :loot/subtitle "rank 2"))) [:history "relics"])))))
+    (testing "the item it replaced is kept to highlight the change against"
+      (let [s (run s (a/acted s :relics (assoc vm :loot/subtitle "rank 2")))]
+        (is (= vm (get-in s [:tools :relics :previous])))
+        (is (nil? (get-in (run s (a/acted s :relics (get-in s [:tools :relics :result]))) [:tools :relics :previous])))
+        (is (nil? (get-in (run s (a/toggle-edit s :relics)) [:tools :relics :previous])))))))
 
 (deftest act-sends-its-inputs
   (let [s    (-> base
