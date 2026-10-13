@@ -1,6 +1,6 @@
 (ns sns.ui.app
-  "Composition root: wires nexus dispatch into replicant, renders on state
-   change, follows the URL hash, and boots from the backend on init."
+  "Wires Nexus into replicant, renders on state change, and follows the URL
+   hash."
   (:require
     [nexus.registry :as nxr]
     [replicant.dom :as r]
@@ -34,8 +34,7 @@
           [:button.action-btn
            {:on {:click [[:ui/toggle-edit id]]}}
            (if editing? "Done editing" "Edit item")]
-          ;; under :always, what is on the bench but in no history entry: a
-          ;; hand-edit, or a result an unchanged action left as it was
+          ;; Under :always, for results not yet filed, like hand-edits.
           (when (or (= :button history-mode)
                     (and (= :always history-mode) (not saved?)))
             [:button.action-btn {:on {:click [[:ui/history-save id]]}} "Save to history"])

@@ -1,67 +1,48 @@
 (ns sns.sdk.protocols
-  "The extension points third-party plugins implement. Kept dependency-light so
-   external JAR plugins can depend on this module without pulling in the app."
+  "The extension points plugins implement. Dependency-light, so JAR plugins
+   needn't pull in the app."
   (:import
     (java.util HashMap)
     (sns.sdk Models$Action Models$Field Models$Item Models$ItemVar
              Models$Spec Models$ManualState Models$Section Models$ViewModel)))
 
 (defprotocol Generator
-  "A loot type. Implementations are resolved from config by the registry."
+  "A loot type."
   (loot-spec [this]
-    "Static, data-only description of this loot type. Conforms to
-     `sns.sdk.schema/loot-spec`; the tool's config supplies its id, label and
-     section, and its `:generator` overrides any key set here, e.g.
+    "A static `sns.sdk.schema/loot-spec`, e.g.
      {:inputs [{:id :character :label \"Character\" :type :enum :options [...]}]}")
   (generate [this ctx]
-    "Produce loot. Returns a view-model (`sns.sdk.schema/view-model`).
-     `ctx` is `{:rng :store :inputs :config}` — see the engine.
-     Stateful types read/write via `(:store ctx)`."))
+    "Return a `sns.sdk.schema/view-model`. `ctx` holds `:rng`, `:store`,
+     `:config`, `:registry` and `:inputs`."))
 
 (defprotocol Action
-  "Optional. Stateful follow-up operations on previously generated loot
-   (e.g. ranking a relic up). Surfaced to the UI via view-model `:loot/actions`."
+  "Optional follow-up operations on generated loot, like ranking a relic up,
+   offered through a view-model's `:loot/actions`."
   (handle-action [this ctx action params]
-    "Apply `action` (a keyword) with `params`. Returns an updated view-model.
-     `ctx` additionally carries `:view-model` — the current, possibly
-     DM-edited view-model the UI had on screen (nil if the caller didn't send
-     one). Reconstruct your item from it rather than trusting a copy frozen
-     into `params`, so the DM's edits are what the action operates on: the
-     displayed values are the source of truth, and `:loot/state` carries only
-     what the view-model cannot express (a stored id, the entry a mod came
-     from). A var's rank rides on the var itself, so it is not one of them.
-     `ctx`'s `:inputs` holds the values entered for the action's
-     `:action/inputs`, resolved as a generate call's are."))
+    "Apply `action` (a keyword) with `params`, returning an updated view-model.
+     `ctx` also carries `:view-model`, the result on screen with the DM's edits,
+     or nil. Rebuild from it rather than from `params`, so the action works on
+     what the DM sees. `:inputs` holds the values entered for the action's
+     `:action/inputs`."))
 
 (defprotocol Reporter
-  "Optional. Sends a generated loot view-model to an external destination (e.g. a
-   Discord webhook). Config-driven via `:reporting`, mirroring `Store`; when no
-   reporter is configured the UI hides its report button."
+  "Sends a generated view-model somewhere external, like a Discord webhook.
+   Configured under `:reporting`; without one, the UI hides its report button."
   (report-label [this]
-    "Human label for the report button, e.g. \"Send to Discord\".")
+    "The report button's label, e.g. \"Send to Discord\".")
   (report! [this view-model]
-    "Send `view-model` (`sns.sdk.schema/view-model`) to the destination; throws ex-info on failure."))
+    "Send `view-model`, throwing ex-info on failure."))
 
 (defprotocol Store
-  "Reads over persisted state, for stateful plugins. State is a set of named
-   collections, each a map of key to value; a collection needs no declaration and
-   reads as `{}` until something is written to it. Available to in-process
-   plugins only — `:cli` and `:ffi` plugins persist their own state.
-
-   Writing is declarative and not part of this protocol: put the changes on your
-   view-model under `:store/mutations` and the engine applies them once the
-   view-model has validated, so a plugin cannot leave state changed by a call
-   that then fails. Declare the collections you use with `:store/collections` in
-   your `loot-spec`; it defaults to a single collection named after the plugin's
-   `:id`.
-
-   Reads take and return plain data, so the same call works against a local store
-   or one whose state lives in the DM's browser."
+  "Read access to persisted state: named collections, each a map of key to
+   value, reading as `{}` until written. Plugins write by returning
+   `:store/mutations` on their view-model, which the engine applies once it
+   validates."
   (setup! [this]
-    "Prepare the backend for use. Called once at startup, before any other
-     method; construction itself must stay side-effect-free.")
+    "Called once at startup, before any other method, so construction can stay
+     side-effect-free.")
   (read-collection [this coll-id]
-    "The whole collection `coll-id` (a keyword) as a map, or `{}` when absent."))
+    "The whole collection `coll-id` (a keyword), or `{}`."))
 
 ;; --- Models -> Clojure data ---
 
@@ -99,17 +80,13 @@
           (some? (.max v))   (assoc :max (.max v))
           (some? (.rank v))  (assoc :rank (.rank v))))
 
-(defn- item-vars->clj
-  "Vars keyed by the name their template refers to them by, so the keys
-   keywordise while the values become `::item-var` maps."
-  [vars]
+(defn- item-vars->clj [vars]
   (when (seq vars)
     (into {} (map (fn [[k v]] [(keyword k) (item-var->clj v)])) vars)))
 
 (defn- mutations->clj
-  "`{<collection> {<key> <value>}}`. Only the collection name is a keyword on
-   this side; the key of an entry within it stays as written, so a row a plugin
-   writes matches one written by the manual-state editor."
+  "Keywordise only collection names; row keys stay as written, matching the
+   manual-state editor's."
   [mutations]
   (into {} (map (fn [[coll rows]] [(keyword coll) (into {} rows)])) mutations))
 
@@ -124,9 +101,7 @@
           (.heading s) (assoc :section/heading (.heading s))
           (.secret s)  (assoc :section/secret? true)))
 
-(defn- action->clj
-  "An action whose event the engine addresses to the tool that returned it."
-  [^Models$Action a]
+(defn- action->clj [^Models$Action a]
   (cond-> {:action/label (.label a)
            :action/event [:loot/action {:action (keyword (.action a))
                                         :params (into {} (.params a))}]}
@@ -196,10 +171,6 @@
 (extend-type sns.sdk.Action
   Action
   (handle-action [this ctx action params]
-    ;; `:view-model` is the result the UI had on screen, DM edits included. It
-    ;; goes over as a `Models$ViewModel` rather than raw Clojure data, so a Java
-    ;; author reads the edited `Item.vars()` and `ViewModel.state()` back with
-    ;; the same records they returned.
     (let [ctx (cond-> ctx (:view-model ctx) (update :view-model clj->view-model))]
       (view-model->clj (.handleAction this (clj->java-map ctx) (name action) (clj->java-map params))))))
 

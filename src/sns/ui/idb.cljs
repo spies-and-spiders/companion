@@ -1,10 +1,7 @@
 (ns sns.ui.idb
-  "IndexedDB persistence for `:browser` storage: one object store holding a
-   record per `[collection key]`, so a new collection never needs a schema
-   change.
-
-   Keys and values are stored as EDN text rather than structured clones, so
-   keywords and sets survive the round trip exactly as they do in a file."
+  "IndexedDB persistence for `:browser` storage: one record per
+   `[collection key]`, so new collections need no schema change. Stored as EDN
+   text, so keywords and sets survive."
   (:require
     [clojure.edn :as edn]))
 
@@ -18,8 +15,8 @@
       (set! (.-onerror request) (fn [_] (reject (.-error request)))))))
 
 (defn- migrate!
-  "Move every record out of the per-collection stores earlier versions kept,
-   into `kv`, and drop them. Runs inside the upgrade transaction `tx`."
+  "Move records from older per-collection stores into `kv`, within the upgrade
+   transaction `tx`."
   [db ^js tx]
   (doseq [old (array-seq (.-objectStoreNames db))
           :when (not= store-name old)
@@ -50,13 +47,13 @@
         (set! (.-onsuccess req)
               (fn [_]
                 (let [db (.-result req)]
-                  ;; never be the connection that blocks another tab's upgrade
+                  ;; Never block another tab's upgrade.
                   (set! (.-onversionchange db) (fn [_] (.close db)))
                   (resolve db))))
         (set! (.-onerror req) (fn [_] (reject (.-error req))))))))
 
 (defn- open
-  "The database with `kv` in it, upgrading (and migrating) only when it is not."
+  "The database, upgraded to hold `kv` if it doesn't."
   []
   (-> (open-at nil)
       (.then (fn [db]
@@ -67,8 +64,8 @@
                    (open-at next-version)))))))
 
 (defn- with-store
-  "Run `(f object-store)` in a `mode` transaction, resolving to its promise's
-   result once the transaction has committed."
+  "Run `(f object-store)` in a `mode` transaction, resolving to its result once
+   committed."
   [mode f]
   (-> (open)
       (.then (fn [db]
@@ -95,12 +92,11 @@
 
 (defn- collection-range [coll]
   (let [n (name coll)]
-    ;; every [n k] sorts between [n] and [n []], as arrays sort after strings
+    ;; Every [n k] sorts between [n] and [n []], as arrays sort after strings.
     (.bound js/IDBKeyRange #js [n] #js [n #js []])))
 
 (defn read-collections
-  "Resolve to `{<collection> {<key> <value>}}` for `collections`. A collection
-   that has never been written reads as `{}`, matching the server."
+  "Resolve to `{<collection> {<key> <value>}}`, with unwritten collections as `{}`."
   [collections]
   (if (empty? collections)
     (js/Promise.resolve {})
@@ -110,8 +106,7 @@
             (.then #(apply merge (zipmap collections (repeat {})) %)))))))
 
 (defn apply-mutations!
-  "Apply `{<collection> {<key> <value>}}`, deleting the keys whose value is nil.
-   Resolves once the transaction commits."
+  "Apply `{<collection> {<key> <value>}}`, a nil value deleting its key."
   [mutations]
   (if (empty? mutations)
     (js/Promise.resolve nil)
@@ -125,7 +120,5 @@
             (.put store (pr-str v) key)))
         (js/Promise.resolve nil)))))
 
-(defn export-state
-  "Every collection currently held, for the export button."
-  []
+(defn export-state []
   (with-store "readonly" #(read-records % nil)))

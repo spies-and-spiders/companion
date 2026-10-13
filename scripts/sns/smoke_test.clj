@@ -78,9 +78,8 @@
    the same fallback test/sns/builtin/ffi_test.clj uses on Windows)."
   [out-path]
   (println "Building FFI example plugin (Go) ->" out-path)
-  ;; go build's cgo preprocessing (needed for -buildmode=c-shared) is silently
-  ;; skipped when CGO_ENABLED=0, which some environments default to - without
-  ;; this the failure is the deeply misleading "no Go source files".
+  ;; -buildmode=c-shared needs cgo, and fails misleadingly with "no Go source
+  ;; files" where CGO_ENABLED defaults to 0.
   (let [env (assoc (into {} (System/getenv)) "CGO_ENABLED" "1")
         {:keys [exit err]} (shell/sh "go" "build" "-buildmode=c-shared"
                                      "-o" out-path "examples/ffi-plugin/loot.go"
@@ -137,22 +136,15 @@
                                      {:type :builtin :id :social :section "Utilities"}
                                      {:type :data :id :uniques :data {:source "data/uniques.edn"}}
                                      {:type :data :id :rings :data {:source "data/rings.edn"}}
-                                     ;; :chill-factor is unused by weather.py itself; it exists so
-                                     ;; the smoke test can feed a numeric string through the
-                                     ;; engine's :decimal input coercion (`->decimal` in
-                                     ;; sns.server.engine) - the exact code path that broke in a
-                                     ;; native image via reflection inside `bigdec` (dd6fc1a).
+                                     ;; Unused by weather.py: exercises :decimal coercion, which
+                                     ;; broke in the native image via reflection in `bigdec`.
                                      {:type      :cli
                                       :id        :weather
                                       :section   "Utilities"
                                       :label     "Weather"
                                       :cli       {:command [(python-command) "examples/cli-plugin/weather.py"]}
                                       :generator {:inputs [{:id :chill-factor :label "Chill Factor" :type :decimal}]}}
-                                     ;; A :cli plugin with declared state: the
-                                     ;; engine reads its collection into the
-                                     ;; request and applies the mutations it
-                                     ;; returns, so neither direction depends on
-                                     ;; the script understanding EDN.
+                                     ;; A :cli plugin with declared state.
                                      {:type      :cli
                                       :id        :tally
                                       :section   "Utilities"
@@ -250,8 +242,7 @@
                                          "generate :tally"))
         first-run (title)
         second-run (title)]
-    ;; The counts are the assertion: reaching 2 means the first call's declared
-    ;; write was applied here and read back into the second call's request.
+    ;; Reaching 2 means the first call's write reached the second's request.
     (when-not (= ["Vex \u00d7 1" "Vex \u00d7 2"] [first-run second-run])
       (fail! "the CLI plugin did not read back what it wrote"
              {:titles [first-run second-run]}))

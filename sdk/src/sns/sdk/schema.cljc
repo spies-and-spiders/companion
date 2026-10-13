@@ -1,31 +1,25 @@
 (ns sns.sdk.schema
-  "Malli schemas shared across the backend, plugins, and (the view-model/spec
-   subset) the ClojureScript frontend. All schemas live in one registry so they
-   can reference each other, including the recursive upgrade-graph."
+  "Malli schemas shared by the backend, plugins and frontend, in one registry so
+   they can reference each other."
   (:require
     [malli.core :as m]
     [malli.error :as me]
     [malli.transform :as mt]
     [malli.util :as mu]))
 
-(defn- tool
-  "A config `:tools` entry of `type`: the keys every tool shares, plus `entries`."
-  [type & entries]
+(defn- tool [type & entries]
   (into [:map
          [:type [:= type]]
          [:id keyword?]
          [:label {:optional true} string?]
-         ;; The UI rail section it is listed under ("Loot" when absent).
+         ;; The UI rail section it's listed under ("Loot" when absent).
          [:section {:optional true} string?]]
         entries))
 
-(defn- generator-tool
-  "A `tool` that generates loot, so it may configure its `:generator`."
-  [type & entries]
+(defn- generator-tool [type & entries]
   (apply tool type [:generator {:optional true} ::loot-spec] entries))
 
 (def schemas
-  "The project's named schemas, keyed by qualified keyword."
   {;; --- loot specifications (drive the generic input forms) ---
    ::field [:map
             [:id keyword?]
@@ -35,108 +29,82 @@
             [:list? {:optional true} boolean?]
             [:options {:optional true} [:sequential any?]]]
 
-   ;; When a generated result is added to the browser-side history: on every
-   ;; generation, only when reported, only on the manual button, or not at all.
+   ;; When a result is added to the browser's history: on every generation,
+   ;; when reported, via the manual button, or never.
    ::history [:enum :always :on-report :button :never]
 
-   ;; What a loot generator declares about itself, beyond its config's `:id`,
-   ;; `:label` and `:section`. A plugin's `loot-spec` returns it, and a tool's
-   ;; config entry sets it under `:generator`, key by key overriding the
-   ;; plugin's own. The engine adds the config's id, label and section to what
-   ;; the UI receives.
+   ;; What a generator declares about itself. A plugin's `loot-spec` returns it,
+   ;; and a tool's `:generator` config overrides it key by key. The engine adds
+   ;; the tool's `:id`, `:label` and `:section`.
    ::loot-spec [:map
-                 ;; Hidden types are kept out of the UI picker, so they are only
-                 ;; reached by rolling the :loot-table (or by another type's
-                 ;; action), or from a page.
+                 ;; Kept out of the UI picker, so only reachable by rolling the
+                 ;; :loot-table, from another type's action, or from a page.
                 [:hidden? {:optional true} boolean?]
-                 ;; Overrides the UI's "Generate <label>" button text — useful
-                 ;; when generating means something else (e.g. "Add character").
+                 ;; Replaces the "Generate <label>" button text, e.g. "Add character".
                 [:generate-label {:optional true} string?]
-                 ;; The store collections this type reads or writes. Defaults to
-                 ;; a single collection named after :id. Under :browser storage
-                 ;; the client ships exactly these with each request.
+                 ;; Collections this type reads or writes; defaults to one named
+                 ;; after :id. Under :browser storage, the client sends exactly
+                 ;; these with each request.
                 [:store/collections {:optional true} [:sequential keyword?]]
-                 ;; Declares a DM-owned table in the first of those collections:
-                 ;; the UI renders a generic editor for it and the plugin reads
-                 ;; it back through the store. See `::manual-state`.
+                 ;; A DM-edited table in the first of those collections.
                 [:store/manual {:optional true} ::manual-state]
-                 ;; Overrides the config's global `:history` for this type.
                 [:history {:optional true} ::history]
-                 ;; The form fields whose collected values are sent as `inputs`.
+                 ;; Form fields whose values are sent as `inputs`.
                 [:inputs {:optional true} [:sequential ::field]]]
 
-   ;; --- manually-managed state (the `:store/manual` editor) ---
-   ;; A collection the DM fills in by hand rather than one the app generates: a
-   ;; character table, a soul ledger. Each key is a row, and `:fields` are the
-   ;; columns it holds — coerced to their declared types on the way in, with a
-   ;; blank falling back to `:default`. With `:list?` the row holds a *sequence*
-   ;; of those field maps instead of one, for a key that owns several records.
+   ;; A collection the DM fills in by hand, like a character table. Each key is
+   ;; a row and `:fields` are its columns, coerced to their types, with a blank
+   ;; falling back to `:default`. With `:list?`, a row holds a list of records.
    ::manual-state [:map
                    [:key-label {:optional true} string?]
                    [:list? {:optional true} boolean?]
                    [:fields [:sequential ::field]]]
 
-   ;; --- view-model (the only contract the UI renderer understands) ---
-   ;; `:action/event` is a UI action vector, dispatched as-is by the browser, so
-   ;; only in-process plugins write one directly (see `sns.builtin.relics`) — they
-   ;; are already trusted and know the `:id` they were registered under. Anything
-   ;; crossing a boundary supplies `label`/`action`/`params` instead (the SDK's
-   ;; `Models.Action`, or `::plugin-action` as JSON) and its adapter builds the
-   ;; event, which both keeps a plugin to its own `:loot/action` route and fills
-   ;; in the config-assigned id it has no way to know.
-   ;; A form field on an action. Beyond a `::field`'s types, one may pick a
-   ;; rendered `:section` or `:item` of the result, arriving as `{:section i}`
-   ;; or `{:section i :item j}`, indices into `:loot/sections`/`:section/items`.
+   ;; --- view-model (the UI renderer's contract) ---
+   ;; Beyond a `::field`'s types, an action field can pick a rendered `:section`
+   ;; or `:item` of the result, arriving as `{:section i}` or `{:section i :item j}`.
    ::action-field [:merge
                    ::field
                    [:map [:type [:enum :enum :int :decimal :text :bool :section :item]]]]
 
-   ;; `:action/inputs` are rendered beside the button; their values reach the
-   ;; plugin as the action's `inputs`.
+   ;; `:action/event` is a UI event vector dispatched as-is, so only trusted
+   ;; in-process plugins (e.g. `sns.builtin.relics`) build one directly. Plugins
+   ;; across a boundary send `label`/`action`/`params` instead, and their adapter
+   ;; builds the event, keeping it to their own route under their config id.
+   ;; `:action/inputs` render beside the button and reach the plugin as `inputs`.
    ::action [:map
              [:action/label string?]
              [:action/event vector?]
              [:action/inputs {:optional true} [:sequential ::action-field]]]
 
-   ;; One resolved variable a template interpolates (see `sns.sdk.vars`).
-   ;; Templates are rendered in the browser, so this is how a value reaches it:
-   ;; separately from the text, which is what lets a DM edit *the value* without
-   ;; touching the prose (and the plugin read a value back, never parsing prose).
-   ;; `:options`, when given, is the preset's vocabulary — the UI offers it as a
-   ;; combobox, matching `::field`'s `:enum` type. `:random`/`:args` record what
-   ;; it was drawn from, so an action can reroll it (`sns.sdk.vars/redraw`).
-   ;; `:label` is opt-in: with none, the UI derives one from the id it is keyed
-   ;; under, so a plugin sets this only to override that.
+   ;; A resolved template variable (see `sns.sdk.vars`). Values travel apart from
+   ;; the template, so a DM can edit one without touching the prose, and a plugin
+   ;; can read it back without parsing any. `:options` are offered as a combobox.
+   ;; `:random`/`:args` record the source, so an action can reroll it. Without
+   ;; `:label`, the UI derives one from the var's key.
    ::item-var [:map
                [:value any?]
-               ;; The type the value resolved as: the browser picks its control
-               ;; from this and parses the string an input hands back into it.
-               ;; Stamped once at resolution, since mid-edit the value may be
-               ;; blank and say nothing. Absent means text.
+               ;; Picks the browser's control and how it parses edits. Stamped at
+               ;; resolution, since a value being edited may be blank. Absent means text.
                [:type {:optional true} [:enum :int :decimal :bool]]
                [:label {:optional true} string?]
                [:random {:optional true} keyword?]
                [:args {:optional true} [:map-of keyword? any?]]
                [:options {:optional true} [:sequential any?]]
-               ;; Available to templates but not offered for editing: an entry's
-               ;; own fields, as opposed to what it declared as a var.
+               ;; An entry's own field: available to templates, but not editable.
                [:context? {:optional true} boolean?]
-               ;; How the var ranks up (see `sns.sdk.rank`). Ranks are 1-based,
-               ;; so an absent `:rank` is the declared value itself. `:step`
-               ;; defaults to that value; a var holding anything but a number
-               ;; has nowhere to step to and never ranks.
+               ;; Ranking (see `sns.sdk.rank`). Ranks are 1-based, so no `:rank`
+               ;; means the declared value. `:step` defaults to that value, and
+               ;; a non-numeric var never ranks.
                [:step {:optional true} any?]
                [:max {:optional true} [:int {:min 1}]]
                [:rank {:optional true} [:int {:min 1}]]]
 
-   ;; Vars keyed by the name the template refers to them by: `{{ damage }}`
-   ;; reads `:damage`. A map (not a list) because that is both the render
-   ;; context's shape and the shape a plugin addresses a var by.
+   ;; Keyed by the name templates use: `{{ damage }}` reads `:damage`.
    ::item-vars [:map-of keyword? ::item-var]
 
-   ;; `:item/title` and `:item/body` are *templates*, rendered in the browser
-   ;; against `:item/vars`. A plugin with nothing to interpolate just sends
-   ;; finished text — a template with no tags renders as itself.
+   ;; Title and body are templates rendered in the browser against `:item/vars`;
+   ;; plain text renders as itself.
    ::item [:map
            [:item/title {:optional true} [:maybe string?]]
            [:item/body string?]
@@ -152,65 +120,48 @@
    ::view-model [:map
                  [:loot/title string?]
                  [:loot/subtitle {:optional true} [:maybe string?]]
-                 ;; Context for the title/subtitle templates, as `:item/vars` is
-                 ;; for an item's.
+                 ;; Template context for the title and subtitle.
                  [:loot/vars {:optional true} ::item-vars]
                  [:loot/sections {:optional true} [:sequential ::section]]
                  [:loot/actions {:optional true} [:sequential ::action]]
-                 ;; The anonymous handle this result travels under, drawn by the
-                 ;; engine from the config's word list rather than by a plugin,
-                 ;; so every surface that shows a result shows the same pair.
+                 ;; The result's anonymous handle, drawn by the engine from the
+                 ;; config's word list so every surface shows the same words.
                  [:loot/words {:optional true} [:sequential string?]]
-                 ;; Opaque, plugin-owned state the engine and UI carry untouched
-                 ;; and hand back with the next action — bookkeeping (a stored
-                 ;; id, the data entry a mod came from) that has no place in the
-                 ;; rendered item. The *displayed* values live in `:item/vars`
-                 ;; and are the source of truth for everything else, so keep
-                 ;; this to what genuinely cannot be read back off the item.
+                 ;; Opaque plugin state, handed back untouched with the next
+                 ;; action. Displayed values belong in `:item/vars`, so keep this
+                 ;; to what can't be read back off the item.
                  [:loot/state {:optional true} any?]
-                 ;; The result is a failure to report rather than loot: shown as
-                 ;; an overlay, and never saved to history automatically.
+                 ;; A failure rather than loot: shown as an overlay, and never
+                 ;; saved to history automatically.
                  [:loot/error? {:optional true} boolean?]
-                 ;; Writes the plugin wants made. Declared rather than performed,
-                 ;; so the engine can apply them only once this view-model has
-                 ;; validated — a call that fails changes nothing.
+                 ;; Declared rather than performed, so the engine applies them
+                 ;; only once the view-model validates.
                  [:store/mutations {:optional true} ::mutations]]
 
-   ;; `{<collection> {<key> <value>}}`; a nil value retracts that key, and keys
-   ;; left out are untouched.
+   ;; `{<collection> {<key> <value>}}`; a nil value retracts that key.
    ::mutations [:map-of keyword? [:map-of any? any?]]
 
-   ;; --- external plugin I/O contract (:cli, :ffi, :wasm) ---
-   ;; External plugins exchange the same view-model a `:jar` plugin does, as
-   ;; JSON: namespaced keys survive intact (`"loot/title"` reads back as
-   ;; `:loot/title`), so there is one output contract, not two. Only the request
-   ;; is modelled here — the output *is* `::view-model`.
-
-   ;; What the engine sends the plugin, as one of two shapes: a generate call
-   ;; carries `inputs`, an action call carries `action`/`params` (and `inputs`,
-   ;; when the action declared any) plus the `view-model` the UI had on screen (DM edits included, and the
-   ;; carrier of `:loot/state`). Modelled as a union so codegen emits two request
-   ;; types and the generate-vs-action split is structural. Not runtime-validated
-   ;; — the engine produces it.
-   ;; `state` carries the collections the plugin declared with
-   ;; `:store/collections`/`:store/manual`, read for it by the engine — an
-   ;; external plugin never touches the store itself, and writes back by
-   ;; returning `store/mutations` on its view-model.
-   ;; The view-model as an external plugin *writes* it — identical but for
-   ;; `:loot/actions`, which carry the three fields of `::plugin-action` rather
-   ;; than a built `:action/event` (see `::action`). Validated before mapping, so
-   ;; a contract breach reports in the author's own keys; the engine asserts the
-   ;; mapped result against `::view-model` regardless.
+   ;; --- external plugin I/O (:cli, :ffi, :wasm) ---
+   ;; External plugins exchange the view-model as JSON, where namespaced keys
+   ;; round-trip (`"loot/title"` reads back as `:loot/title`).
    ::plugin-action [:map
                     [:label string?]
                     [:action string?]
                     [:params {:optional true} [:map-of keyword? any?]]
                     [:inputs {:optional true} [:sequential ::action-field]]]
 
+   ;; The view-model as an external plugin writes it, with `::plugin-action`s in
+   ;; place of built events. Validated before mapping, so errors name the
+   ;; author's own keys.
    ::plugin-output [:merge
                     ::view-model
                     [:map [:loot/actions {:optional true} [:sequential ::plugin-action]]]]
 
+   ;; A generate call (`inputs`) or an action call (`action`/`params`, plus the
+   ;; on-screen `view-model` with the DM's edits and `:loot/state`). A union so
+   ;; codegen emits a type for each. `state` holds the plugin's declared
+   ;; collections; it writes back through `store/mutations`. Built by the
+   ;; engine, so not validated at runtime.
    ::plugin-request [:or
                      [:map
                       [:inputs [:map-of keyword? any?]]
@@ -223,33 +174,22 @@
                       [:state {:optional true} [:map-of keyword? [:map-of any? any?]]]]]
 
    ;; --- a mod that ranks up ---
-   ;; The convention the built-ins use: `:vars` the template interpolates, each
-   ;; carrying its own progression, and an optional `:max-ranks` capping what
-   ;; the mod may spend across all of them. Nothing in the engine reads this — a
-   ;; plugin owns its own mod shape — but a plugin that follows it gets
-   ;; `sns.sdk.rank` for free.
-   ;;
-   ;; `:vars` are declared (see `sns.sdk.vars`) — a raw literal, or a
-   ;; `{:random …}`/`{:literal …}` behaviour — and resolve to the `::item-vars`
-   ;; the item carries.
+   ;; The built-ins' convention, unused by the engine, which lets a plugin use
+   ;; `sns.sdk.rank`: `:vars` declarations (see `sns.sdk.vars`) that each carry
+   ;; their own progression, and `:max-ranks` capping ranks across all of them.
    ::mod [:map
           [:vars {:optional true} [:map-of keyword? any?]]
           [:template {:optional true} string?]
           [:max-ranks {:optional true} [:int {:min 1}]]]
 
    ;; --- the :data plugin DSL ---
-   ;; `:title`/`:body` are either a *field reference* (a keyword, naming a field
-   ;; on the drawn element — as `:metadata` always was) or a *template* string,
-   ;; rendered in the browser against the item's vars. A field reference is the
-   ;; way to reach data that is itself a template: `:body :effect` hands the
-   ;; browser the entry's own `"+4 {{ ability }}."` to render, rather than
-   ;; rendering `"{{ effect }}"` here and losing the inner tag.
+   ;; `:title`/`:body` are a template string, or a keyword naming a field on the
+   ;; drawn element. A field reference hands the browser that field's own
+   ;; template (`:body :effect` → `"+4 {{ ability }}."`) with its tags intact.
    ;;
-   ;; `string?` leads the `:or`, and must: the JSON transformer decodes a string
-   ;; into whichever branch matches first, so a keyword branch in front turns
-   ;; every JSON template into a keyword — `"{{result}}"` becomes `:{{result}}`,
-   ;; a reference to a field no entry has. JSON keeps its strings, and a bare
-   ;; one naming a field on the entry is read as a reference there.
+   ;; `string?` must lead the `:or`: the JSON transformer decodes into the first
+   ;; matching branch, so a leading keyword branch would turn every template
+   ;; into a keyword. In JSON, a string naming a field is read as a reference.
    ::data-item [:map
                 [:title {:optional true} [:or string? keyword?]]
                 [:body [:or string? keyword?]]
@@ -277,20 +217,15 @@
 
    ::storage [:map
               [:backend [:enum :file :memory :browser]]
-              ;; Backend-specific settings nest under the backend's own key.
               [:file {:optional true} [:map [:dir {:optional true} string?]]]]
 
-   ;; Dispatch coerces `:type` to a keyword so a JSON config (where it is the
-   ;; string "data" etc.) routes to the right branch during decoding.
-   ;; `:type`, `:id`, `:label` and `:section` apply to every tool and sit at the
-   ;; top level; what only one :type understands nests under that type's key,
-   ;; and what every loot generator shares nests under `:generator`.
+   ;; Dispatch keywordises `:type` so JSON configs decode to the right branch.
+   ;; Keys every tool shares sit at the top level, type-specific ones under the
+   ;; type's key, and generator settings under `:generator`.
    ::tool [:multi {:dispatch (fn [p] (some-> (:type p) keyword))}
-           ;; A :page shows other (non-page) tools side by side; a plugin no
-           ;; page lists gets a page of its own.
+           ;; Shows other tools side by side; a tool no page lists gets its own.
            [:page (tool :page [:page [:map [:tools [:sequential {:min 1} keyword?]]]])]
-           ;; A :data plugin's spec comes either from a :source file or
-           ;; written :inline (which wins when both are given).
+           ;; :inline wins when both are given.
            [:data (generator-tool :data
                                   [:data [:and
                                           [:map
@@ -299,29 +234,24 @@
                                           [:fn {:error/message "a :data plugin needs a :source or an :inline spec"}
                                            (fn [d] (boolean (or (:source d) (:inline d))))]]])]
            [:cli (generator-tool :cli [:cli [:map [:command [:sequential string?]]]])]
-           ;; A :wasm plugin is a WASI command module run on GraalWASM,
-           ;; sharing the stdio JSON contract with :cli. `:args` are its
-           ;; program arguments and `:dirs` maps guest paths it may read to
-           ;; host directories (none means no filesystem). Works in native
-           ;; images (unlike :jar), in-process (unlike :cli).
+           ;; A WASI command module run in-process on GraalWASM, using the :cli
+           ;; stdio contract. `:dirs` maps guest paths to readable host
+           ;; directories; none means no filesystem access.
            [:wasm (generator-tool :wasm
                                   [:wasm [:map
                                           [:module string?]
                                           [:args {:optional true} [:sequential string?]]
                                           [:dirs {:optional true} [:map-of [:or keyword? string?] string?]]]])]
-           ;; An :ffi plugin calls a C-ABI symbol in a shared library
-           ;; (.so/.dylib/.dll): `(char* request_json) -> char* output_json`.
-           ;; If `free-symbol` is given it is called on the returned pointer
-           ;; after the output is read; otherwise the library owns that
-           ;; memory. Works in native images (unlike :jar).
+           ;; A `char* (char* request_json)` symbol in a shared library. If
+           ;; `:free-symbol` is given, it's called on the returned pointer;
+           ;; otherwise the library owns that memory.
            [:ffi (generator-tool :ffi
                                  [:ffi [:map
                                         [:library string?]
                                         [:symbol string?]
                                         [:free-symbol {:optional true} string?]]])]
-           ;; A :jar plugin names its generator either as a Clojure
-           ;; :entrypoint factory var or as a :class with a 0-arity
-           ;; constructor (for pure-JVM-language plugins).
+           ;; A Clojure `:entrypoint` factory var, or a `:class` with a no-arg
+           ;; constructor. Unavailable in native images.
            [:jar (generator-tool :jar
                                  [:jar [:and
                                         [:map
@@ -343,15 +273,11 @@
                  [:fn {:error/message "a loot-table entry takes :weight or :ranges, not both"}
                   (fn [e] (not (and (contains? e :weight) (contains? e :ranges))))]]
 
-   ;; --- random presets (content for `sns.sdk.randoms`) ---
-   ;; Named value lists any plugin's vars can draw from with
-   ;; `{:random :<preset>}`. The library ships the mechanism only; these are
-   ;; the DM's vocabulary.
+   ;; Named value lists a var can draw from with `{:random :<preset>}`.
    ::randoms [:map-of keyword? [:sequential any?]]
 
-   ;; --- reporting (send a generated item to an external destination) ---
-   ;; A `:multi` like `::tool` so new backends slot in; dispatch coerces the
-   ;; backend to a keyword for JSON configs.
+   ;; --- reporting (sending results elsewhere) ---
+   ;; Dispatch keywordises `:backend` for JSON configs.
    ::reporting [:multi {:dispatch (fn [r] (some-> (:backend r) keyword))}
                 [:discord [:map
                            [:backend [:= :discord]]
@@ -374,28 +300,25 @@
              [:loot-die-size {:optional true} pos-int?]]})
 
 (def registry
-  "Combined registry: malli defaults + util schemas (for `:merge`) + ours."
+  "Malli's defaults, its util schemas (for `:merge`), and ours."
   (merge (m/default-schemas) (mu/schemas) schemas))
 
-(defn validate
-  "True if `value` conforms to `schema` (a keyword from `schemas` or inline)."
-  [schema value]
+(defn validate [schema value]
   (m/validate schema value {:registry registry}))
 
 (defn decode
-  "Decode `value` against `schema` with malli's JSON transformer, coercing
-   strings to keywords/symbols/etc. Used to read a JSON config into the same
-   shape an EDN config produces."
+  "Decode `value` with malli's JSON transformer, so a JSON config reads into the
+   same shape as an EDN one."
   [schema value]
   (m/decode schema value {:registry registry} (mt/transformer (mt/json-transformer) (mt/default-value-transformer))))
 
 (defn explain
-  "Explain why `value` does not conform to `schema`, or nil if it does."
+  "Why `value` doesn't conform to `schema`, or nil if it does."
   [schema value]
   (m/explain schema value {:registry registry}))
 
 (defn assert!
-  "Throw an ex-info describing the failure if `value` does not conform."
+  "Return `value`, or throw an ex-info describing why it doesn't conform."
   [schema value]
   (when-let [err (explain schema value)]
     (throw (ex-info (str "Schema validation failed: " schema)

@@ -1,15 +1,7 @@
 (ns sns.builtin.relics
-  "A stateful built-in loot type: relics that are generated, persisted, and
-   ranked up over time. Each relic carries a mod whose vars hold their own
-   ranks, and its template — with `{{#gte}}` for the parts that appear
-   once a var is high enough — is rendered in the browser against them. This
-   exercises the full Store + Action loop.
-
-   Also the worked example of collection-based state: each relic is one entry in
-   the `:relics` collection, keyed by its id, with its ranks a plain map, read
-   through the `Store` and written by declaring `:store/mutations` on the
-   view-model. The static `:mod` is looked up from the templates below by name
-   rather than persisted at all."
+  "Relics that are generated, persisted and ranked up over time: a worked
+   example of the Store and Action loop. Only each relic's name, base and ranks
+   are stored; its mod is looked up from `templates` by name."
   (:require
     [randy.core :as r]
     [sns.sdk.protocols :as p]
@@ -20,9 +12,6 @@
 (def ^:private coll :relics)
 
 (def ^:private templates
-  "Starting relics. Each `:mod`'s vars rank up by themselves (see
-   `sns.sdk.rank`); `:max-ranks` caps what the relic may spend across all of
-   them."
   [{:name "Aegis of the Vow"
     :base "armour"
     :mod  {:vars      {:ab 1}
@@ -37,17 +26,12 @@
 (def ^:private template-by-name
   (into {} (map (juxt :name identity)) templates))
 
-(defn- read-relic
-  "The stored relic, rehydrated for the view-model and ranking up. The `:mod` is
-   static template data, so it comes from `templates` rather than the store; only
-   the ranks the DM has taken are persisted."
-  [store id]
+(defn- read-relic [store id]
   (when-let [{:keys [name ranks] :as relic} (get (p/read-collection store coll) id)]
     (assoc relic :id id :mod (:mod (template-by-name name)) :ranks (or ranks {}))))
 
 (defn- relic-vars
-  "The relic's vars at the ranks it has reached: the mod's declared vars,
-   resolved, with the stored rank put back on each."
+  "The mod's vars, resolved, at the relic's stored ranks."
   [rng {:keys [mod ranks]}]
   (reduce-kv (fn [vars id rank] (cond-> vars (contains? vars id) (assoc-in [id :rank] rank)))
              (vars/resolve-vars rng (:vars mod))
@@ -69,17 +53,12 @@
                                                         (seq vars) (assoc :item/vars vars))]}]}
             (seq options) (assoc :loot/actions (mapv #(option->action id %) options)))))
 
-(defn- persisting
-  "`view-model` carrying the write that stores `relic`. Declared rather than
-   performed, so a view-model that fails validation stores nothing."
-  [relic view-model]
+(defn- persisting [relic view-model]
   (assoc view-model :store/mutations
          {coll {(:id relic) (select-keys relic [:name :base :ranks])}}))
 
 (defn- take-rank
-  "Take one rank on `choice`, or nil when it is not an option the relic can
-   still take. The ranks live in the store rather than on the vars, since the
-   mod itself is static template data re-read on every action."
+  "Rank `choice` up once, or nil if the relic can't."
   [rng relic choice]
   (when (some #{choice} (rank/available (relic-vars rng relic) (-> relic :mod :max-ranks)))
     (update-in relic [:ranks choice] (fnil inc 1))))
@@ -101,5 +80,4 @@
                         (throw (ex-info "Unknown relic" {:relic-id relic-id})))]
           (if-let [updated (take-rank rng relic choice)]
             (persisting updated (view-model rng updated))
-            ;; choice unavailable (or the relic is capped out): re-show as it is
             (view-model rng relic)))))))

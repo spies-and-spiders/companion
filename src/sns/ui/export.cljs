@@ -1,11 +1,7 @@
 (ns sns.ui.export
-  "Downloading the DM's state as a ZIP.
-
-   Built wherever the state actually lives: the server streams it for `:file` and
-   `:memory`, while `:browser` zips from IndexedDB here and never makes a
-   request. Both write the same layout — one pretty-printed `<collection>.edn`
-   per collection — so either archive unzips into a directory a `:file`
-   deployment can be pointed at."
+  "Downloads the DM's state as a ZIP of `<collection>.edn` files, built by the
+   server or, under `:browser` storage, from IndexedDB. Either unzips into a
+   usable `:file` state directory."
   (:require
     ["fflate" :as fflate]
     [cljs.pprint :as pprint]
@@ -13,10 +9,7 @@
 
 (def ^:private file-name "sns-state.zip")
 
-(defn- click-download!
-  "Trigger a download from `href`. The anchor is never added to the document —
-   clicking a detached one is enough, and leaves no node to clean up."
-  [href download]
+(defn- click-download! [href download]
   (let [a (.createElement js/document "a")]
     (set! (.-href a) href)
     (set! (.-download a) download)
@@ -26,8 +19,7 @@
   (.encode (js/TextEncoder.) s))
 
 (defn- zip-entries
-  "`{\"relics.edn\" <bytes>}`, printed the way the server prints them so the two
-   archives hold the same files."
+  "`{\"relics.edn\" <bytes>}`, printed as the server prints them."
   [state]
   (reduce-kv (fn [acc coll value]
                (doto acc
@@ -37,8 +29,7 @@
              state))
 
 (defn download!
-  "Download the current state. `browser-storage?` decides which side builds it.
-   Calls `on-err` with `{:error msg}` if the browser refuses."
+  "Download the current state, calling `on-err` with `{:error msg}` on failure."
   [browser-storage? on-err]
   (if-not browser-storage?
     (click-download! "/api/export" file-name)
@@ -48,7 +39,6 @@
                        blob   (js/Blob. #js [zipped] #js {:type "application/zip"})
                        url    (.createObjectURL js/URL blob)]
                    (click-download! url file-name)
-                   ;; The click has already handed the blob to the browser, so
-                   ;; the URL can go straight away.
+                   ;; The click has already handed the blob over.
                    (.revokeObjectURL js/URL url))))
         (.catch (fn [e] (on-err {:error (str e)}))))))

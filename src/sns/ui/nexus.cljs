@@ -1,7 +1,5 @@
 (ns sns.ui.nexus
-  "Nexus registry: the pure actions of `sns.ui.actions`, and the effects that
-   perform their side-effects (state writes, HTTP, IndexedDB). Requiring this
-   namespace registers everything."
+  "Registers `sns.ui.actions` and the effects that carry them out with Nexus."
   (:require
     [nexus.registry :as nxr]
     [sns.ui.actions :as a]
@@ -45,8 +43,6 @@
                       (fn [_ctx system path m]
                         (swap! system #(if (seq path) (update-in % path merge m) (merge % m)))))
 
-;; Drag-and-drop reordering needs dragover/drop to suppress the browser's
-;; default (open-as-link/navigate) handling to actually receive the drop.
 (nxr/register-effect! :fx/prevent-default
                       (fn [_ctx _system dom-event]
                         (.preventDefault dom-event)))
@@ -77,15 +73,13 @@
                                   (.then #(api/request (assoc-in req [:body :state] %)))
                                   (.then (fn [resp]
                                            (-> (idb/apply-mutations! (:store/mutations resp))
-                                               ;; stripped before it reaches app state, so an edited
-                                               ;; view-model never echoes stale writes back
+                                               ;; So an edited view-model can't echo stale writes back.
                                                (.then #(dissoc resp :store/mutations))))))
                               (api/request req))
                             (.then (fn [resp] (dispatch (mapv #(conj % resp) on-ok))))
                             (.catch (fn [e] (dispatch (mapv #(conj % (api/->error e)) on-err)))))))
 
-;; Under `:browser` storage the history is read and written in IndexedDB
-;; directly: the server would only hand it straight back.
+;; Under `:browser` storage, history skips the server, which would only echo it.
 (nxr/register-effect! :fx/load-history
                       (fn [{:keys [dispatch]} system]
                         (-> (if (:browser-storage? @system)

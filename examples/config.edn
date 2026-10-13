@@ -39,15 +39,14 @@
 
  ;; --- tools -----------------------------------------------------------------
  ;; Everything the UI offers, listed on its rail in this order. Loot plugins come
- ;; in five kinds, plus :page, which groups other tools:
+ ;; in six kinds, plus :page, which groups other tools:
  ;;
  ;;   :builtin — a generator shipped in this app: the :id alone selects it
  ;;              (:divine-dust, :relics, :social). An optional
  ;;              :builtin {:entrypoint <var>} overrides the lookup.
- ;;   :data    — a code-free loot type defined entirely in an EDN/JSON spec
- ;;              file (:source is a filesystem path, e.g. relative to config.edn),
- ;;              or written straight into this file under :inline (which wins
- ;;              over :source).
+ ;;   :data    — a code-free loot type defined in an EDN/JSON spec file
+ ;;              (:source, relative to the working directory), or written
+ ;;              straight into this file under :inline (which wins over :source).
  ;;   :cli     — shell out to any external program (any language). See
  ;;              examples/cli-plugin/weather.py.
  ;;   :ffi     — call a C-ABI symbol in a shared library, exchanging the same
@@ -130,11 +129,9 @@
             :ffi  {:library     "plugins/libloot.dylib"
                    :symbol      "generate"
                    :free-symbol "loot_free"}}
-            ;; A WASI module, exchanging the same JSON as :cli over its stdio
-            ;; but in process — so it works in the native image (unlike :jar)
-            ;; with no subprocess (unlike :cli) and no ABI to hand-roll
-            ;; (unlike :ffi). One build runs on every platform. Build the
-            ;; example first, from examples/wasm-plugin/:
+            ;; A WASI module, exchanging the same JSON as :cli over its stdio,
+            ;; but in process and sandboxed. One build runs on every platform.
+            ;; Build the example first, from examples/wasm-plugin/:
             ;;   GOOS=wasip1 GOARCH=wasm go build -o loot.wasm loot.go
             ;; then point :module at it. Same :label/:section/:hidden?
             ;; options as any other plugin.
@@ -178,9 +175,8 @@
  ;; shows as "Feat" with nothing further to declare. (A numeric segment needs
  ;; brackets — {{ skills.0 }} is a Handlebars parse error.)
  ;;
- ;; The draw happens once, server-side, with the request's seeded rng; the value
- ;; then travels to the browser with the preset's vocabulary attached, so a DM
- ;; can edit it as a combobox without retyping the prose around it.
+ ;; The DM can then edit the drawn value from a list of the preset's options,
+ ;; without retyping the prose around it.
  ;;
  ;; The app ships no vocabulary of its own — these lists are your campaign's
  ;; content. Two presets are always available regardless: :literal (values
@@ -199,22 +195,22 @@
 
  ;; --- reporting -------------------------------------------------------------
  ;; Optional. Enables the per-item "Send to Discord" button, posting the rolled
- ;; loot to a webhook as a rich embed.
+ ;; loot to a webhook.
  ;;
  ;; :webhook-url is a secret — read it from the environment via #env rather than
  ;; committing it. :username and :avatar-url are optional overrides for how the
  ;; bot message appears. Sections marked :section/secret? are left out unless
  ;; :include-secret? is true.
  ;;
- ;; Note that #env tags are not supported from .json config files, so these values
- ;; would need to be inlined
+ ;; #env tags aren't supported in .json config files, so there these values
+ ;; would need to be inlined.
  :reporting {:backend :discord
              :discord {:webhook-url #env DISCORD_WEBHOOK_URL
                        :username    "Loot Goblin"
                        :avatar-url  #env DISCORD_AVATAR_URL}}
 
  ;; --- loot table ------------------------------------------------------------
- ;; The weighted draw used by the "random loot" button. Each :id must match a
+ ;; The weighted draw behind the Loot table page. Each :id must match a
  ;; plugin above; :weight is the relative chance (defaults to 1 when omitted).
  ;; :loot-die-size is the die the DM rolls against this table (default 100); the
  ;; table cannot hold more entries than the die has sides. Entries can instead

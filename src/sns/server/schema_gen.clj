@@ -1,15 +1,7 @@
 (ns sns.server.schema-gen
-  "Generate the project's JSON Schemas from the malli registry:
-     - `schemas.json` — the config (`::config`) plus the plugin I/O contracts
-       (`::plugin-request`/`::plugin-output`) merged in as definitions, so a
-       hand-written `config.json` and plugin I/O can be validated/autocompleted in
-       an editor;
-     - `plugin-request.schema.json` / `plugin-output.schema.json` — each rooted at
-       a single plugin I/O type, so codegen tools (quicktype, typify,
-       go-jsonschema) emit clean structs for authors writing `:cli`/`:ffi`/`:wasm`
-       plugins in another language. The output *is* the view-model, the same one
-       a `:jar` plugin returns.
-   Run via `clojure -M -m sns.server.schema-gen` (or `make schemas`)."
+  "Generates JSON Schemas from the malli registry: `schemas.json` for editing
+   configs, and one schema per plugin I/O type for codegen tools. Run with
+   `make schemas`."
   (:require
     [jsonista.core :as j]
     [malli.core :as m]
@@ -22,9 +14,7 @@
   (mjs/transform (m/schema schema-key {:registry schema/registry})))
 
 (defn json-schema
-  "The config spec rendered as a JSON Schema, rooted at `::config`, with the
-   plugin I/O contracts (not part of the config) merged in as extra definitions
-   for editors/tools to `$ref` against."
+  "The config's JSON Schema, with the plugin I/O types added as definitions."
   []
   (let [config  (transform ::schema/config)
         output  (transform ::schema/plugin-output)
@@ -34,8 +24,7 @@
         (assoc :$schema draft :title "sns-companion schemas"))))
 
 (defn rooted-schema
-  "A standalone JSON Schema rooted at `schema-key` (its `$ref` plus the
-   `definitions` it needs), for single-type codegen."
+  "A standalone JSON Schema rooted at `schema-key`."
   [schema-key title]
   (assoc (transform schema-key) :$schema draft :title title))
 
@@ -44,9 +33,7 @@
    ["plugin-request.schema.json" #(rooted-schema ::schema/plugin-request "sns-companion plugin request")]
    ["plugin-output.schema.json"  #(rooted-schema ::schema/plugin-output "sns-companion plugin output")]])
 
-(defn write!
-  "Write all schema files, returning their paths."
-  []
+(defn write! []
   (mapv (fn [[path build]]
           (spit path (j/write-value-as-string (build) (j/object-mapper {:pretty true})))
           (println "Wrote" path)

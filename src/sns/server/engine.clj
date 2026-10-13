@@ -1,7 +1,6 @@
 (ns sns.server.engine
-  "The single generation pipeline: owns the registry and randomness, and emits
-   validated view-models. Templates travel to the browser unrendered, alongside
-   the variables they interpolate."
+  "The generation pipeline: owns the registry, store and rng, and emits
+   validated view-models."
   (:require
     [clojure.edn :as edn]
     [clojure.java.io :as io]
@@ -24,8 +23,7 @@
   (-> (io/resource "words.edn") io/reader PushbackReader. edn/read))
 
 (defn- build-words
-  "The vocabulary results are named from: the config's own list if it declares
-   one, otherwise the built-in list plus whatever `:extra-words` adds."
+  "The config's `:words`, or the built-in list plus `:extra-words`."
   [{:keys [words extra-words]}]
   (cond
     (seq words) (vec words)
@@ -64,9 +62,8 @@
             entries))))
 
 (defn- install-randoms!
-  "Install each config-declared preset as a `randoms/preset` method, so a DM's
-   `:randoms` and a plugin's own presets are the same mechanism. Config is
-   applied after the plugins are built, so it wins on a name clash."
+  "Install config's `:randoms` as presets. Run after plugins are built, so
+   config wins on a name clash."
   [randoms]
   (doseq [[id values] randoms]
     (defmethod randoms/preset id [_ _] values)))
@@ -103,9 +100,7 @@
       (throw (ex-info "Loot-table references an unknown loot type"
                       {:id id :known (vec (keys registry))})))))
 
-(defn- pages
-  "The `:page` tools in config order."
-  [config]
+(defn- pages [config]
   (filter (comp #{:page} :type) (:tools config)))
 
 (defn- validate-pages!
@@ -120,9 +115,8 @@
       (throw (ex-info "Page lists a plugin more than once" {:page id :tools tools})))))
 
 (defn create
-  "Build a loot engine from validated `config`. `deps` supplies overridable
-   collaborators: `:store`, `:reporter`, `:rng`. The derived `:store` and
-   `:reporter` default to the built-in (swappable) impls."
+  "Build a loot engine from validated `config`. `deps` may override `:store`,
+   `:reporter` and `:rng`."
   ([config] (create config {}))
   ([config {:keys [store reporter rng]}]
    (let [table (:loot-table config)
@@ -134,8 +128,6 @@
      (when (seq table)
        (validate-table! registry table size))
      (validate-pages! registry (pages config))
-     ;; Config-declared random presets, usable from any plugin's vars as
-     ;; `{:random :<preset>}`.
      (install-randoms! (:randoms config))
      {:config        config
       :registry      registry
@@ -144,18 +136,14 @@
       :store         store
       :reporter      (or reporter (reporter/from-config (:reporting config)))
       :rng           rng
-      ;; Missing weights default to 1, so a table without weights is sampled
-      ;; uniformly (and partial weights mix evenly-weighted entries in). A
-      ;; ranged table has no weights: it rolls the die instead.
+      ;; Missing weights default to 1. A ranged table rolls the die instead.
       :loot-sampler  (when (and (seq table) (not (ranged? table)))
                        (r/alias-method-sampler (mapv :id table)
                                                (mapv #(or (:weight %) 1) table)))
       :loot-die-size size
       :loot-ranges   (when (seq table) (loot-ranges table size))})))
 
-(defn- ctx
-  "Assemble the per-request context handed to a generator."
-  [engine inputs]
+(defn- ctx [engine inputs]
   (-> (select-keys engine [:rng :store :config :registry])
       (assoc :inputs inputs)))
 
@@ -178,10 +166,8 @@
       :else                     v)))
 
 (defn- coerce
-  "A numeric or position field arrives from the browser form as a string, so
-   parse it — a plugin that declared an `:int` or a `:decimal` should be handed
-   one. An unparseable value is passed through untouched, for the generator to
-   reject in its own terms."
+  "Parse a form string into the field's declared type. Unparseable values pass
+   through for the generator to reject."
   [type v]
   (case type
     :int (if (string? v) (or (parse-long (str/trim v)) v) v)
@@ -190,16 +176,9 @@
     v))
 
 (defn- apply-input-defaults
-  "Resolve each input declared in `loot-spec` against the supplied `inputs`. A
-   field left blank (missing or an empty string, e.g. the UI's `—` enum option)
-   falls back to the field's `:default`, or nil when it declares none — so a
-   template sees the default rather than an empty string. Either way the value is
-   coerced, so a `:default` written as a string reaches the generator in the same
-   type an entered one does.
-
-   A `:list?` field always resolves to a vector (its `:default`, or `[]` when
-   unset and nothing was submitted), each element coerced individually — a
-   generator sees a vector regardless of how many values were entered."
+  "Coerce each input `loot-spec` declares, with blanks (missing, or \"\" like
+   the UI's `—` enum option) falling back to the field's `:default`. A `:list?`
+   field always resolves to a vector."
   [loot-spec inputs]
   (reduce (fn [acc {:keys [id default type list?]}]
             (let [v (get acc id)]
@@ -226,24 +205,19 @@
     (cond-> (-> (p/loot-spec generator)
                 (dissoc :id :label :section)
                 (merge (:generator entry))
-                ;; Defaulted here rather than in each generator, so the UI
-                ;; always receives an explicit list to fetch state for.
+                ;; So the UI always knows which state to fetch.
                 (update :store/collections #(or (not-empty %) [id]))
                 (assoc :id id :label (label id entry)))
             section (assoc :section section))))
 
 (defn loot-specs
-  "Specs for every registered loot type (drives the UI picker/forms), in the
-   order the plugins appear in config. Hidden types are still returned: the UI
-   needs the spec (label, inputs) to render one that has been rolled off the
-   loot-table."
+  "Every loot type's spec, in config order. Includes hidden types, which the UI
+   still renders when rolled."
   [{:keys [registry] :as engine}]
   (mapv #(tool-spec engine %) (keys registry)))
 
 (defn- coerce-entry
-  "One row of a manual-state collection, narrowed to the declared fields and
-   coerced to their types. A field left blank falls back to its `:default`, the
-   same way an input does."
+  "A manual-state row narrowed to the declared fields and coerced like an input."
   [fields entry]
   (reduce (fn [acc {:keys [id type default]}]
             (let [v (get entry id)]
@@ -252,11 +226,9 @@
           fields))
 
 (defn manual-state
-  "Read — and first write, given `mutations` — the DM-owned collection loot type
-   `id` declares with `:store/manual`. `mutations` is `{<key> <row>}`, a nil row
-   retracting that key; rows are coerced to the declared fields. Returns
-   `{:store/state <the whole collection>}`, carrying `:store/mutations` for what
-   was actually applied when there was anything to apply."
+  "Apply `mutations` (`{<key> <row>}`, nil retracting) to loot type `id`'s
+   `:store/manual` collection, then read it. Returns `{:store/state <collection>}`,
+   plus the applied `:store/mutations` if any."
   [{:keys [store] :as engine} id mutations]
   (let [spec      (tool-spec engine id)
         {:keys [fields list?]} (or (:store/manual spec)
@@ -276,15 +248,13 @@
             applied (assoc :store/mutations {coll applied}))))
 
 (def history-collection
-  "Where the result history lives: one row per loot type, in the store the
-   config's `:storage` selects, like every other collection."
+  "Holds the result history, one row per loot type."
   :history)
 
 (defn history
-  "Read — and first write, given `mutations` — the result history. `mutations` is
-   `{<loot-type name> <rows>}`, where rows are `{:at <ms> :view-model <vm>}`
-   newest first and a nil row clears that type. Shaped like `manual-state`: the
-   whole collection out, plus what was applied for a `:browser` client to store."
+  "Like `manual-state`, for the result history. `mutations` is
+   `{<loot-type name> <rows>}`, with rows `{:at <ms> :view-model <vm>}` newest
+   first and nil clearing that type."
   [{:keys [store]} mutations]
   (when (seq mutations)
     (when-some [blank (some #(when (str/blank? (str %)) %) (keys mutations))]
@@ -294,9 +264,7 @@
           (seq mutations) (assoc :store/mutations {history-collection mutations})))
 
 (defn- persist!
-  "Apply the writes `view-model` declares. Called only once it has validated, so
-   a plugin that returns something unusable leaves the store untouched — the
-   whole point of declaring writes rather than performing them."
+  "Apply the writes `view-model` declares. Only call once it's validated."
   [store view-model]
   (when-let [mutations (:store/mutations view-model)]
     (edn-store/mutate! store mutations))
@@ -304,15 +272,13 @@
 
 (defn with-state
   "Under `:browser` storage, an engine whose store holds the `state` the client
-   sent. What a plugin writes travels back on its view-model, so nothing needs
-   recording here. Every other backend keeps its own store and ignores `state`."
+   sent. Other backends ignore `state`."
   [{:keys [config] :as engine} state]
   (cond-> engine
           (store/browser? config) (assoc :store (edn-store/->MemoryStore (atom (or state {}))))))
 
 (defn- address-actions
-  "Route every `:loot/action` on `vm` back to tool `id`, whatever id its
-   generator believes it has."
+  "Route every `:loot/action` on `vm` back to tool `id`."
   [id vm]
   (cond-> vm
           (seq (:loot/actions vm))
@@ -321,17 +287,15 @@
                                                         (= :loot/action k) (assoc :action/event [k (assoc params :id id)])))))))
 
 (defn- with-words
-  "Two words naming this result, drawn once by the engine so a plugin never has
-   to and every surface showing the result — UI, history, reporter — shows the
-   same pair. `carry` keeps an existing pair across a follow-up action."
+  "Name the result with two words, keeping `carry` across a follow-up action."
   [{:keys [words]} carry vm]
   (if-some [w (or (:loot/words vm) carry (when (seq words) (vec (r/sample-without-replacement 2 words))))]
     (assoc vm :loot/words w)
     vm))
 
 (defn- or-error
-  "What calling plugin `f` returns, or, when it throws, the view-model attached
-   as the exception's `:view-model`, else one built from the exception itself."
+  "Call `f`, turning a throw into an error view-model: the exception's
+   `:view-model` if it has one, else one built from the exception."
   [f]
   (try (f)
        (catch Exception ex
@@ -363,12 +327,10 @@
         loot-ranges))
 
 (defn roll
-  "Roll the top-level loot table and generate every loot type the roll lands on.
-   With no `n`, a weighted table is sampled by weight and a ranged one rolls the
-   loot die; given `n` (a 1-`:loot-die-size` result), the types are those whose
-   ranges hold it. `inputs` is keyed by loot-type id, so each type generates with
-   its own. Returns `{:results [{:id :view-model} ...]}` so callers (e.g. the UI)
-   can reflect what was rolled, with every result's writes merged at the top."
+  "Roll the loot table and generate every loot type the roll lands on: `n` if
+   given, else sampled by weight or rolled on the loot die. `inputs` is keyed by
+   loot type. Returns `{:results [{:id :view-model} ...]}`, with every result's
+   writes merged at the top."
   ([engine] (roll engine {} nil))
   ([engine inputs] (roll engine inputs nil))
   ([{:keys [loot-sampler loot-ranges loot-die-size rng] :as engine} inputs n]
@@ -388,13 +350,8 @@
              mutations (assoc :store/mutations mutations)))))
 
 (defn capabilities
-  "UI-facing flags describing optional features enabled by config: whether the
-   report button is shown, whether state lives in the browser (in which case the
-   client ships it with each request and applies the writes that come back), and
-   when generated results join the browser-side history (absent = the client's
-   default, `:button`). `:sections` is every tool id in config order, which the
-   UI lists the rail by, `:pages` the configured pages, and `:loot-table` the
-   inclusive `[from to]` `:ranges` of the loot die each loot type is rolled on."
+  "Config-derived settings for the UI. `:sections` lists every tool id in config
+   order, and `:loot-table` each loot type's inclusive die ranges."
   [{:keys [reporter config loot-die-size loot-ranges]}]
   (cond-> {:browser-storage? (store/browser? config)
            :loot-die-size    loot-die-size
@@ -409,7 +366,7 @@
                           :report-label (p/report-label reporter))))
 
 (defn report!
-  "Send a (validated) `view-model` to the configured reporter."
+  "Validate `view-model` and send it to the configured reporter."
   [{:keys [reporter]} view-model]
   (when-not reporter
     (throw (ex-info "Reporting is not configured" {})))
@@ -426,14 +383,10 @@
         (:loot/actions view-model)))
 
 (defn handle-action
-  "Dispatch a stateful follow-up `action` (with `params`) to loot type `id`,
-   returning an updated, validated view-model. `view-model` is the current
-   (possibly DM-edited) view-model the UI had on screen when the action was
-   triggered — not re-validated, since it may be mid-edit — so a generator can
-   react to what's currently displayed (e.g. an edited `:item/vars` value)
-   rather than only the `params` it declared for itself. Pass nil when there is
-   nothing on screen to react to. `inputs` are the values entered for the
-   action's `:action/inputs`, resolved against those fields as `generate`'s are."
+  "Dispatch `action` to loot type `id`, returning an updated, validated
+   view-model. `view-model` is what the UI had on screen, or nil; it's not
+   validated, since the DM may be mid-edit. `inputs` are the values entered for
+   the action's `:action/inputs`."
   ([engine id action params view-model] (handle-action engine id action params view-model {}))
   ([{:keys [registry rng] :as engine} id action params view-model inputs]
    (let [generator (or (get registry id)

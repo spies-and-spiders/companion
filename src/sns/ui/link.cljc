@@ -1,6 +1,6 @@
 (ns sns.ui.link
-  "Rendered template text to hiccup children, turning Discord-style `[text](url)`
-   into anchors so a link written once shows in the UI and in a Discord report."
+  "Turns markdown `[text](url)` links into anchors, so the same text links in
+   the UI and in Discord."
   (:require
     [clojure.string :as str]))
 

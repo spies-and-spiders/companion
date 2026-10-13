@@ -3,8 +3,8 @@
 //   macOS: rustc --crate-type cdylib -o libloot.dylib loot.rs
 //   Linux: rustc --crate-type cdylib -o libloot.so   loot.rs
 //
-//   {:type :ffi :id :ffi-loot :library "libloot.dylib"
-//    :symbol "generate" :free-symbol "loot_free"}
+//   {:type :ffi :id :ffi-loot
+//    :ffi {:library "libloot.dylib" :symbol "generate" :free-symbol "loot_free"}}
 //
 // `generate` receives the request JSON ({"inputs",...} for a roll,
 // {"action","params","view-model",...} for a follow-up) and returns a

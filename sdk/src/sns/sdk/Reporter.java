@@ -1,17 +1,13 @@
 package sns.sdk;
 
 /**
- * Optional. Sends a generated loot view-model to an external destination (e.g. a
- * Discord webhook). Config-driven via {@code :reporting}. Mirrors the {@code
- * sns.sdk.protocols/Reporter} protocol.
+ * Sends a generated view-model somewhere external, like a Discord webhook.
+ * Configured under {@code :reporting}. Mirrors {@code sns.sdk.protocols/Reporter}.
  */
 public interface Reporter {
 
-    /** Human label for the report button, e.g. "Send to Discord". */
+    /** The report button's label, e.g. "Send to Discord". */
     String reportLabel();
 
-    /**
-     * Send {@code viewModel} to the destination
-     */
     void report(Models.ViewModel viewModel);
 }

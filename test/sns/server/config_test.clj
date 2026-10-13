@@ -82,16 +82,13 @@
       (is (seq (:tools cfg)))
       (is (= :data (-> cfg :tools (nth 2) :type)))))
   (testing "no-arg load discovers a config file in the working directory"
-    ;; Exercise the default-source discovery without depending on a
-    ;; (git-ignored) config.edn at the repo root: point the search at the
-    ;; fixture via its absolute path so the test is hermetic in CI.
+    ;; The repo-root config.edn is git-ignored, so search for the fixture instead.
     (with-redefs [config/default-paths [(.getAbsolutePath (io/file fixture-config))]]
       (is (seq (:tools (config/load-config)))))))
 
 (deftest example-config-matches-schema
   (testing "examples/config.edn conforms to the ::config schema"
-    ;; :reporting secrets resolve from #env at runtime; substitute placeholders
-    ;; so the check is hermetic (doesn't depend on those vars being set).
+    ;; Stand in for the #env :reporting secrets.
     (let [cfg (-> (aero/read-config (io/file "examples/config.edn"))
                   (update-in [:reporting :discord] merge {:webhook-url "https://example.test/webhook"
                                                           :avatar-url  "https://example.test/avatar.png"}))

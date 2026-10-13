@@ -1,5 +1,5 @@
 (ns sns.server.core
-  "Application entrypoint: load config, build the engine, serve the SPA + API."
+  "Entrypoint: loads config, builds the engine, and serves the app and API."
   (:gen-class)
   (:require
     [clojure.java.io :as io]
@@ -36,7 +36,7 @@
             (str "S&S Companion listening on http://" host ":" actual-port))))
 
 (defn- config-arg
-  "The value of a `--config <path>` (or `--config=<path>`) CLI option, or nil."
+  "The value of `--config <path>` or `--config=<path>`, or nil."
   [args]
   (loop [[a & more] args]
     (when a

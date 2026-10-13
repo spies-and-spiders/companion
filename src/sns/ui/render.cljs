@@ -1,7 +1,6 @@
 (ns sns.ui.render
-  "The three generic, data-driven renderers. They emit stable class names; the
-   stylesheet does the rest. A new loot type renders with zero UI code as long
-   as its spec/view-model conform to the schema."
+  "Generic, data-driven views emitting stable class names for the stylesheet, so
+   a loot type needs no UI code of its own."
   (:require
     [clojure.string :as str]
     [sns.sdk.rank :as rank]
@@ -14,13 +13,9 @@
 ;; --- input-form (from a loot-spec's :inputs) ---------------------------------
 
 (defn- enum-field
-  "An enum renders as a combobox rather than a `<select>`: a text input backed by
-   a `<datalist>`, so the browser's own picker filters as the DM types. Options
-   come from config and can be long (every character, every damage type), where a
-   select means scrolling. Free text is the trade — a value that isn't an option
-   is flagged, not blocked, since only the plugin knows what it will accept.
-   Clearing the field is how you get back to `—` (blank falls back to :default).
-   `dom-id` must be unique on the page — a list field renders one per row."
+  "A combobox, so long option lists filter as the DM types. Unknown values are
+   flagged rather than blocked, since only the plugin knows what it accepts.
+   `dom-id` must be unique on the page."
   [dom-id value options action]
   (let [known? (contains? (into #{} (map str) options) (str value))]
     (list
@@ -35,8 +30,7 @@
          [:option {:value (str opt)}])])))
 
 (defn- position-select
-  "A `:section`/`:item` field's picker over `positions` (see `positions`):
-   sections flat, items grouped under their section."
+  "A `:section`/`:item` picker over `positions`, grouping items by section."
   [value type positions on-change]
   (let [option (fn [{v :value :keys [label]}] [:option {:value v :selected (= v (str value))} label])]
     [:select.field__control {:on {:change [(conj on-change [:event.target/value])]}}
@@ -47,10 +41,8 @@
          [:optgroup {:label label} (map option items)]))]))
 
 (defn- control
-  "The bare input for one field value — shared between a scalar field and a
-   single row of a list field. `on-change` is the action's fixed leading args
-   (e.g. `[:ui/set-input path]`, or `[:ui/set-list-input path id idx]` for a list row);
-   the DOM value placeholder is appended to complete the dispatch."
+  "The input for one field value. `on-change` is an action, to which the DOM
+   value is appended."
   [dom-id value {:keys [type options positions]} on-change]
   (case type
     (:section :item) (position-select value type positions on-change)
@@ -71,20 +63,14 @@
       :on    {:input [(conj on-change [:event.target/value])]}}]))
 
 ;; --- list (`:list?`) fields ---------------------------------------------------
-;; A list field's value is a vector of entries. Non-boolean types get a
-;; trailing blank row that, once filled in, reveals another — the list grows as
-;; you type. A boolean has no "blank" state to fill in, so it grows via an
-;; explicit Add button instead. Either way, dropping a value below its default
-;; count still submits a vector.
+;; Lists grow as a trailing blank row is filled in, or for booleans, which have
+;; no blank state, via an Add button.
 
-(defn- dom-id
-  "A DOM id unique on the page, which may show several forms at once."
-  [& parts]
+(defn- dom-id [& parts]
   (str/join "-" (map #(if (keyword? %) (name %) %) (flatten parts))))
 
 (defn- list-row
-  "One stored entry: its control, a remove button, and — for reorderable types —
-   a drag handle plus drop target covering the whole row."
+  "An entry's control and remove button, plus drag-and-drop when `draggable?`."
   [path id idx value f draggable?]
   [:div.list-row
    {:replicant/key idx
@@ -108,7 +94,6 @@
        [:button.list-field__add
         {:type "button" :on {:click [[:ui/set-list-input path id (count values) false]]}}
         "+ Add"]
-       ;; a fresh, unsaved row — typing into it appends rather than overwrites
        (when (or (empty? values) (not (str/blank? (str (peek values)))))
          [:div.list-row.list-row--extra {:replicant/key (count values)}
           (control (dom-id "field-options" path id (count values)) nil f
@@ -128,7 +113,6 @@
   "Render a spec's declared inputs, or nil when there are none."
   [{plugin :id :as spec} inputs]
   (when (seq (:inputs spec))
-    ;; Enter anywhere in the form generates, matching the button.
     [:div.fields {:on {:keydown [[:ui/generate-on-enter plugin [:event/key]]]}}
      (for [f (:inputs spec)]
        (field [:tools plugin :inputs] inputs f))]))
@@ -136,8 +120,7 @@
 ;; --- view-model renderer (the signature surface) -----------------------------
 
 (defn- linked
-  "Rendered text with its links, spies.tools ones previewing their entry on
-   hover once `spies` (`:spies` in state) has its data."
+  "Text with its links, spies.tools ones previewing their entry on hover."
   [spies s]
   (for [x (link/linkify s)]
     (if-let [[page n] (and spies (vector? x) (spies/target (get-in x [1 :href])))]
@@ -147,21 +130,14 @@
          (spies/card page e))]
       x)))
 
-;; `:item/title`/`:item/body` are templates; the values they interpolate travel
-;; beside them as `:item/vars`, so a var edited in the browser re-renders here
-;; with no round trip to the server. `:loot/vars` are ambient — every template
-;; in the view-model can read them, which is how one drawn value is *shared*
-;; between items rather than copied into each (copies desynchronise the moment
-;; the DM edits one). An item's own vars shadow them.
-;; An item whose body renders to nothing is left out — a mod the DM emptied, or
-;; one whose text only appears at a higher rank. It is untouched in
-;; `result-editor`, so it comes back the moment it renders something again.
 (defn- marked
-  "Key `node` on its text `s` and flag it when `changed?` says `s` is new, so
-   each change re-mounts it and replays the highlight."
+  "Key the node on its text `s`, flagging it if `changed?`, so each change
+   re-mounts it and replays the highlight."
   [changed? s [tag & more]]
   (into [tag {:replicant/key s :class (when (changed? s) "changed")}] more))
 
+;; An item's vars shadow the `:loot/vars` shared by every item. An item whose
+;; body renders blank, like one gated on a higher rank, is hidden.
 (defn- entry [spies changed? loot-vars {:item/keys [title body metadata vars]}]
   (let [vars  (merge loot-vars vars)
         title (some-> title (template/render vars))
@@ -184,9 +160,7 @@
     (if (> (count s) 60) (str (subs s 0 59) "…") s)))
 
 (defn- positions
-  "What a `:section`/`:item` action input picks from: the sections of `vm` with
-   anything rendered in them, each holding the items that render (as `entry`
-   shows them), valued as the engine parses them back."
+  "The sections and items of `vm` that render, as `:section`/`:item` options."
   [vm]
   (for [[s {:section/keys [heading items]}] (map-indexed vector (:loot/sections vm))
         :let [shown (keep-indexed
@@ -204,8 +178,8 @@
      :items shown}))
 
 (defn- action
-  "An action's button, behind its own form when it declares `:action/inputs`.
-   `idx` is its place on the result, which keys the values entered."
+  "An action's button, with a form for any `:action/inputs`, whose values are
+   keyed by `idx`."
   [vm action-inputs idx {:action/keys [label event inputs]}]
   (if (seq inputs)
     (let [[_ {:keys [id] :as params}] event
@@ -218,8 +192,7 @@
     [:button.action {:on {:click [event]}} label]))
 
 (defn- words-badge
-  "The engine-drawn handle for this result, folded into a hover-revealed mark so
-   it stays out of the way of the loot itself."
+  "The result's words, revealed on hover."
   [words]
   (when (seq words)
     [:span.words {:title (str/join " " words)}
@@ -227,7 +200,7 @@
      [:span.words__text (str/join " " words)]]))
 
 (defn- changes
-  "Whether a rendered text is new since `previous`, the view-model it replaced."
+  "A predicate for whether rendered text is new since `previous`."
   [previous]
   (if previous
     (let [seen (into #{} (filter string?) (tree-seq coll? seq (template/render-view-model previous)))]
@@ -235,10 +208,8 @@
     (constantly false)))
 
 (defn result
-  "Render a view-model. The whole article is keyed on the title so a fresh loot
-   result re-mounts and replays the materialise animation. Links preview only
-   given `spies`; `action-inputs` are the values entered into its actions' forms.
-   Text that wasn't in `previous` is highlighted."
+  "Render a view-model, keyed on its title so a new result replays its
+   animation. Text that wasn't in `previous` is highlighted."
   ([vm] (result vm nil nil nil))
   ([vm spies action-inputs previous]
    (when vm
@@ -264,9 +235,8 @@
     [:div.error-overlay {:on {:click [[:ui/dismiss-error plugin]]}}
      (result vm)]))
 
-;; --- result editor (manual tweaks before re-rendering / reporting) -----------
-;; Edits write straight back into plugin `plugin`'s result view-model at `path`,
-;; so the read-only view and the reported payload always reflect the latest text.
+;; --- result editor --------------------------------------------------------------
+;; Edits write straight into the result view-model.
 
 (defn- edit-field [plugin label path v area?]
   [:label.edit {:replicant/key (str path)}
@@ -305,24 +275,11 @@
      :on    {:input   [[:fx/assoc-in (into [:tools plugin :drafts] path) [:event.target/value]]]
              :keydown [[:ui/add-result-metadata plugin path [:event/key]]]}}]])
 
-;; A var's own control, separate from the template that interpolates it — so
-;; changing a value doesn't mean retyping the prose, and a plugin reads a value
-;; back rather than parsing text. Reuses `enum-field`/plain-text `control` from
-;; the input-form renderer above, so a preset's `:options` become the same
-;; combobox a loot-spec enum input uses.
-(defn- var-label
-  "A var's field label. Derived here rather than sent: the id is already on the
-   wire as the key, so a server-computed label would be a second copy of it —
-   and how a name is *displayed* is this layer's business anyway. A plugin that
-   wants something other than the id sets `:label`."
-  [id label]
+(defn- var-label [id label]
   (or label (-> (name id) (str/replace #"[-_]" " ") str/capitalize)))
 
 (defn- var-type
-  "The control a var edits with, driven by the declared `:type` — which holds
-   still while the field is blank mid-edit. Numbers all edit as `:decimal`: a
-   var holding 2 may want 2.5 typed into it, and `:int`'s step of 1 rejects
-   that."
+  "The control a var edits with. Ints edit as decimals too, so 2 can become 2.5."
   [type]
   (cond
     (= :bool type)          :bool
@@ -330,12 +287,9 @@
     :else                   :text))
 
 (defn- select-field
-  "A drawn var edits as a `<select>` over the vocabulary it came from, where a
-   loot-spec's enum input uses a combobox: an input field starts empty, so a
-   datalist's suggestions narrow helpfully as the DM types, but a var arrives
-   with its value already in the box and the same filtering leaves only the
-   value it already has. A value outside the vocabulary — hand-set by a plugin —
-   joins the list so that picking again is possible without losing it."
+  "A `<select>` over a drawn var's vocabulary. Not a combobox like `enum-field`,
+   whose filtering would hide every option but the current value. A value
+   outside the vocabulary is added, so it isn't lost."
   [value options action]
   (let [v      (str value)
         values (map str options)
@@ -347,23 +301,16 @@
        [:option (cond-> {:value opt} (= opt v) (assoc :selected true)) opt])]))
 
 (defn- ranked-to
-  "What the value and the rank come to, shown beside the field's own label so
-   the box reading 1 while the card reads 3 explains itself. Absent while they
-   agree, which is every var at rank 1."
+  "The ranked value, when it differs from the declared one."
   [{:keys [value] :as v}]
   (let [stepped (rank/stepped v)]
     (when (not= value stepped)
       [:span.edit__derived "= " (str stepped)])))
 
 (defn- rank-field
-  "A var's rank, beside its value rather than folded into it: the value stays
-   the rank-1 base the plugin declared, and the rendered card shows what the two
-   come to. Only vars that can rank up get one."
   [plugin path {:keys [rank] mx :max}]
   [:label.edit.edit--rank
    [:span.edit__label "Rank"]
-   ;; `.field__control`, matching the value control it sits beside rather than
-   ;; the prose fields further down the editor.
    [:input.field__control
     (cond-> {:type  "number"
              :min   1
@@ -373,8 +320,6 @@
             mx (assoc :max mx))]])
 
 (defn- step-field
-  "How far each rank moves a var. Blank falls back to the var's own value, which
-   the placeholder shows."
   [plugin path {:keys [value step]}]
   [:label.edit.edit--rank
    [:span.edit__label "Step"]
@@ -403,26 +348,17 @@
        :on    {:click [[:ui/remove-result-var plugin path]]}}
       "✕"]]))
 
-(defn- editable-vars
-  "The vars a DM may change: what the plugin *declared*, not the entry fields
-   its templates happen to read (`:context?`)."
-  [vars]
+(defn- editable-vars [vars]
   (remove (comp :context? val) vars))
 
 (defn- var-grid
-  "The editable vars under `base-path`, several to a row. Values are what a DM
-   changes mid-session, so they lead — the prose that interpolates them is the
-   rarer edit and sits behind a disclosure."
   [plugin class base-path vars]
   (when-let [editable (seq (editable-vars vars))]
     [:div {:class class}
      (for [[id v] editable]
        (edit-var plugin (conj base-path id) id v))]))
 
-(defn- new-var-field
-  "Defines a var under `base-path`, named and typed here and then valued in the
-   grid."
-  [plugin base-path {var-name :name :keys [type]}]
+(defn- new-var-field [plugin base-path {var-name :name :keys [type]}]
   (let [draft-path (into [:tools plugin :drafts] base-path)]
     [:div.edit
      [:span.edit__label "New variable (Enter to add)"]
@@ -440,19 +376,16 @@
        (for [[v label] [["decimal" "Number"] ["text" "Text"] ["bool" "True/false"]]]
          [:option (cond-> {:value v} (= v (name (or type :decimal))) (assoc :selected true)) label])]]]))
 
-;; The body field holds the template itself — `{{ x }}` where a value sits — so
-;; the sentence and the values are edited independently and neither forces
-;; retyping the other. What the DM types is what the plugin gets back.
 (defn- edit-text
-  "An item's prose, folded away behind a summary that previews it as rendered —
-   which is what a DM reads to find the item, and the edit they seldom want."
+  "An item's templates, folded behind a rendered preview, since vars are the
+   common edit."
   [plugin drafts si ii {:item/keys [title body metadata]} preview]
   (let [vars-path [:loot/sections si :section/items ii :item/vars]]
     [:details.fold {:replicant/key (str "text-" si "-" ii)}
      [:summary.fold__summary
       [:span.fold__preview preview]
       [:span.fold__hint "text"]
-      ;; inside the summary, so preventing the default keeps the fold from toggling
+      ;; Inside the summary, so prevent it toggling the fold.
       [:button.list-row__remove
        {:type  "button"
         :title "Remove item"
@@ -476,8 +409,6 @@
 (defn- edit-block [plugin drafts loot-vars si {:section/keys [heading items secret?]}]
   [:section.block.block--edit {:replicant/key si}
    [:div.block__head
-    ;; Styled as the heading it is, so the sections stay legible as structure
-    ;; while still editing in place.
     [:input.block__heading.block__heading--edit
      {:type  "text"
       :value (str heading)
@@ -494,42 +425,34 @@
     "+ Add item"]])
 
 (defn result-editor
-  "Render plugin `plugin`'s result view-model as an editable form. Behavioural
-   `:loot/actions` are intentionally not editable (and preserved untouched in
-   state)."
+  "Render a result view-model as an editable form, leaving its actions as they
+   are."
   [plugin vm drafts]
   (when vm
     (let [loot-vars (:loot/vars vm)]
       [:article.sigil.sigil--edit {:replicant/key "result-editor"}
        [:div.sigil__frame
-        ;; The rendered title, so the editor says which item is on the bench.
         [:h2.sigil__title (template/render (:loot/title vm) loot-vars)]
         [:details.fold {:replicant/key "text-loot"}
          [:summary.fold__summary
-          ;; the *template*, since the heading above already shows it rendered
           [:span.fold__preview (:loot/title vm)]
           [:span.fold__hint "title, subtitle & shared vars"]]
          [:div.fold__body
           (edit-field plugin "Title" [:loot/title] (:loot/title vm) false)
           (edit-field plugin "Subtitle" [:loot/subtitle] (:loot/subtitle vm) false)
           (new-var-field plugin [:loot/vars] (:loot/vars drafts))]]
-        ;; Shared values, edited once: these are ambient to every template in the
-        ;; view-model, so changing one here updates every item that reads it.
         (when-let [grid (var-grid plugin "entry__vars entry__vars--shared" [:loot/vars] loot-vars)]
           (list [:h3.block__heading "Shared values"] grid))
         [:div.sigil__body
          (map-indexed (partial edit-block plugin drafts loot-vars) (:loot/sections vm))]]])))
 
 ;; --- manually-managed state (a spec's `:store/manual` table) ------------------
-;; The DM-owned rows a plugin reads: one row per key, its declared fields
-;; inline. Edits are local until a `change` bubbles to the row, which commits
-;; the whole row — so typing costs nothing and blurring costs one request.
+;; Edits are local until a `change` bubbles up to the row, which commits it.
 
 (defn- manual-cell [plugin k path f value]
   [:label.manual__cell {:replicant/key (:id f)
                         :class         (when (= :bool (:type f)) "manual__cell--bool")}
    [:span.field__label (:label f)]
-   ;; unique per row *and* per record, since a `:list?` row repeats its fields
    (control (apply dom-id "manual" plugin k path)
             value f [:ui/manual-edit plugin k (vec path)])])
 
@@ -538,13 +461,12 @@
     (manual-cell plugin k (conj prefix (:id f)) f (get row (:id f)))))
 
 (defn- manual-item
-  "One record of a `:list?` row. `idx` past the end is the blank trailing
-   record: filling any field in appends it, and the next blank appears."
+  "One record of a `:list?` row. An `idx` past the end is the blank record that
+   appends when filled in."
   [plugin k fields idx row extra?]
   [:li.manual__item {:replicant/key idx :class (when extra? "manual__item--extra")}
    (manual-fields plugin k [idx] fields row)
-   ;; The blank record keeps the button as an inert placeholder: without it the
-   ;; row is a column wider than the saved ones and the fields stop lining up.
+   ;; Kept, inert, on the blank record so the columns line up.
    [:button.manual__remove
     {:type     "button"
      :class    (when extra? "manual__remove--placeholder")
@@ -564,8 +486,7 @@
      [:div.manual__fields (manual-fields plugin k [] fields value)])])
 
 (defn manual-editor
-  "The DM-owned table a spec declares with `:store/manual`, or nil when it
-   declares none."
+  "The spec's `:store/manual` table, if it declares one."
   [{plugin :id :as spec} manual manual-key]
   (when-let [{:keys [key-label] :as declaration} (:store/manual spec)]
     (let [key-label (or key-label "Entry")]
@@ -584,8 +505,7 @@
 
 ;; --- page picker ---------------------------------------------------------------
 
-;; A hidden type only ever appears as a transient row (see `picker`), so it is
-;; styled to read as one: present for now, not part of the standing rail.
+;; Hidden types only appear while on screen, so are styled as transient.
 (defn- modifier [{:keys [hidden?]}]
   (when hidden? "discipline--transient"))
 
@@ -604,18 +524,14 @@
 (def ^:private default-section "Loot")
 
 (defn- by-section
-  "`rows` grouped by section: Loot first, then the rest alphabetically. Within a
-   section, rows follow their tools' config order, `order`."
+  "`rows` grouped by section, Loot first then alphabetically, each in `order`."
   [order rows]
   (let [position (zipmap order (range))]
     (->> (sort-by (comp position :id) rows)
          (group-by #(or (:section %) default-section))
          (sort-by (fn [[section]] [(not= default-section section) section])))))
 
-(defn- matcher
-  "A case-insensitive substring predicate over labels; matches everything when
-   the query is blank."
-  [type-filter]
+(defn- matcher [type-filter]
   (let [q (str/lower-case (str/trim (str type-filter)))]
     (fn [label]
       (or (str/blank? q)
@@ -623,14 +539,11 @@
 
 (defn picker [{:keys [pages sections page type-filter browser-storage?] :as state}]
   (let [match?  (matcher type-filter)
-        ;; A configured page matches on its own label or any of its plugins'.
+        ;; A page matches on its own label or any of its tools'.
         pages   (for [{:keys [label tools] :as p} pages
                       :when (some match? (cons label (map #(:label (state/spec state %)) tools)))]
                   (assoc p :glyph "❖"))
-        ;; A hidden type is meant to be reached only by rolling the loot-table,
-        ;; so it stays off the rail — except while it is the page on screen,
-        ;; where it appears (in its config position) so the rail keeps showing
-        ;; what the workbench holds.
+        ;; Hidden types only appear while they're the page on screen.
         plugins (for [spec (:loot-types state)
                       :when (and (or (not (:hidden? spec)) (= page (:id spec)))
                                  (match? (:label spec)))]
@@ -663,8 +576,7 @@
       "—"))
 
 (defn loot-table
-  "Every loot-table entry against its ranges on the loot die. The roll box's
-   number highlights every entry it lands on, and generates them all."
+  "The loot table, highlighting the entries the roll box's number lands on."
   [{:keys [loot-table loot-die-size roll-n] :as state}]
   (let [n    (actions/roll-number roll-n)
         hit? (fn [{:keys [ranges]}] (and n (some (fn [[from to]] (<= from n to)) ranges)))]
@@ -692,25 +604,18 @@
 
 ;; --- result history -----------------------------------------------------------
 
-(defn- history-label
-  "A one-line description of a stored result: its rendered title, since that is
-   what tells two rolls of the same type apart."
-  [{:loot/keys [title vars]}]
+(defn- history-label [{:loot/keys [title vars]}]
   (or (not-empty (str/trim (str (template/render title vars)))) "Untitled"))
 
 (defn- history-body
-  "The head of the result's first item, rendered. Plenty of loot types title
-   every result the same way (\"Reliquary\"), where the body is the only thing
-   that tells two rows apart. Overlong bodies are cut off by the column."
+  "The result's first item body, which tells apart results sharing a title."
   [{:loot/keys [vars sections]}]
   (let [{:item/keys [body] :as item} (first (mapcat :section/items sections))]
     (some-> body (template/render (merge vars (:item/vars item))) str str/trim not-empty)))
 
 (defn- history-preview
-  "The hovered row's result, rendered as it appears on the bench — the whole
-   item, for when the one-line row is not enough to recognise it. Actions are
-   dropped: this is a look at a stored result, not the bench copy of it. A
-   pinned preview takes the pointer, so its text can be selected."
+  "The hovered result in full, without actions. A pinned preview takes the
+   pointer, so its text can be selected."
   [vm locked?]
   (when vm
     [:div.history__preview
@@ -720,9 +625,8 @@
      (result (dissoc vm :loot/actions))]))
 
 (defn history
-  "The stored results for loot type `plugin`, newest first. Clicking one puts it
-   back on the bench; hovering one previews it in full, and holding Alt pins
-   that preview."
+  "Loot type `plugin`'s stored results, newest first. Click to restore, hover to
+   preview, and hold Alt to pin the preview."
   [plugin entries hovered locked?]
   (when (seq entries)
     [:section.history
@@ -738,8 +642,7 @@
            [:button.history__entry {:on {:click [[:ui/history-restore plugin idx]]}}
             [:span.history__time (.toLocaleString (js/Date. at))]
             [:span.history__name (history-label view-model)]
-            ;; always rendered, empty or not: they hold the grid columns that
-            ;; keep every row's text lined up
+            ;; Always rendered, to hold the grid columns.
             [:span.history__body (history-body view-model)]
             [:span.history__words (str/join " " (:loot/words view-model))]]
            [:button.history__remove {:type "button"

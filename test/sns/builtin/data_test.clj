@@ -50,11 +50,8 @@
       (is (every? :item/title items)))))
 
 (deftest multi-draw-works-with-the-engine-rng
-  ;; regression: drawing without replacement went through randy's shuffle
-  ;; strategy whenever take/pool was over ~2/11, which threw for any rng that
-  ;; was not a java.util.Random — including the RandomGenerator the engine
-  ;; builds. The existing multi-draw tests missed it by falling back to randy's
-  ;; default rng, which *is* a java.util.Random.
+  ;; Regression: drawing many without replacement used randy's shuffle, which
+  ;; throws for any rng but a java.util.Random, like the engine's.
   (testing "a small pool (so the shuffle strategy is chosen) draws with the engine's rng"
     (let [spec  {:items    [{:name "A"} {:name "B"} {:name "C"}]
                  :take     2

@@ -1,7 +1,5 @@
 (ns sns.ui.spies
-  "Hover previews for spies.tools spell, maneuver and condition links: which
-   entry a link points at, and a compact card for it, rendered from the site's
-   own data."
+  "Hover preview cards for spies.tools spell, maneuver and condition links."
   (:require
     [clojure.string :as str]))
 
@@ -14,8 +12,7 @@
     (catch #?(:clj Exception :cljs :default) _ nil)))
 
 (defn target
-  "`[page name]` for a spies.tools spell, maneuver or condition link, the name
-   lowercased as the link's hash carries it, or nil for any other link."
+  "`[page name]` for a spies.tools link, or nil for any other."
   [href]
   (when-let [[_ page hash] (re-matches #"https://spies\.tools/(spells|maneuvers|conditions)\.html#(.+)_sns" href)]
     (some->> (decode hash) (vector page))))

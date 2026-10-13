@@ -1,10 +1,9 @@
 (ns sns.builtin.dust
-  "A trivial stateless built-in loot type, used to exercise the engine."
+  "A trivial stateless loot type, for exercising the engine."
   (:require
     [sns.sdk.protocols :as p]))
 
 (defn generator
-  "Factory: always yields Divine Dust, ignoring inputs and state."
   [_plugin]
   (reify p/Generator
     (loot-spec [_] {})

@@ -4,8 +4,8 @@
  *   macOS: cc -shared -fPIC -o libloot.dylib loot.c
  *   Linux: cc -shared -fPIC -o libloot.so   loot.c
  *
- *   {:type :ffi :id :ffi-loot :library "libloot.dylib"
- *    :symbol "generate" :free-symbol "loot_free"}
+ *   {:type :ffi :id :ffi-loot
+ *    :ffi {:library "libloot.dylib" :symbol "generate" :free-symbol "loot_free"}}
  *
  * `generate` receives the request JSON ({"inputs",...} for a roll,
  * {"action","params","view-model",...} for a follow-up) and returns a malloc'd

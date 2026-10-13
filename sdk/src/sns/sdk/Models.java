@@ -4,13 +4,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Typed data shapes exchanged with plugins, so JVM-language authors build and
- * receive records instead of untyped maps. The Clojure bridge in {@code
- * sns.sdk.protocols} converts each to/from the namespaced Clojure data the
- * engine and UI use (see {@code sns.sdk.schema}), losing nothing either way.
+ * Records for the data exchanged with JVM plugins, converted to and from the
+ * Clojure shapes in {@code sns.sdk.schema} by {@code sns.sdk.protocols}.
  *
- * <p>A component naming a Clojure keyword carries its bare name ({@code "int"},
- * not {@code ":int"}). Optional components accept null.
+ * <p>Keywords are written by bare name ({@code "int"}, not {@code ":int"}).
+ * Optional components accept null.
  */
 public final class Models {
     private Models() {}
@@ -18,10 +16,9 @@ public final class Models {
     // --- loot specification (drives the generic input forms) -----------------
 
     /**
-     * Conforms to {@code sns.sdk.schema/loot-spec}. Every component is optional, and
-     * the tool's {@code :generator} config overrides each one it sets; the tool's id,
-     * label and section come from config alone. {@code storeCollections} defaults to
-     * one named after the tool's id. {@code history} is always/on-report/button/never.
+     * See {@code sns.sdk.schema/loot-spec}. Every component is optional, and the
+     * tool's {@code :generator} config overrides any it sets. {@code history} is
+     * always/on-report/button/never.
      */
     public record Spec(boolean hidden, String generateLabel, List<Field> inputs,
                            String history, List<String> storeCollections,
@@ -42,8 +39,8 @@ public final class Models {
     }
 
     /**
-     * A DM-maintained collection the UI renders an editor for: each key is a row,
-     * {@code fields} its columns. With {@code list} a key owns several rows.
+     * A collection the DM edits by hand: each key is a row and {@code fields} its
+     * columns. With {@code list}, a key owns several rows.
      */
     public record ManualState(String keyLabel, boolean list, List<Field> fields) {
         public ManualState(List<Field> fields) { this(null, false, fields); }
@@ -52,15 +49,13 @@ public final class Models {
     // --- view-model (what a loot type returns) -------------------------------
 
     /**
-     * Conforms to {@code sns.sdk.schema/view-model}. {@code vars} is the context
-     * the title and subtitle render against. {@code words} is drawn by the
-     * engine, so a generator leaves it null. {@code state} is opaque bookkeeping
-     * carried untouched and handed back with the next action — keep it to what
-     * cannot be read off the item, since a DM may have edited the displayed
-     * {@link Item#vars()}. {@code mutations} are store writes
-     * ({@code {collection: {key: value}}}, null retracting) applied only once
-     * this view-model validates, so a failing call changes nothing. An {@code error}
-     * result shows as an overlay and is never saved to history automatically.
+     * See {@code sns.sdk.schema/view-model}. {@code vars} is the title and
+     * subtitle's template context. {@code words} is drawn by the engine, so leave
+     * it null. {@code state} is opaque and handed back with the next action; keep
+     * it to what can't be read off the item's (possibly DM-edited) vars.
+     * {@code mutations} are store writes ({@code {collection: {key: value}}}, null
+     * retracting), applied only once the view-model validates. An {@code error}
+     * result shows as an overlay and isn't saved to history automatically.
      */
     public record ViewModel(String title, String subtitle, List<Section> sections, List<Action> actions,
                             Map<String, ItemVar> vars, List<String> words, Object state,
@@ -83,9 +78,8 @@ public final class Models {
 
     /**
      * {@code title} and {@code body} are templates rendered in the browser
-     * against {@code vars}: {@code "+{{ dmg }} fire"} shows the value as its own
-     * editable control, and that edit is what a follow-up action reads. Text
-     * with no tags renders as itself.
+     * against {@code vars}: in {@code "+{{ dmg }} fire"}, the DM can edit
+     * {@code dmg}, and follow-up actions see the edit.
      */
     public record Item(String title, String body, List<String> metadata, Map<String, ItemVar> vars) {
         public Item(String title, String body, List<String> metadata) {
@@ -94,16 +88,14 @@ public final class Models {
     }
 
     /**
-     * One variable a template interpolates, keyed by the name it is referred to
-     * by. {@code type} is int/decimal/bool and picks the browser's control (null
-     * means text). {@code random}/{@code args} record what it was drawn from, so
-     * an action can reroll it. With {@code context} it renders but is not
-     * offered for editing.
+     * A template variable. {@code type} is int/decimal/bool (null means text).
+     * {@code random}/{@code args} record its source, so an action can reroll it.
+     * A {@code context} var renders but isn't editable.
      *
-     * <p>{@code step}/{@code max}/{@code rank} are how the var ranks up (see
+     * <p>{@code step}/{@code max}/{@code rank} control ranking (see
      * {@code sns.sdk.rank}). Ranks are 1-based, so a null {@code rank} is the
-     * declared value itself; a null {@code step} defaults to that value, and a
-     * var holding anything but a number never ranks.
+     * declared value; a null {@code step} defaults to that value, and a
+     * non-numeric var never ranks.
      */
     public record ItemVar(Object value, String type, String label, String random,
                           Map<String, Object> args, List<?> options, boolean context,
@@ -113,12 +105,10 @@ public final class Models {
     }
 
     /**
-     * A follow-up button routed back to {@link sns.sdk.Action#handleAction}. These
-     * fields rather than an event vector: the engine fills in the id this plugin
-     * was registered under. {@code inputs} are form fields shown beside the
-     * button, whose values arrive as {@code ctx.get("inputs")}. Their type may
-     * also be section or item, picking one of the result's rendered sections or
-     * items, which arrives as {@code {section: i}} or {@code {section: i, item: j}}.
+     * A follow-up button routed back to {@link sns.sdk.Action#handleAction}.
+     * {@code inputs} are form fields shown beside it, arriving as
+     * {@code ctx.get("inputs")}. Their type may also be section or item, picking
+     * part of the result as {@code {section: i}} or {@code {section: i, item: j}}.
      */
     public record Action(String label, String action, Map<String, Object> params, List<Field> inputs) {
         public Action(String label, String action, Map<String, Object> params) {

@@ -1,17 +1,7 @@
 (ns sns.builtin.data
-  "Interpreter for `:data` plugins: a code-free loot type defined entirely as
-   data (EDN or JSON). A spec declares a top-level `:items` list, optional
-   `:take`/`:weighted` draw controls, and a view template; the interpreter
-   samples it into a view-model.
-
-   Nothing is rendered here. `:title`/`:subtitle` and an item's `:title`/`:body`
-   travel to the browser as templates, alongside the vars they interpolate
-   (`sns.sdk.vars`) — which is what lets a DM edit a drawn value without
-   retyping the prose around it. An item's `:title`/`:body` may instead be a
-   *field reference* (a keyword, as `:metadata` always was); that is how to
-   reach entry data that is itself a template.
-
-   This is the workhorse for DMs who don't write Clojure. See the README."
+  "Interpreter for `:data` plugins: loot types defined entirely in EDN or JSON.
+   A spec's `:items` are sampled (per `:take`/`:weighted`) into a view-model
+   whose titles and bodies are left as templates for the browser to render."
   (:require
     [clojure.edn :as edn]
     [clojure.java.io :as io]
@@ -34,9 +24,8 @@
         (edn/read r)))))
 
 (defn- draw-entries
-  "Sample from the spec's top-level `:items`. `take` (default 1) is how many to
-   draw; `weighted` draws with replacement by each entry's `:weight`, otherwise
-   draws without replacement."
+  "Draw `take` (default 1) entries: with replacement by `:weight` when
+   `weighted`, otherwise without replacement."
   [rng items {:keys [take weighted]}]
   (let [pool items
         n    (or take 1)]
@@ -49,57 +38,41 @@
       :else    [(r/sample rng pool)])))
 
 (def ^:private declared-vars-key
-  "Where an entry declares its vars. Namespaced so it cannot collide with the
-   entry's own fields, and identical in JSON (\"item/vars\")."
+  "Namespaced so it can't collide with an entry's own fields."
   :item/vars)
 
 (defn- structural?
-  "A collection of maps is the spec's own scaffolding (an entry's `:mods`, say),
-   never something a template interpolates."
+  "A collection of maps, like an entry's `:mods`, is scaffolding rather than
+   something to interpolate."
   [v]
   (and (coll? v) (some map? v)))
 
 (defn- context-fields
-  "The entry/element fields a template may interpolate — its own data, minus the
-   var declarations, the interpreter's controls, and nested structure. A plain
-   collection is kept, so a template can index one (`{{ tags.[0] }}`)."
+  "The element's fields a template may interpolate. Plain collections are kept,
+   so a template can index one (`{{ tags.[0] }}`)."
   [element]
   (into {}
         (remove (fn [[_ v]] (structural? v)))
         (dissoc element declared-vars-key :weight)))
 
 (defn- context-vars
-  "An element's own fields as vars, marked `:context?` — available to its
-   templates, but not offered as editable values. Only what the entry
-   *declared* is the DM's to change.
-
-   Plain data, deliberately: these are not run through `vars/resolve-var`, so a
-   field that happens to look like a behaviour stays the value it is, and no
-   label is computed for something the editor never shows."
+  "An element's own fields as `:context?` vars. Not resolved, so a field that
+   looks like a behaviour stays as it is."
   [element]
   (update-vals (context-fields element) #(hash-map :value % :context? true)))
 
 (defn- element-vars
-  "The vars an item rendered from `element` is given: its own context fields,
-   plus anything the element itself declares.
-
-   A *single* drawn entry's declarations are deliberately absent — they are sent
-   once as `:loot/vars`, which every template reads, so one draw is shared by
-   every mod the entry produces rather than copied into each. Copies would
-   desynchronise the moment the DM edited one. With `:each :items` the element
-   *is* an entry, and each is its own item, so its declarations belong here."
+  "An element's context fields plus its own declared vars. A single drawn
+   entry's vars are left to `:loot/vars`, so one draw is shared by all its
+   items and a DM's edit updates them all."
   [rng entry-vars element]
   (merge (context-vars element)
          (vars/resolve-vars rng (apply dissoc (get element declared-vars-key) (keys entry-vars)))))
 
 (defn- template-or-field
-  "An item's `:title`/`:body`: a *field reference* reads that field off
-   `element` (so entry data that is itself a template reaches the browser
-   intact), and anything else is already the template.
-
-   A reference is written as a keyword in EDN. JSON has no keyword literal, so
-   there a bare string naming a field on the entry counts as one — which is why
-   the two are distinguished by what the entry holds rather than by type."
+  "Resolve a field reference against `element`, or return the template as is.
+   JSON has no keywords, so a string naming one of the element's fields also
+   counts as a reference."
   [spec element]
   (cond
     (keyword? spec)              (get element spec)
@@ -129,12 +102,7 @@
         {:keys [items title subtitle sections]} spec
         entries   (draw-entries rng items spec)
         single    (when (= 1 (count entries)) (first entries))
-        ;; An entry's declared vars are drawn once, then shared by every item
-        ;; the entry produces — so two mods referring to `{{ ability }}` show
-        ;; the same value, and editing it updates both.
         entry-vars (vars/resolve-vars rng (get single declared-vars-key))
-        ;; The title/subtitle templates interpolate the drawn entry plus the
-        ;; inputs the DM submitted.
         loot-vars  (merge (context-vars (merge inputs (or single {}))) entry-vars)]
     (cond-> {:loot/title (str (or title ""))}
             subtitle (assoc :loot/subtitle subtitle)
@@ -158,9 +126,8 @@
    :default false})
 
 (defn file-generator
-  "Build a `Generator` for a `:data` plugin whose spec is loaded from
-   `source`. Holds the spec in an atom and exposes a `:__reload?` input that,
-   when set, re-reads `source` into that atom before generating."
+  "Build a `Generator` for a `:data` plugin loaded from `source`, with a
+   `:__reload?` input to re-read it before generating."
   [_id source]
   (let [spec-atom (atom (load-spec source))]
     (reify p/Generator

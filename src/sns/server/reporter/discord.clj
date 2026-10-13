@@ -1,7 +1,6 @@
 (ns sns.server.reporter.discord
-  "A `Reporter` that posts a loot view-model to a Discord webhook as Components
-   V2 containers. Discord budgets every message as a whole, so a view-model too
-   large for one message is spread over several."
+  "A `Reporter` that posts to a Discord webhook as Components V2 containers,
+   split over several messages when one isn't enough."
   (:require
     [clojure.string :as str]
     [hato.client :as hc]
@@ -34,10 +33,9 @@
            title  (str "**" title "**\n")))
 
 (defn- add-section
-  "Renders one section's items, and its metadata keyed by whatever the reader
-   can see: the item's title, the heading of a section holding it alone, or —
-   failing both — a number put in front of the body. Once one item needs a
-   number, every unkeyed item in the section gets one, keeping the list intact."
+  "Render a section's items, and their metadata keyed by the item's title, its
+   lone section's heading, or failing those, a number put before the body. If
+   any item needs a number, every unkeyed item in the section gets one."
   [acc {:section/keys [heading items]}]
   (let [single?   (= 1 (count items))
         key-of    (fn [{:item/keys [title]}] (or title (when single? heading)))
@@ -55,9 +53,7 @@
         (update :meta into metas))))
 
 (defn- visible
-  "Sections as a reader would see them: an item whose body is empty shows
-   nothing, and a section left with no items is dropped — it stays in the
-   editor, but there is nothing to report."
+  "Drop items with empty bodies, and sections left with none."
   [sections]
   (into []
         (keep (fn [section]
@@ -69,8 +65,8 @@
 ;; ------------------------------------------------------------------ batching
 
 (defn- units
-  "The indivisible pieces a message is packed from: whole sections, or — when
-   there is only one section to give — its individual items."
+  "The pieces messages are packed from: whole sections, or a lone section's
+   items."
   [sections]
   (if (= 1 (count sections))
     (let [{:keys [heading items]} (first sections)]
@@ -82,15 +78,14 @@
      (count (str/join "\n" items))))
 
 (defn- fits?
-  "Whether `units` still clear both ceilings once the fixed per-message parts —
-   the title, the spoilered words and the metadata — are paid for."
+  "Whether `units` fit in a message alongside its `fixed` text."
   [fixed units]
   (and (<= (+ fixed (transduce (map unit-size) + units)) max-text)
        (<= (+ 5 (* 3 (count units))) max-components)))
 
 (defn- batch
-  "Greedily groups units into message-sized batches. A unit larger than a whole
-   message lands in a batch of its own and is left to Discord to reject."
+  "Greedily group units into messages. A unit too big for any message gets its
+   own, for Discord to reject."
   [fixed units]
   (reduce (fn [batches unit]
             (if-let [current (peek batches)]
@@ -105,8 +100,8 @@
 ;; ----------------------------------------------------------------- rendering
 
 (defn- blocks
-  "Components for a batch, re-joining units that came from the same section so a
-   split section is not given its heading twice in one message."
+  "Components for a batch, re-joining units from the same section so its heading
+   appears once."
   [batch]
   (into []
         (comp (partition-by :idx)
@@ -128,12 +123,9 @@
    :components [(text (str "-# Metadata\n" (str/join "\n" meta)))]})
 
 (defn view-model->messages
-  "Render a view-model as one or more Components V2 message bodies. Sections are
-   kept whole; a lone section is split between its items instead. The spoilered
-   content is the engine-drawn `:loot/words`, so the reader sees the same handle
-   the UI showed. Metadata rides in a second, quieter container. Secret sections
-   are left out unless `include-secret?`, and so is anything with nothing to
-   show: an item whose body is empty, and a section left with no items."
+  "Render a view-model as Components V2 message bodies, with `:loot/words`
+   spoilered and metadata in a quieter container. Secret sections are left out
+   unless `include-secret?`."
   ([vm] (view-model->messages vm false))
   ([{:loot/keys [title subtitle words] :as vm} include-secret?]
    (let [{:keys [sections meta]} (reduce add-section

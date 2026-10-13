@@ -1,6 +1,5 @@
 (ns sns.server.registry
-  "Resolves config plugin entries into `Generator` instances. Each plugin
-   `:type` has a `build-generator` method."
+  "Builds a `Generator` for each config tool, by `:type`."
   (:require
     [flatland.ordered.map :refer [ordered-map]]
     [sns.builtin.cli :as cli]
@@ -13,26 +12,19 @@
     [sns.server.classpath :as classpath]))
 
 (def builtins
-  "Factories for the generators shipped with the app, keyed by the :id a
-   `:builtin` plugin registers under. Eagerly required, so config needs no
-   `:builtin` `:entrypoint` (and no Clojure symbols) to use them."
+  "Factories for the built-in generators, keyed by the `:id` that selects them
+   when a `:builtin` tool has no `:entrypoint`."
   {:divine-dust dust/generator
    :relics      relics/generator
    :social      social/generator})
 
-(defn- resolve-fn
-  "Resolve a fully-qualified symbol to its var, requiring its namespace."
-  [sym]
+(defn- resolve-fn [sym]
   (or (requiring-resolve sym)
       (throw (ex-info "Could not resolve plugin entrypoint" {:entrypoint sym}))))
 
-(defmulti build-generator
-  "Construct a `Generator` from a single plugin config entry."
-  :type)
+(defmulti build-generator :type)
 
 (defmethod build-generator :builtin [{:keys [id builtin] :as plugin}]
-  ;; With an :entrypoint, resolve it as a factory fn: (entrypoint plugin) ->
-  ;; Generator. Without one, the :id names a registered builtin.
   (if-let [entrypoint (:entrypoint builtin)]
     ((resolve-fn entrypoint) plugin)
     (if-let [factory (get builtins id)]
@@ -40,7 +32,6 @@
       (throw (ex-info "Unknown builtin plugin" {:id id :known (vec (keys builtins))})))))
 
 (defmethod build-generator :data [{:keys [id] {:keys [source inline]} :data}]
-  ;; An :inline spec takes precedence over a :source file
   (if inline
     (data/generator id inline)
     (data/file-generator id source)))
@@ -55,9 +46,6 @@
   (wasm/generator plugin))
 
 (defmethod build-generator :jar [{{:keys [path entrypoint] class-name :class} :jar :as plugin}]
-  ;; Add the external jar to the classpath, then resolve its generator: a
-  ;; `:class` is constructed via its 0-arity constructor, otherwise the
-  ;; `:entrypoint` factory var is resolved exactly like a builtin.
   (let [loader (classpath/add-jar! path)]
     (if class-name
       (classpath/construct loader class-name)
@@ -67,9 +55,7 @@
   (throw (ex-info "Unsupported plugin type" {:type type :plugin plugin})))
 
 (defn build
-  "Resolve every plugin in `:tools` into a map of loot-type id -> Generator,
-   ordered as they appear in config. Pages are not generators, so they are left
-   out, but their ids must still be unique across every tool."
+  "An ordered map of loot-type id to `Generator` for every non-page tool."
   [{:keys [tools]}]
   (doseq [[id n] (frequencies (map :id tools)) :when (> n 1)]
     (throw (ex-info "Duplicate tool id" {:id id})))

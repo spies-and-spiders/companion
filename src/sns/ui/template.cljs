@@ -1,11 +1,7 @@
 (ns sns.ui.template
-  "Template rendering — the only place it happens. The backend sends templates
-   unrendered alongside the `sns.sdk.schema/item-vars` they interpolate, so a
-   var edited in the browser re-renders immediately, with no round trip.
-
-   Handlebars is the language: `{{ name }}`, `{{ x.[0] }}` to index a drawn
-   collection (a numeric segment needs the brackets — `{{ x.0 }}` is a parse
-   error), `{{#if flag}}…{{/if}}` for a conditional."
+  "Renders the Handlebars templates the backend sends, so edited vars re-render
+   without a round trip. Index collections as `{{ x.[0] }}`, since `{{ x.0 }}`
+   doesn't parse."
   (:require
     ["@budibase/handlebars-helpers/lib/array" :as array-helpers]
     ["@budibase/handlebars-helpers/lib/collection" :as collection-helpers]
@@ -22,22 +18,17 @@
     [sns.sdk.rank :as rank]
     [sns.ui.dice :as dice]))
 
-;; handlebars-helpers (the @budibase fork — upstream 0.10.0 lazy-requires its
-;; deps in a way shadow-cljs cannot bundle), minus the groups that need node
-;; (fs, path, url) or are dead weight in a loot template (code, i18n, html,
-;; match, lorem, uuid).
+;; The @budibase fork, since upstream's lazy requires can't be bundled by
+;; shadow-cljs. Groups needing node, or useless in loot, are left out.
 (doseq [group [array-helpers collection-helpers comparison-helpers inflection-helpers
                math-helpers misc-helpers number-helpers object-helpers regex-helpers
                string-helpers]]
   (handlebars/registerHelper group))
 
 (defn- spies-link
-  "A helper linking to a spies.tools `page` entry, as the markdown link
-   `sns.ui.link` renders: `{{sns-spell \"Earth Tremor\"}}` or
-   `{{#sns-spell}}Earth Tremor{{/sns-spell}}`. A second argument (or a block
-   body alongside the name) is the text to show instead of the entry's name:
-   `{{sns-condition \"blinded\" \"blinding\"}}` links *blinded* as \"blinding\".
-   Brackets are encoded so they cannot close the link early."
+  "A helper rendering a markdown link to a spies.tools `page` entry:
+   `{{sns-spell \"Earth Tremor\"}}` or `{{#sns-spell}}Earth Tremor{{/sns-spell}}`.
+   A second argument, or a block body alongside the name, is the link text."
   [page]
   (fn [& args]
     (this-as ctx
@@ -57,11 +48,8 @@
 (handlebars/registerHelper "sns-maneuver" (spies-link "maneuvers"))
 (handlebars/registerHelper "sns-condition" (spies-link "conditions"))
 
-;; Handlebars caches compilation on the function it returns, so compiling per
-;; call throws that away — measured ~70x the cost of rendering an already
-;; compiled template. `render` runs on every replicant re-render, for every
-;; field of every item, so cache on the template string. The editor's previews
-;; render every keystroke of a template being typed, hence the bound.
+;; Compiling is ~70x the cost of rendering, and `render` runs for every field on
+;; every re-render. Bounded, since editing caches every keystroke.
 ;; ponytail: dropped wholesale when full, an LRU if the refill ever shows.
 (def ^:private cache-limit 1000)
 
@@ -74,23 +62,13 @@
         f)))
 
 (defn- context
-  "Resolved vars flattened to the `{name value}` a template is rendered
-   against, JS-ified for Handlebars. Ranks are folded in here — the one place
-   every template passes through — so the card, the editor's preview and the
-   reported text all show the ranked value, while the editor's own fields read
-   `:value` off the var and keep showing the rank-1 base."
+  "Vars flattened to `{name value}` at their ranked values, for Handlebars."
   [vars]
   (clj->js (reduce-kv (fn [acc id v] (assoc acc id (rank/stepped v))) {} vars)))
 
 (defn render
-  "Render `template` against `vars`. A template with no tags is itself, so a
-   plugin that sends finished text needs no vars at all; a nil template (an
-   absent title) stays nil.
-
-   A template that fails to compile is shown as-is rather than blanking the
-   item — a DM editing one mid-keystroke routinely passes through invalid
-   states (`{{ ab`), and losing the text they are typing would be worse than
-   showing it."
+  "Render `template` against `vars`. An invalid template, like one being typed,
+   is returned as is."
   [template vars]
   (if-not (string? template)
     template
@@ -98,24 +76,14 @@
       ((compile-template template) (context vars))
       (catch :default _ template))))
 
-(defn- blank-item?
-  "A rendered item with nothing left in its body — the DM emptied it, or its
-   template resolved to nothing at the rank it is at. It drops out of the view
-   and the report, but stays in the editor."
-  [{:item/keys [body]}]
+(defn- blank-item? [{:item/keys [body]}]
   (str/blank? body))
 
 (defn render-view-model
-  "A view-model with every template resolved against its vars — for a consumer
-   that wants finished text rather than a template (currently: reporting,
-   since the backend has no renderer to fall back on).
-
-   Knowing *which* fields are templates lives here rather than at the call
-   site, so `sns.ui.render` and the report path cannot drift apart."
+  "`vm` with every template rendered and blank items dropped, as the card shows
+   it."
   [{:loot/keys [vars] :as vm}]
   (letfn [(item [i]
-            ;; Loot vars are ambient, an item's own shadow them - as in
-            ;; `sns.ui.render/entry`.
             (let [vars (merge vars (:item/vars i))]
               (-> i
                   (update :item/body render vars)
@@ -123,9 +91,6 @@
     (-> vm
         (update :loot/title render vars)
         (update :loot/subtitle render vars)
-        ;; An item whose body renders to nothing is dropped, and a section left
-        ;; with none goes with it, so what is reported is what the card shows
-        ;; (`sns.ui.render/block`).
         (update :loot/sections
                 (fn [sections]
                   (into []

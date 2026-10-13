@@ -46,8 +46,7 @@
     (is (= 2 (count (set drawn))))
     (is (every? (set feats) drawn)))
   (testing "any RandomGenerator works, not just java.util.Random"
-    ;; regression: randy's shuffle strategy proxies onto java.util.Random and
-    ;; throws for the engine's rng, so the draw must avoid that path
+    ;; Regression: randy's shuffle throws for the engine's rng.
     (let [drawn (randoms/sample-preset (.create (RandomGeneratorFactory/of "L64X128MixRandom"))
                                        :without-replacement {:amount 2 :preset :feats})]
       (is (= 2 (count (set drawn))))

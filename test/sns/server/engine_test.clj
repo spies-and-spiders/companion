@@ -234,8 +234,7 @@
 
 (deftest loads-and-validates-resource-config
   (testing "a real filesystem config loads, validates, and drives the engine"
-    ;; Load a committed, hermetic fixture rather than the git-ignored repo-root
-    ;; config.edn (absent in CI). Override the store to keep the test in-memory.
+    ;; The repo-root config.edn is git-ignored, so absent in CI.
     (let [eng (engine/create (config/load-config "test/resources/config.edn")
                              {:store (edn-store/create {:backend :memory})})]
       (is (= "Divine Dust" (:loot/title (engine/generate eng :divine-dust))))
@@ -284,9 +283,7 @@
       (is (= "rare" (title-var (engine/generate eng :potion {:rarity "rare"}) :rarity))))))
 
 (deftest decimal-inputs-reach-the-generator-as-exact-numbers
-  ;; The plugin echoes the raw request back as its title, so these assert on the
-  ;; literal JSON sent over the wire — parsing it first would round the precision
-  ;; away in the test harness rather than in the engine.
+  ;; Asserts on the raw JSON echoed back, since parsing it would lose precision.
   (let [eng   (engine/create
                 {:tools [{:type      :cli
                           :id        :echo
@@ -354,8 +351,7 @@
   (loot-spec [_] {:id :echo-state :label "Echo State"})
   (generate [_ _ctx] {:loot/title "Echo State" :loot/state {:count 0}})
   p/Action
-  ;; Reads its own state back off the view-model it was handed, rather than
-  ;; from :params — the campaign5 pattern.
+  ;; Reads its state off the view-model it was handed, not :params.
   (handle-action [_ {:keys [view-model]} _action _params]
     {:loot/title (str "count=" (inc (:count (:loot/state view-model) 0)))
      :loot/state (update (:loot/state view-model {:count 0}) :count inc)}))

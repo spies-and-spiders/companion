@@ -60,9 +60,8 @@
     (ok (engine/loot-specs eng))))
 
 (defn- with-mutations
-  "The writes declared on `response` are the client's to apply under `:browser`,
-   where the state lives in its IndexedDB. Every other backend has persisted them
-   already, so they are stripped rather than sent."
+  "Keep `response`'s writes only under `:browser` storage, where the client
+   applies them to its IndexedDB."
   [eng response]
   (cond-> response
           (not (store/browser? (:config eng))) (dissoc :store/mutations)))
@@ -92,27 +91,20 @@
     (ok)))
 
 (defn- state-handler
-  "Read (and first apply `:mutations` to) a loot type's manually-managed
-   collection — the DM-owned table its `:store/manual` spec declares. Shaped
-   like every other stateful call: state in, mutations out, so the same handler
-   serves a server-side store and one living in the DM's browser."
+  "Apply `:mutations` to a loot type's `:store/manual` collection, then read it."
   [eng]
   (fn manual-state [{{:keys [id mutations state]} :body-params}]
     (let [eng (engine/with-state eng state)]
       (ok (with-mutations eng (engine/manual-state eng id mutations))))))
 
-(defn- history-handler
-  "The result history, read and written like any other collection so it follows
-   the configured storage backend."
-  [eng]
+(defn- history-handler [eng]
   (fn history [{{:keys [mutations state]} :body-params}]
     (let [eng (engine/with-state eng state)]
       (ok (with-mutations eng (engine/history eng mutations))))))
 
 (defn- zip-bytes
-  "A ZIP holding one `<collection>.edn` per collection, written by the same
-   serialiser the `:file` backend uses so the archive unzips straight into a
-   usable state directory."
+  "A ZIP of `<collection>.edn` files that unzips into a usable `:file` state
+   directory."
   ^bytes [state]
   (let [out (ByteArrayOutputStream.)]
     (with-open [zip (ZipOutputStream. out)]
@@ -135,8 +127,7 @@
   (some-> (get-in request [:headers "accept-encoding"]) (str/includes? "gzip")))
 
 (defn- gzipped
-  "The `.gz` the uberjar build precompressed beside a resource, when the client
-   takes gzip."
+  "The resource's precompressed `.gz`, if the client accepts gzip."
   [resources {:keys [uri] :as request}]
   (when (accepts-gzip? request)
     (some-> (resources (assoc request :uri (str uri ".gz")))
@@ -144,9 +135,8 @@
             (response/header "Content-Encoding" "gzip"))))
 
 (defn- static-handler
-  "The SPA's files, each revalidated on every use, which costs a 304 when it has
-   not changed. A path matching none of them is the app's own route, so it gets
-   the app (index.html)."
+  "The SPA's files, revalidated on every use. Unknown paths are client routes,
+   so they get index.html."
   []
   (let [resources (ring/create-resource-handler {:path "/" :root "public"})]
     (fn [request]
@@ -157,8 +147,7 @@
                                       "Vary"          "Accept-Encoding"})))))
 
 (def ^:private not-modified-interceptor
-  "A 304 for a GET whose response the client already holds, going by the
-   response's `Last-Modified` or `ETag`."
+  "Return 304 when the client's copy is current."
   {:name  ::not-modified
    :leave (fn [{:keys [request] :as ctx}]
             (update ctx :response not-modified/not-modified-response request))})

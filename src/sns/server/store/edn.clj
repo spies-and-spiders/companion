@@ -1,15 +1,9 @@
 (ns sns.server.store.edn
   "The `:file` and `:memory` stores.
 
-   `:file` keeps one EDN file per collection under `:dir` and treats those files
-   as the source of truth: an edit made by hand while the app is running is
-   picked up by the next read. Each file's parsed value is cached and re-read
-   only when its modification time or size changes, so the common case costs a
-   `stat` rather than a parse. Writes re-read first, so a write can never
-   resurrect state from before an external edit.
-
-   `:memory` is the same shape without files, and offers no way to edit state by
-   hand."
+   `:file` keeps one EDN file per collection, which the DM may edit by hand while
+   the app runs. Parsed files are cached until their mtime or size changes, and
+   writes re-read first so they never undo an external edit."
   (:require
     [clojure.edn :as edn]
     [clojure.java.io :as io]
@@ -23,9 +17,8 @@
   (io/file dir (str (name coll) ".edn")))
 
 (defn- stamp
-  "What we compare to decide whether a file changed under us. Size joins the
-   modification time because filesystems vary in mtime resolution, and an edit
-   landing in the same tick as our own write would otherwise be missed."
+  "Size as well as mtime, since coarse mtime resolution could miss an edit
+   landing in the same tick as our own write."
   [^File file]
   (when (.exists file)
     [(.lastModified file) (.length file)]))
@@ -37,9 +30,7 @@
     {}))
 
 (defn- read-stable
-  "Read a file along with the stamp it actually had when read. Stamping only
-   before the read would let an edit landing mid-read be cached under the old
-   stamp, and so go unnoticed until the file changed again."
+  "Read a file with its stamp, retrying if it changed mid-read."
   [^File file]
   (loop []
     (let [before (stamp file)
@@ -49,8 +40,7 @@
         (recur)))))
 
 (defn edn-str
-  "How a collection is serialised. Shared by the file backend and by export, so
-   the two cannot drift into writing different files."
+  "Serialise a collection, for both the file backend and export."
   [value]
   (binding [*print-namespace-maps* false]
     (with-out-str (pp/pprint value))))
@@ -58,30 +48,22 @@
 (defn- write! [^File file value]
   (let [tmp (File. (str file ".tmp"))]
     (spit tmp (edn-str value))
-    ;; Rename rather than writing in place, so an interrupted write cannot leave
-    ;; a half-written file behind.
+    ;; Rename, so an interrupted write can't leave a half-written file.
     (Files/move (.toPath tmp) (.toPath file)
                 (into-array StandardCopyOption [StandardCopyOption/REPLACE_EXISTING]))))
 
-(defn- apply-mutation
-  "Merge one collection's mutations in, dropping the keys whose value is nil."
-  [value mutations]
+(defn- apply-mutation [value mutations]
   (reduce-kv (fn [acc k v] (if (nil? v) (dissoc acc k) (assoc acc k v)))
              (or value {})
              mutations))
 
 (defprotocol Writable
-  "Server-side only: applying writes. Plugins declare theirs on the view-model
-   and the engine applies them here once it has validated, so nothing can change
-   state without the view-model describing it having survived validation."
+  "Server-side writes, kept out of the SDK's `Store`."
   (mutate! [this mutations]
-    "Apply `mutations`, shaped `{<collection> {<key> <value>}}`. A nil value
-     retracts that key; keys left out are untouched. Returns nil."))
+    "Apply `{<collection> {<key> <value>}}`, a nil value retracting its key."))
 
 (defprotocol Exportable
-  "Server-side only: every collection a store holds, for the export endpoint.
-   Not part of the SDK `Store` protocol — plugins have no business enumerating
-   another plugin's state."
+  "Every collection a store holds, for export. Kept out of the SDK's `Store`."
   (all-state [this]))
 
 (defrecord FileStore [^File dir cache]
@@ -101,8 +83,7 @@
     (locking cache
       (doseq [[coll changes] mutations]
         (let [file (collection-file dir coll)
-              ;; From the file, not the cache: an edit made since the last read
-              ;; has to survive this write.
+              ;; Not from the cache, so external edits survive.
               next (apply-mutation (second (read-stable file)) changes)]
           (write! file next)
           (swap! cache assoc coll {:stamp (stamp file) :value next})))
@@ -134,9 +115,7 @@
   (all-state [_] @state))
 
 (defn create
-  "A `Store`. `:file` keeps one EDN file per collection under `:file`'s `:dir`
-   (default `./state`); anything else stays in memory. Construction is
-   side-effect-free — `setup!` creates the directory."
+  "A `:file` store under `:dir` (default `./state`), or else an in-memory one."
   [{:keys [backend] {:keys [dir]} :file}]
   (if (= :file backend)
     (->FileStore (io/file (or dir "./state")) (atom {}))

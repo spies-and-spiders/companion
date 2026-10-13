@@ -1,8 +1,7 @@
 (ns sns.builtin.social
-  "The group Deception & Persuasion tracker, as a plugin over a manual state
-   collection. The DM keeps a row per character — two bonuses and whether
-   they're at the table — and the plugin's one action rolls 1d20 plus the
-   group bonus over whoever is present."
+  "A group Deception & Persuasion tracker. The DM keeps a row per character with
+   their bonuses and whether they're present, and the plugin rolls 1d20 plus the
+   group bonus."
   (:require
     [randy.rng :as rng]
     [sns.sdk.protocols :as p]))
@@ -11,14 +10,12 @@
   (array-map :deception "Deception" :persuasion "Persuasion"))
 
 (defn- tidy
-  "Keeps fractions exactly as they are, but drops the pointless decimal on whole
-   values so they render as +7 rather than +7.0."
+  "Render whole numbers as +7 rather than +7.0."
   [n]
   (cond-> n (zero? (rem n 1)) long))
 
 (defn group-bonus
-  "The party's bonus for a skill: the mean over everyone present, with the top
-   two counted twice so a strong speaker pulls the group up."
+  "The mean of `bonuses`, with the top two counted twice."
   [bonuses]
   (if (empty? bonuses)
     0
@@ -38,9 +35,8 @@
                     (case (long die) 1 " · natural 1!" 20 " · natural 20!" ""))})
 
 (defn- view
-  "The tracker's view-model: the two group bonuses, a roll button each, and the
-   last roll when there is one. The roster itself is the manual-state editor's
-   to render, so it is deliberately absent here."
+  "The group bonuses, their roll buttons, and the last roll if any. The roster
+   is rendered by the manual-state editor."
   [id characters roll]
   (let [bonus   #(group-bonus (present-bonuses characters %))
         present (count (filter :present? (vals characters)))]
@@ -61,8 +57,6 @@
                                               :section/items   [(roll-item roll)]}))))
 
 (defn generator
-  "Build the tracker from its `:builtin` plugin config entry. The characters live
-   in one manual-state collection named after the plugin's `:id`."
   [{:keys [id]}]
   (let [id   (or id :social)
         spec {:generate-label "Show group bonuses"

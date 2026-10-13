@@ -23,9 +23,8 @@
 (def ^:private sdk-lib 'tools.spies/sns-companion-sdk)
 (def ^:private sdk-class-dir "target/sdk-classes")
 (def ^:private sdk-javadoc-dir "target/sdk-javadoc")
-;; Consistently named (unversioned) like the uberjar, so local commands and CI
-;; steps never have to know the version; the release workflow stamps the version
-;; into the filenames Maven Central requires.
+;; Unversioned, like the uberjar; the release workflow adds the version Maven
+;; Central requires.
 (def ^:private sdk-jar-file (format "target/%s.jar" (name sdk-lib)))
 (def ^:private sdk-pom-file (format "target/%s.pom" (name sdk-lib)))
 (def ^:private sdk-sources-jar-file (format "target/%s-sources.jar" (name sdk-lib)))

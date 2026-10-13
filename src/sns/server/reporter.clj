@@ -1,7 +1,5 @@
 (ns sns.server.reporter
-  "Facade over reporting backends, mirroring `sns.server.store`. `from-config`
-   selects a `Reporter` from the config `:reporting` map, or returns nil when
-   reporting is not configured (the UI then hides its report button)."
+  "Selects the configured reporting backend."
   (:require
     [sns.server.reporter.discord :as discord]))
 

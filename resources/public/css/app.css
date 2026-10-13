@@ -207,7 +207,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
   gap: 1.6rem;
 }
 
-/* one card per loot type on the page; a lone card keeps the old reading width */
+/* one card per loot type on the page; a lone card keeps a reading width */
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 30rem), 1fr));

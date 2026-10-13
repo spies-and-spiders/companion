@@ -1,19 +1,9 @@
 (ns sns.builtin.ffi
-  "Adapter for `:ffi` plugins: call a C-ABI symbol in a shared library
-   (.so/.dylib/.dll) with the request as a JSON C string and read a JSON
-   view-model back. Unlike `:jar` (which loads JVM bytecode and so cannot run in
-   a native image), this works in both the uberjar and the native image.
+  "Adapter for `:ffi` plugins: calls a `char* (char* request_json)` symbol in a
+   shared library. See `sns.builtin.plugin-io`.
 
-   The library exports `(char* request_json) -> char* output_json`, sharing the
-   contract with `:cli` (see sns.builtin.plugin-io). Generation passes
-   `{:inputs}`, an action passes `{:action :params :inputs :view-model}`; the presence of
-   `action` tells the plugin which it is. If `free-symbol` is given it
-   is called on the returned pointer once its bytes are copied out; otherwise the
-   library owns that memory (e.g. a reused static buffer).
-
-   Native image needs the two downcall descriptors registered at build time via
-   the `foreign` section of reachability-metadata.json (the signatures are fixed,
-   so one entry each covers every :ffi plugin) and `--enable-native-access`."
+   The native image needs `--enable-native-access` and both downcall
+   descriptors registered in reachability-metadata.json's `foreign` section."
   (:require
     [sns.builtin.plugin-io :as io]
     [sns.sdk.protocols :as p])
@@ -23,10 +13,7 @@
     (java.util.concurrent ConcurrentHashMap)
     (java.util.function Function)))
 
-;; One SymbolLookup per library path, so several :ffi plugins bound to different
-;; symbols of the same library open (dlopen) it once and share the handle. Empty
-;; at native-image build time (no foreign state baked into the image heap);
-;; populated at run time. computeIfAbsent loads at most once per key, even racing.
+;; Per library path, so plugins sharing a library load it once.
 (defonce ^:private lookups (ConcurrentHashMap.))
 
 (defn- library-lookup
@@ -37,14 +24,12 @@
                         (SymbolLookup/libraryLookup ^String lib (Arena/global))))))
 
 (defn- downcall
-  "Bind `sym` in `lookup` as a `MethodHandle` for function descriptor `desc`."
   ^MethodHandle [^Linker linker ^SymbolLookup lookup ^String sym ^FunctionDescriptor desc]
   (let [^MemorySegment addr (.orElseThrow (.find lookup sym))]
     (.downcallHandle linker addr desc (make-array Linker$Option 0))))
 
 (defn- call
-  "Invoke `handle` with `ctx` encoded as a JSON C string, read the returned C
-   string, free it via `free` (when given), and map it to a view-model."
+  "Call `handle` on `ctx`, freeing the result with `free` if given."
   [id ^MethodHandle handle ^MethodHandle free ctx]
   (let [arena (Arena/ofConfined)]
     (try
@@ -57,10 +42,7 @@
       (finally
         (.close arena)))))
 
-;; Every :ffi symbol has the same fixed C signature, so the two descriptors are
-;; built once per plugin at startup (never at native-image build time — the
-;; foreign machinery is initialised at run time) and registered for downcall via
-;; the `foreign` section of reachability-metadata.json.
+;; Functions rather than values, so they're never built at native-image build time.
 (defn- ptr->ptr []
   (FunctionDescriptor/of ValueLayout/ADDRESS (into-array MemoryLayout [ValueLayout/ADDRESS])))
 
@@ -68,12 +50,8 @@
   (FunctionDescriptor/ofVoid (into-array MemoryLayout [ValueLayout/ADDRESS])))
 
 (defn generator
-  "Build a `Generator`/`Action` from an `:ffi` plugin config entry, bound
-   to its `:symbol` (and optional `:free-symbol`) in the shared library at
-   `:library`. The library stays loaded for the app's lifetime (a global arena).
-   Like `:cli`, it is described entirely by its `:generator` config: the
-   collections that declares are read and sent as `state`, and the `mutations`
-   the library returns are applied by the engine."
+  "Build a `Generator`/`Action` from an `:ffi` plugin config entry. The library
+   stays loaded for the app's lifetime."
   [{:keys                                     [id]
     {:keys [library free-symbol] sym :symbol} :ffi
     :as                                       plugin}]
