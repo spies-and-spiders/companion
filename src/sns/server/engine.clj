@@ -58,7 +58,7 @@
     (let [entries (allocation table size)]
       (mapv (fn [prev {:keys [id max]}]
               {:id id :ranges (if (< prev max) [[(inc prev) max]] [])})
-            (cons 0 (map :max entries))
+            (into [0] (map :max) entries)
             entries))))
 
 (defn- install-randoms!
@@ -72,18 +72,19 @@
   "A ranged table gives every entry its ranges, all of them on the die, and
    leaves no side of the die unassigned."
   [table size]
-  (when-some [bare (seq (remove :ranges table))]
+  (when-some [bare (not-empty (into [] (comp (remove :ranges) (map :id)) table))]
     (throw (ex-info "Every loot-table entry needs :ranges once one has them"
-                    {:missing (mapv :id bare)})))
+                    {:missing bare})))
   (doseq [{:keys [id ranges]} table
           [from to :as rng] ranges]
     (when-not (<= 1 from to size)
       (throw (ex-info (str "Loot-table range must run upwards within 1-" size)
                       {:id id :range rng :loot-die-size size}))))
-  (let [covered? (fn [n] (some (fn [[from to]] (<= from n to)) (mapcat :ranges table)))]
-    (when-some [gaps (seq (remove covered? (range 1 (inc size))))]
+  (let [ranges   (into [] (mapcat :ranges) table)
+        covered? (fn [n] (some (fn [[from to]] (<= from n to)) ranges))]
+    (when-some [gaps (not-empty (into [] (remove covered?) (range 1 (inc size))))]
       (throw (ex-info "Loot-table ranges leave sides of the loot die unassigned"
-                      {:unassigned (vec gaps) :loot-die-size size})))))
+                      {:unassigned gaps :loot-die-size size})))))
 
 (defn- validate-table!
   "Every loot-table entry must reference a registered loot type, and the table
@@ -101,16 +102,16 @@
                       {:id id :known (vec (keys registry))})))))
 
 (defn- pages [config]
-  (filter (comp #{:page} :type) (:tools config)))
+  (filterv (comp #{:page} :type) (:tools config)))
 
 (defn- validate-pages!
   "Every page lists registered plugins, each once. A page is not in the registry,
    so one page listing another is rejected like any other unknown id."
   [registry pages]
   (doseq [{:keys [id] {:keys [tools]} :page} pages]
-    (when-some [unknown (seq (remove #(contains? registry %) tools))]
+    (when-some [unknown (not-empty (into [] (remove #(contains? registry %)) tools))]
       (throw (ex-info "Page references an unknown plugin"
-                      {:page id :unknown (vec unknown) :known (vec (keys registry))})))
+                      {:page id :unknown unknown :known (vec (keys registry))})))
     (when-not (apply distinct? tools)
       (throw (ex-info "Page lists a plugin more than once" {:page id :tools tools})))))
 
@@ -159,7 +160,7 @@
   "A `:section` (`\"1\"`) or `:item` (`\"1:2\"`) pick, as the browser sends
    it, into `{:section 1}` or `{:section 1 :item 2}`."
   [type v]
-  (let [[s i] (when (string? v) (map parse-long (str/split (str/trim v) #":")))]
+  (let [[s i] (when (string? v) (mapv parse-long (str/split (str/trim v) #":")))]
     (cond
       (and s (= :section type)) {:section s}
       (and s i)                 {:section s :item i}
@@ -200,7 +201,7 @@
    An id, label or section the generator reports for itself is ignored."
   [{:keys [registry entries]} id]
   (let [generator (or (get registry id)
-                      (throw (ex-info "Unknown loot type" {:id id :known (keys registry)})))
+                      (throw (ex-info "Unknown loot type" {:id id :known (vec (keys registry))})))
         {:keys [section] :as entry} (entries id)]
     (cond-> (-> (p/loot-spec generator)
                 (dissoc :id :label :section)

@@ -32,8 +32,8 @@
     (when (empty? pool)
       (throw (ex-info "Draw from empty :items list" {})))
     (cond
-      weighted (mapv (fn [_] (r/weighted-sample rng (into {} (map (juxt identity :weight)) pool)))
-                     (range n))
+      weighted (let [weights (into {} (map (juxt identity :weight)) pool)]
+                 (mapv (fn [_] (r/weighted-sample rng weights)) (range n)))
       (> n 1)  (vec (r/sample-without-replacement rng (min n (count pool)) pool))
       :else    [(r/sample rng pool)])))
 

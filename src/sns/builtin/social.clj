@@ -19,7 +19,7 @@
   [bonuses]
   (if (empty? bonuses)
     0
-    (let [top-two (take 2 (sort > bonuses))
+    (let [top-two (into [] (take 2) (sort > bonuses))
           total   (+ (reduce + bonuses) (reduce + top-two))]
       (tidy (/ (double total) (+ (count bonuses) (count top-two)))))))
 
@@ -39,7 +39,7 @@
    is rendered by the manual-state editor."
   [id characters roll]
   (let [bonus   #(group-bonus (present-bonuses characters %))
-        present (count (filter :present? (vals characters)))]
+        present (count (into [] (filter :present?) (vals characters)))]
     (cond-> {:loot/title    "Group Deception & Persuasion"
              :loot/subtitle (str present "/" (count characters) " present")
              :loot/sections [{:section/heading "Group bonuses"

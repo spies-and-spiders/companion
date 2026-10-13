@@ -47,11 +47,11 @@
    ranks spent across all `vars`."
   [vars cap]
   (when (or (nil? cap) (< (spent vars) cap))
-    (seq (keep (fn [[id v]]
-                 (when (and (upgradeable? v)
-                            (< (rank-of v) (or (:max v) ##Inf)))
-                   id))
-               vars))))
+    (not-empty (into [] (keep (fn [[id v]]
+                                (when (and (upgradeable? v)
+                                           (< (rank-of v) (or (:max v) ##Inf)))
+                                  id)))
+                     vars))))
 
 (defn rank-up
   "Rank `id` up once. Doesn't check caps; pick `id` from `available`."

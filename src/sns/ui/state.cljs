@@ -51,9 +51,9 @@
   "The configured pages, a page of its own for every loot type, and the page of
    the last roll."
   [state]
-  (concat (:pages state)
-          (map (fn [{:keys [id]}] {:id id :tools [id]}) (:loot-types state))
-          [{:id rolled-page :tools (:rolled state)}]))
+  (-> (vec (:pages state))
+      (into (map (fn [{:keys [id]}] {:id id :tools [id]})) (:loot-types state))
+      (conj {:id rolled-page :tools (:rolled state)})))
 
 (defn page-tools [state page]
   (some #(when (= page (:id %)) (:tools %)) (all-pages state)))

@@ -32,7 +32,7 @@
     (when (seq dirs)
       (.allowIO b IOAccess/ALL)
       (.option b "wasm.WasiMapDirs"
-               (str/join "," (map (fn [[guest host]] (str (name guest) "::" host)) dirs))))
+               (str/join "," (eduction (map (fn [[guest host]] (str (name guest) "::" host))) dirs))))
     (.build b)))
 
 (defn- run

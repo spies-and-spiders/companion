@@ -17,7 +17,7 @@
 (defn- notation [dice]
   (->> (frequencies dice)
        (sort-by key >)
-       (map (fn [[faces n]] (str n "d" faces)))
+       (eduction (map (fn [[faces n]] (str n "d" faces))))
        (str/join "+")))
 
 (defn- rung

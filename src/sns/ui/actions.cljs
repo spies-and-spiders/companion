@@ -53,7 +53,7 @@
    [:fx/persist-history id rows]])
 
 (defn- with-entry [rows vm]
-  (vec (take history-limit (cons {:at (js/Date.now) :view-model vm} rows))))
+  (into [{:at (js/Date.now) :view-model vm}] (take (dec history-limit)) rows))
 
 (defn history-fx
   "File `vm` in loot type `id`'s history if its history mode is `trigger`.

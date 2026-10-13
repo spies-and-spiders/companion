@@ -102,7 +102,7 @@
     (js/Promise.resolve {})
     (with-store "readonly"
       (fn [store]
-        (-> (js/Promise.all (into-array (map #(read-records store (collection-range %)) collections)))
+        (-> (js/Promise.all (into-array (eduction (map #(read-records store (collection-range %))) collections)))
             (.then #(apply merge (zipmap collections (repeat {})) %)))))))
 
 (defn apply-mutations!

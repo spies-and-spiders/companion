@@ -11,7 +11,7 @@
   "Run `command` on `ctx`. A non-zero exit throws with stderr in the message,
    since that's all the UI shows."
   [id command ctx]
-  (let [{:keys [exit out err]} (apply shell/sh (concat command [:in (io/encode-request ctx)]))]
+  (let [{:keys [exit out err]} (apply shell/sh (conj (vec command) :in (io/encode-request ctx)))]
     (when-not (zero? exit)
       (throw (ex-info (cond-> "CLI plugin failed"
                               (not (str/blank? err)) (str ": " (str/trim err)))

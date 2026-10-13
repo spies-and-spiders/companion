@@ -54,12 +54,13 @@
 
 (defn- visible
   "Drop items with empty bodies, and sections left with none."
-  [sections]
+  [sections include-secret?]
   (into []
-        (keep (fn [section]
-                (let [items (into [] (remove (comp str/blank? :item/body)) (:section/items section))]
-                  (when (seq items)
-                    (assoc section :section/items items)))))
+        (comp (remove #(and (not include-secret?) (:section/secret? %)))
+              (keep (fn [section]
+                      (let [items (into [] (remove (comp str/blank? :item/body)) (:section/items section))]
+                        (when (seq items)
+                          (assoc section :section/items items))))))
         sections))
 
 ;; ------------------------------------------------------------------ batching
@@ -130,8 +131,7 @@
   ([{:loot/keys [title subtitle words] :as vm} include-secret?]
    (let [{:keys [sections meta]} (reduce add-section
                                          {:n 0 :sections [] :meta []}
-                                         (visible (cond->> (:loot/sections vm)
-                                                           (not include-secret?) (remove :section/secret?))))
+                                         (visible (:loot/sections vm) include-secret?))
          head     (text (cond-> (str "# " (or title "Loot"))
                                 subtitle (str "\n-# " subtitle)))
          spoiler  (when (seq words) (text (str "||" (str/join \space words) "||")))

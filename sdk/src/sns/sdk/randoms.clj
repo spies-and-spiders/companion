@@ -25,7 +25,7 @@
 
 (defn known-presets []
   (->> (keys (methods preset))
-       (remove #{:default})
+       (eduction (remove #{:default}))
        sort
        vec))
 

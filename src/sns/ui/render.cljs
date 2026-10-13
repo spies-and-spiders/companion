@@ -67,7 +67,7 @@
 ;; no blank state, via an Add button.
 
 (defn- dom-id [& parts]
-  (str/join "-" (map #(if (keyword? %) (name %) %) (flatten parts))))
+  (str/join "-" (eduction (map #(if (keyword? %) (name %) %)) (flatten parts))))
 
 (defn- list-row
   "An entry's control and remove button, plus drag-and-drop when `draggable?`."
@@ -292,8 +292,8 @@
    outside the vocabulary is added, so it isn't lost."
   [value options action]
   (let [v      (str value)
-        values (map str options)
-        values (if (some #{v} values) values (cons v values))]
+        values (mapv str options)
+        values (if (some #{v} values) values (into [v] values))]
     [:select.field__control
      {:value v
       :on    {:change [(conj action [:event.target/value])]}}
@@ -349,11 +349,11 @@
       "✕"]]))
 
 (defn- editable-vars [vars]
-  (remove (comp :context? val) vars))
+  (into [] (remove (comp :context? val)) vars))
 
 (defn- var-grid
   [plugin class base-path vars]
-  (when-let [editable (seq (editable-vars vars))]
+  (when-let [editable (not-empty (editable-vars vars))]
     [:div {:class class}
      (for [[id v] editable]
        (edit-var plugin (conj base-path id) id v))]))
@@ -540,14 +540,18 @@
 (defn picker [{:keys [pages sections page type-filter browser-storage?] :as state}]
   (let [match?  (matcher type-filter)
         ;; A page matches on its own label or any of its tools'.
-        pages   (for [{:keys [label tools] :as p} pages
-                      :when (some match? (cons label (map #(:label (state/spec state %)) tools)))]
-                  (assoc p :glyph "❖"))
+        pages   (into []
+                      (comp (filter (fn [{:keys [label tools]}]
+                                      (or (match? label)
+                                          (some #(match? (:label (state/spec state %))) tools))))
+                            (map #(assoc % :glyph "❖")))
+                      pages)
         ;; Hidden types only appear while they're the page on screen.
-        plugins (for [spec (:loot-types state)
-                      :when (and (or (not (:hidden? spec)) (= page (:id spec)))
-                                 (match? (:label spec)))]
-                  (assoc spec :glyph "◆"))]
+        plugins (into []
+                      (comp (filter #(and (or (not (:hidden? %)) (= page (:id %)))
+                                          (match? (:label %))))
+                            (map #(assoc % :glyph "◆")))
+                      (:loot-types state))]
     [:nav.rail
      (when (seq (:loot-table state))
        [:button.rail__table {:class (when (= state/loot-table-page page) "rail__table--active")
@@ -558,7 +562,7 @@
        :placeholder "Search tools…"
        :value       (str type-filter)
        :on          {:input [[:ui/set-type-filter [:event.target/value]]]}}]
-     (for [[section rows] (by-section sections (concat pages plugins))]
+     (for [[section rows] (by-section sections (into pages plugins))]
        [:div.rail__section {:replicant/key section}
         [:p.rail__eyebrow section]
         (type-list rows page)])
@@ -572,7 +576,7 @@
 ;; --- loot table ----------------------------------------------------------------
 
 (defn- spans [ranges]
-  (or (not-empty (str/join ", " (for [[from to] ranges] (if (= from to) (str from) (str from "–" to)))))
+  (or (not-empty (str/join ", " (eduction (map (fn [[from to]] (if (= from to) (str from) (str from "–" to)))) ranges)))
       "—"))
 
 (defn loot-table

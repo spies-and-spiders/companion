@@ -58,8 +58,8 @@
   [{:keys [path in existing]}]
   {:write {path {:append false
                  :string (json/write-str
-                           (concat (json/read-str (slurp existing))
-                                   (json/read-str (#'uber/stream->string in))))}}})
+                           (into (json/read-str (slurp existing))
+                                 (json/read-str (#'uber/stream->string in))))}}})
 
 (def ^:private graal-lib-dir "target/lib")
 
@@ -176,6 +176,6 @@
              :basis             (basis aliases)
              :main              entrypoint
              :exclude           graal-excludes
-             :manifest          {"Class-Path" (str/join " " (map #(str "lib/" (.getName (io/file %))) jars))}
+             :manifest          {"Class-Path" (str/join " " (eduction (map #(str "lib/" (.getName (io/file %)))) jars))}
              :conflict-handlers helidon-conflict-handlers})
     (println "Built" uber-file (str "(+ " (count jars) " jars in " graal-lib-dir ")"))))

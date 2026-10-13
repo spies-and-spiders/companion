@@ -74,7 +74,7 @@
   (case page
     "spells"    (let [school (schools school school)]
                   (if (zero? level) (str school " Cantrip") (str "Level " level " " school)))
-    "maneuvers" (str (str/join " " (remove nil? [(if (zero? degree) "Basic" (str (ordinal degree) " degree"))
+    "maneuvers" (str (str/join " " (eduction (remove nil?) [(if (zero? degree) "Basic" (str (ordinal degree) " degree"))
                                                  (some->> (seq traditions) (str/join ", "))
                                                  "maneuver"]))
                      " · " (or points 0) (if (= 1 points) " point" " points"))
