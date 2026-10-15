@@ -183,32 +183,32 @@
           [:max-ranks {:optional true} [:int {:min 1}]]]
 
    ;; --- the :data plugin DSL ---
-   ;; `:title`/`:body` are a template string, or a keyword naming a field on the
-   ;; drawn element. A field reference hands the browser that field's own
-   ;; template (`:body :effect` → `"+4 {{ ability }}."`) with its tags intact.
-   ;;
-   ;; `string?` must lead the `:or`: the JSON transformer decodes into the first
-   ;; matching branch, so a leading keyword branch would turn every template
-   ;; into a keyword. In JSON, a string naming a field is read as a reference.
-   ::data-item [:map
-                [:title {:optional true} [:or string? keyword?]]
-                [:body [:or string? keyword?]]
-                [:metadata {:optional true} keyword?]]
+   ;; One draw from a table: `:draw` n without replacement, `:take` n with
+   ;; replacement, or `:choose` exactly one, bound as the entry itself.
+   ::data-let [:and
+               [:map
+                [:draw {:optional true} keyword?]
+                [:take {:optional true} keyword?]
+                [:choose {:optional true} keyword?]
+                [:n {:optional true} pos-int?]]
+               [:fn {:error/message "a let takes exactly one of :draw, :take or :choose"}
+                (fn [l] (= 1 (count (select-keys l [:draw :take :choose]))))]
+               [:fn {:error/message ":draw and :take need an :n"}
+                (fn [l] (boolean (or (:choose l) (:n l))))]]
 
-   ::data-section [:map
-                   [:heading {:optional true} string?]
-                   [:each keyword?]
-                   [:item ::data-item]]
-
-   ::data-spec [:map
-                [:history {:optional true} ::history]
-                [:inputs {:optional true} [:sequential ::field]]
-                [:items [:sequential [:map-of keyword? any?]]]
-                [:take {:optional true} int?]
-                [:weighted {:optional true} boolean?]
-                [:title {:optional true} string?]
-                [:subtitle {:optional true} string?]
-                [:sections {:optional true} [:sequential ::data-section]]]
+   ;; `:view-model` is a literal view-model whose `:data/each`, `:data/field`
+   ;; and `:data/var` directives expand against the lets; the engine validates
+   ;; the result.
+   ::data-spec [:and
+                [:map
+                 [:history {:optional true} ::history]
+                 [:inputs {:optional true} [:sequential ::field]]
+                 [:tables {:optional true} [:map-of keyword? [:sequential [:map-of keyword? any?]]]]
+                 [:let {:optional true} [:map-of keyword? ::data-let]]
+                 [:view-model [:map-of keyword? any?]]]
+                [:fn {:error/message "a let draws from a table that isn't in :tables"}
+                 (fn [{:keys [tables] lets :let}]
+                   (every? #(contains? tables (some % [:draw :take :choose])) (vals lets)))]]
 
    ;; --- application config ---
    ::server [:map

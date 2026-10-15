@@ -208,7 +208,7 @@ The UI renders this shape generically — a new loot type needs **no** UI code, 
  :store/mutations {:relics {"r1" {…}}}}          ; optional — writes to apply
 ```
 
-**Titles and bodies are templates, not finished text.** Nothing is rendered on
+**Titles, bodies, headings and metadata are templates, not finished text.** Nothing is rendered on
 the server — a template travels to the browser beside the variables it
 interpolates, and [Handlebars](https://handlebarsjs.com) renders it there:
 `{{ name }}`, `{{ x.[0] }}` to index a drawn collection, `{{#if flag}}…{{/if}}`.
@@ -231,7 +231,7 @@ vocabulary, and the UI offers it as a combobox rather than free text.
 (`:damage-type` -> "Damage type"), so name a var for what it holds and the
 editor reads well with no extra work. Set it only to override that.
 
-A var marked `:context?` is available to templates but not offered for editing — that is how a `:data` entry's own fields reach
+A var marked `:context?` is available to templates but not offered for editing — that is how a `:data` element's own fields reach
 its templates. `:loot/vars` does the same job for the title and subtitle.
 
 `:loot/state` is opaque, plugin-owned state the engine and UI carry untouched
@@ -494,7 +494,7 @@ config:
 ```
 
 Then **declare a variable** wherever your loot type keeps its data — a mod's
-`:vars`, or a `:data` entry's `:item/vars` — and refer to it from the template
+`:vars`, or a `:data` entry's `:data/vars` — and refer to it from the template
 by name:
 
 ```clojure
@@ -584,48 +584,83 @@ nothing, and ranking leaves it alone.
 
 A code-free loot type in one EDN (or `.json`) file, loaded from `:source` (a
 filesystem path) — or written straight into the config under `:inline`, which
-takes precedence over `:source` when both are given:
+takes precedence over `:source` when both are given. `:let` draws from
+`:tables`, and `:view-model` is the [view-model](#the-view-model-what-every-loot-type-returns) to return,
+written out literally with `:data/*` directives where the draws go:
 
 ```clojure
-{:inputs   []                              ; optional; :generator {:inputs …} overrides
- :history  :always                         ; optional; :generator {:history …} overrides
- :items    [{:name "Pacifist's Vow" :base "armour"
-             :mods [{:effect "+1 AB…" :metadata ["accuracy"]}]}]
- :take     1                               ; how many to draw (default 1)
- :weighted false                           ; draw with replacement by :weight (default false)
- :title    "{{name}}"                      ; a template, against the drawn entry
- :subtitle "Unique · {{base}}"
- :sections [{:heading "Mods" :each :mods   ; iterate a field on the entry…
-             :item {:body :effect          ; …a field *reference* (see below)
-                    :metadata :metadata}}]}
+{:inputs     []                             ; optional; :generator {:inputs …} overrides
+ :history    :always                        ; optional; :generator {:history …} overrides
+ :tables     {:uniques [{:name "Pacifist's Vow" :base "armour"
+                         :mods [{:effect "+1 AB…" :metadata ["accuracy"]}]}]}
+ :let        {:unique {:choose :uniques}}
+ :view-model {:loot/title    "{{unique.name}}"
+              :loot/subtitle "Unique · {{unique.base}}"
+              :loot/sections [{:section/heading "Mods"
+                               :section/items   {:data/each [:unique :mods]
+                                                 :data/as   {:item/body     {:data/field :effect}
+                                                             :item/metadata {:data/field :metadata}}}}]}}
 ```
 
-`:take`>1 draws without replacement (unless `:weighted`, which draws with
-replacement by each item's `:weight`). Use `:each :items` to iterate the drawn
-entries themselves (e.g. drawing 2 rings), or `:each :<field>` to iterate a field
-on the single drawn entry. Items support `:enabled? false` to disable. Input values
-are available to all templates.
+Each `:let` makes one draw from a table:
 
-An item's **`:title`/`:body` may be a template string or a field reference** (a
-keyword, as `:metadata` always was). A field reference is how to reach entry data
-that is *itself* a template: `:body :effect` hands the browser the entry's own
-`"+4 {{ ability }}."` to render, whereas `:body "{{ effect }}"` would resolve one
-level and leave the inner tag stranded.
+| Let                       | Draws                                                    |
+|---------------------------|----------------------------------------------------------|
+| `{:draw :rings :n 2}`     | `n` entries without replacement (fewer if the table is smaller) |
+| `{:take :rings :n 2}`     | `n` entries with replacement                             |
+| `{:choose :uniques}`      | exactly one entry, bound as itself rather than in a list |
 
-An entry may declare its own variables under **`:item/vars`** (`"item/vars"` in
+A chosen entry's fields reach every template by path (`{{unique.name}}`), apart
+from lists of maps like `:mods`, which are there to be iterated.
+
+The view-model is taken as written, except for these directives:
+
+| Directive                                  | Becomes                                                   |
+|--------------------------------------------|-----------------------------------------------------------|
+| `{:data/each <path> :data/as <template>}`  | `<template>` once per element; spliced in when inside a list |
+| `{:data/field <path>}`                     | the value at `<path>`, as is                              |
+| `{:data/var <path>}`                       | a `:context?` var holding that value, for `:loot/vars` or `:item/vars` |
+
+A path is a keyword or a vector of keys (`[:unique :mods]`; strings in JSON).
+It resolves against the innermost element holding its first key, then the lets,
+then the inputs, and is nil when nothing holds it. Keys left nil are dropped,
+so `{:data/field :metadata}` is simply absent on a mod without metadata.
+
+Inside a `:data/each`, the element's fields are template vars of every item it
+produces (`{{name}}`). Section headings only see `:loot/vars`, so a heading
+built per element takes `{:data/field :name}`. A draw list isn't a template
+var unless you ask for it:
+
+```clojure
+:loot/vars {:drawn {:data/var :rings}}   ; then {{pluck drawn "name"}}
+```
+
+**`{:data/field …}` vs `"{{ … }}"`**: a field reference is how to reach entry
+data that is *itself* a template. `{:data/field :effect}` hands the browser the
+entry's own `"+4 {{ ability }}."` to render, whereas `"{{ effect }}"` would
+resolve one level and leave the inner tag stranded.
+
+An entry may declare its own variables under **`:data/vars`** (`"data/vars"` in
 JSON), which is how a `:data` plugin gets a randomised value the DM can edit:
 
 ```clojure
 {:name      "Researcher's Power"
- :item/vars {:ability {:random :literal :options ["Intelligence" "Wisdom"]}}
+ :data/vars {:ability {:random :literal :options ["Intelligence" "Wisdom"]}}
  :mods      [{:effect "+4 {{ ability }}."}
              {:effect "You cannot use {{ ability }} to cast spells."}]}
 ```
 
-The draw happens once per entry, so every item that entry produces shares it —
-edit it in the UI and both mods above update together. The entry's other fields
-are available to its templates too (as `:context?` vars, so they render but are
-not offered for editing).
+They're drawn once per drawn entry, so every item it produces shares them. A
+chosen entry's go into `:loot/vars`, so edit one in the UI and both mods above
+update together. `:loot/vars` and `:item/vars` written into the view-model are
+declarations too, drawn the same way.
+
+A loot type with nothing to draw needs only a `:view-model`:
+
+```clojure
+{:view-model {:loot/title    "Tarot cards"
+              :loot/sections [{:section/items [{:item/body "Draw 1 tarot card"}]}]}}
+```
 
 (The data DSL renders mods at the rank their vars declare; nothing ranks them
 up — use `:builtin`/`:jar` for stateful loot.)

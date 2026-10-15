@@ -92,22 +92,21 @@
     (is (schema/validate ::schema/config
                          {:tools [{:type :data
                                    :id   :omens
-                                   :data {:inline {:label "Omen" :items [{:text "a crow"}] :title "{{text}}"}}}]}))
+                                   :data {:inline {:label "Omen" :view-model {:loot/title "a crow"}}}}]}))
     (is (not (schema/validate ::schema/config
                               {:tools [{:type :data :id :omens :data {}}]}))))
   (testing "decoding a JSON config coerces an :inline spec's keyword positions"
     (let [decoded (schema/decode ::schema/config
                                  {:tools [{:type "data"
                                            :id   "omens"
-                                           :data {:inline {:label    "Omen"
-                                                           :inputs   [{:id "who" :label "Who" :type "text"}]
-                                                           :items    [{:text "a crow"}]
-                                                           :sections [{:each "items"
-                                                                       :item {:body "{{text}}" :metadata "tags"}}]}}}]})
+                                           :data {:inline {:label      "Omen"
+                                                           :inputs     [{:id "who" :label "Who" :type "text"}]
+                                                           :tables     {:omens [{:text "a crow"}]}
+                                                           :let        {:omen {:draw "omens" :n 1}}
+                                                           :view-model {:loot/title "{{text}}"}}}}]})
           plugin  (-> decoded :tools first)]
       (is (= :data (:type plugin)))
-      (is (= :items (-> plugin :data :inline :sections first :each)))
-      (is (= :tags (-> plugin :data :inline :sections first :item :metadata)))
+      (is (= :omens (-> plugin :data :inline :let :omen :draw)))
       (is (= [:who :text] (-> plugin :data :inline :inputs first ((juxt :id :type)))))
       (testing "and the decoded config validates"
         (is (schema/validate ::schema/config decoded)))))

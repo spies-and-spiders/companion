@@ -1,32 +1,33 @@
-;; Example :data loot type — a single drawn entry rendered with its sub-mods.
-;; `:item/vars` on an entry declares values its templates interpolate; they are
-;; drawn once per entry, so every mod below shares the same one (and editing it
-;; in the UI updates them together). `:body :effect` is a *field reference*:
-;; the mod's own `:effect` string is the template, handed to the browser intact.
-{:items    [{:name "Pacifist's Vow"
-             :base "armour"
-             :mods [{:effect   "Non-damaging spells have a 50% chance to consume a spell slot one level lower than usual."
-                     :metadata ["resources"]}
-                    {:effect   "+1 AB with effects that cannot deal damage."
-                     :metadata ["accuracy"]}
-                    {:effect   "Your weapons gain the 'non-lethal' trait."
-                     :metadata ["utility"]}]}
-            {:name      "Researcher's Power"
-             :base      "armour"
-             :item/vars {:ability {:random  :literal
-                                   :options ["Intelligence" "Wisdom"]}}
-             :mods      [{:effect   "+4 {{ ability }}."
-                          :metadata ["utility"]}
-                         {:effect "You cannot use {{ ability }} to cast spells; use another mental ability score instead."}]}
-            {:name "Gambler's Gambit"
-             :base "trinket"
-             :mods [{:effect   "Once per turn, reroll a d20; you must keep the new result."
-                     :metadata ["utility"]}
-                    {:effect   "When you roll a natural 1, gain a luck point (max 3)."
-                     :metadata ["resources"]}]}]
- :title    "{{name}}"
- :subtitle "Unique · {{base}}"
- :sections [{:heading "Mods"
-             :each    :mods
-             :item    {:body     :effect
-                       :metadata :metadata}}]}
+;; Example :data loot type — one chosen entry rendered with its sub-mods.
+;; `:data/vars` on an entry declares values its templates interpolate; a chosen
+;; entry's are drawn once and shared, so every mod below uses the same one (and
+;; editing it in the UI updates them together). `{:data/field :effect}` hands
+;; the browser the mod's own `:effect` template intact.
+{:tables     {:uniques [{:name "Pacifist's Vow"
+                         :base "armour"
+                         :mods [{:effect   "Non-damaging spells have a 50% chance to consume a spell slot one level lower than usual."
+                                 :metadata ["resources"]}
+                                {:effect   "+1 AB with effects that cannot deal damage."
+                                 :metadata ["accuracy"]}
+                                {:effect   "Your weapons gain the 'non-lethal' trait."
+                                 :metadata ["utility"]}]}
+                        {:name      "Researcher's Power"
+                         :base      "armour"
+                         :data/vars {:ability {:random  :literal
+                                               :options ["Intelligence" "Wisdom"]}}
+                         :mods      [{:effect   "+4 {{ ability }}."
+                                      :metadata ["utility"]}
+                                     {:effect "You cannot use {{ ability }} to cast spells; use another mental ability score instead."}]}
+                        {:name "Gambler's Gambit"
+                         :base "trinket"
+                         :mods [{:effect   "Once per turn, reroll a d20; you must keep the new result."
+                                 :metadata ["utility"]}
+                                {:effect   "When you roll a natural 1, gain a luck point (max 3)."
+                                 :metadata ["resources"]}]}]}
+ :let        {:unique {:choose :uniques}}
+ :view-model {:loot/title    "{{unique.name}}"
+              :loot/subtitle "Unique · {{unique.base}}"
+              :loot/sections [{:section/heading "Mods"
+                               :section/items   {:data/each [:unique :mods]
+                                                 :data/as   {:item/body     {:data/field :effect}
+                                                             :item/metadata {:data/field :metadata}}}}]}}

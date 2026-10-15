@@ -1,6 +1,5 @@
-{:inputs   [{:id      :rarity           :label   "Rarity" :type :enum
-             :options ["common" "rare"] :default "common"}
-            {:id :engraving :label "Engraving" :type :text}]
- :items    [{:name "Potion"}]
- :title    "{{rarity}} potion"
- :subtitle "{{engraving}}"}
+{:inputs     [{:id      :rarity           :label   "Rarity" :type :enum
+               :options ["common" "rare"] :default "common"}
+              {:id :engraving :label "Engraving" :type :text}]
+ :view-model {:loot/title    "{{rarity}} potion"
+              :loot/subtitle "{{engraving}}"}}

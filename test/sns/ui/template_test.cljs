@@ -51,3 +51,20 @@
     (testing "blank items are dropped, and sections left empty with them"
       (is (= 1 (count (:loot/sections vm))))
       (is (= 1 (count (get-in vm [:loot/sections 0 :section/items])))))))
+
+(deftest render-view-model-headings-and-metadata
+  (let [vm (template/render-view-model
+             {:loot/title    "t"
+              :loot/vars     {:kind {:value "Ring"}}
+              :loot/sections [{:section/heading "{{ kind }}s"
+                               :section/items   [{:item/body     "b"
+                                                  :item/vars     {:pts {:value 3}}
+                                                  :item/metadata ["Points: {{ pts }}" "{{ kind }}"]}]}]})]
+    (is (= "Rings" (get-in vm [:loot/sections 0 :section/heading])))
+    (is (= ["Points: 3" "Ring"] (get-in vm [:loot/sections 0 :section/items 0 :item/metadata])))))
+
+(deftest data-dsl-scope-renders
+  (testing "a chosen entry's fields read by path, and a draw list via pluck"
+    (is (= "Vow" (template/render "{{ unique.name }}" {:unique {:value {:name "Vow"} :context? true}})))
+    (is (= "A, B" (template/render "{{#each (pluck drawn \"name\")}}{{#unless @first}}, {{/unless}}{{this}}{{/each}}"
+                                   {:drawn {:value [{:name "A"} {:name "B"}] :context? true}})))))

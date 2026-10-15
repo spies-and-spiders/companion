@@ -247,15 +247,18 @@
   (get-in vm [:loot/vars k :value]))
 
 (deftest data-inline-spec
-  (let [spec {:label "Omen" :items [{:text "a crow lands"}] :title "{{text}}"}]
+  (let [spec {:label      "Omen"
+              :tables     {:omens [{:text "a crow lands"}]}
+              :let        {:omen {:choose :omens}}
+              :view-model {:loot/title "{{omen.text}}"}}]
     (testing "an :inline spec is used in place of a file"
       (let [eng (engine/create {:tools [{:type :data :id :omens :data {:inline spec}}]})]
-        (is (= "a crow lands" (title-var (engine/generate eng :omens) :text)))))
+        (is (= "a crow lands" (:text (title-var (engine/generate eng :omens) :omen))))))
     (testing ":inline takes precedence over :source, which is not read"
       (let [eng (engine/create {:tools [{:type :data
                                          :id   :omens
                                          :data {:inline spec :source "test/resources/does-not-exist.edn"}}]})]
-        (is (= "a crow lands" (title-var (engine/generate eng :omens) :text)))))))
+        (is (= "a crow lands" (:text (title-var (engine/generate eng :omens) :omen))))))))
 
 (deftest config-randoms-are-available-to-vars
   (testing "a config-declared preset is drawn from by a plugin's declared var"
@@ -263,10 +266,11 @@
                 {:randoms {:omens ["a crow lands" "the lanterns gutter"]}
                  :tools   [{:type :data
                             :id   :portents
-                            :data {:inline {:label "Portent"
-                                            :items [{:kind      :portent
-                                                     :item/vars {:x {:random :omens}}}]
-                                            :title "You see {{x}}."}}}]})
+                            :data {:inline {:label      "Portent"
+                                            :tables     {:portents [{:kind      :portent
+                                                                     :data/vars {:x {:random :omens}}}]}
+                                            :let        {:portent {:choose :portents}}
+                                            :view-model {:loot/title "You see {{x}}."}}}}]})
           vm  (engine/generate eng :portents)]
       (is (= "You see {{x}}." (:loot/title vm)))
       (is (contains? #{"a crow lands" "the lanterns gutter"} (title-var vm :x)))

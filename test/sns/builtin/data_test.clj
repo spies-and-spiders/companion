@@ -10,133 +10,190 @@
 
 (def ^:private ctx {:inputs {}})
 
-(deftest single-draw-with-submods
-  (testing "a single drawn entry renders title/subtitle and iterates its mods"
-    (let [spec {:items    [{:name "Only One"
-                            :base "armour"
-                            :mods [{:effect "Effect A" :metadata ["x"]}
-                                   {:effect "Effect B"}]}]
-                :title    "{{name}}"
-                :subtitle "Unique · {{base}}"
-                :sections [{:heading "Mods"
-                            :each    :mods
-                            :item    {:body :effect :metadata :metadata}}]}
+(defn- items [vm]
+  (-> vm :loot/sections first :section/items))
+
+(def ^:private stub-rng
+  "Always picks index 0."
+  (reify randy.rng/RandomNumberGenerator
+    (next-int [_ _] 0)
+    (next-int [_ _ _] 0)))
+
+(deftest choose-with-submods
+  (testing "a chosen entry is bound as itself, and its mods are iterated by path"
+    (let [spec {:tables     {:uniques [{:name      "Only One"
+                                        :base      "armour"
+                                        :data/vars {:ability "Wisdom"}
+                                        :mods      [{:effect "+4 {{ ability }}." :metadata ["x"]}
+                                                    {:effect "Effect B"}]}]}
+                :let        {:unique {:choose :uniques}}
+                :view-model {:loot/title    "{{unique.name}}"
+                             :loot/subtitle "Unique · {{unique.base}}"
+                             :loot/sections [{:section/heading "Mods"
+                                              :section/items   {:data/each [:unique :mods]
+                                                                :data/as   {:item/body     {:data/field :effect}
+                                                                            :item/metadata {:data/field :metadata}}}}]}}
           vm   (data/generate spec ctx)]
       (is (schema/validate ::schema/view-model vm))
-      (testing "title/subtitle travel as templates, with their context in :loot/vars"
-        (is (= "{{name}}" (:loot/title vm)))
-        (is (= "Unique · {{base}}" (:loot/subtitle vm)))
-        (is (= "Only One" (-> vm :loot/vars :name :value)))
-        (is (= "armour" (-> vm :loot/vars :base :value))))
-      (is (= ["Effect A" "Effect B"]
-             (map :item/body (-> vm :loot/sections first :section/items))))
+      (testing "titles travel as templates, with the entry in :loot/vars minus its mods"
+        (is (= "{{unique.name}}" (:loot/title vm)))
+        (is (= {:value {:name "Only One" :base "armour"} :context? true}
+               (-> vm :loot/vars :unique))))
+      (testing "the entry's declared vars are shared flat at the loot level"
+        (is (= "Wisdom" (-> vm :loot/vars :ability :value)))
+        (is (not (-> vm :loot/vars :ability :context?))))
+      (is (= ["+4 {{ ability }}." "Effect B"] (map :item/body (items vm))))
       (testing "metadata only present when the entry declares them"
-        (is (= ["x"] (-> vm :loot/sections first :section/items first :item/metadata)))
-        (is (nil? (-> vm :loot/sections first :section/items second :item/metadata)))))))
+        (is (= ["x"] (-> vm items first :item/metadata)))
+        (is (not (contains? (-> vm items second) :item/metadata)))))))
 
-(deftest multi-draw-renders-each-entry
-  (testing ":each :items iterates the drawn entries"
-    (let [spec {:items    [{:name "A" :effect "ea"} {:name "B" :effect "eb"}
-                           {:name "C" :effect "ec"}]
-                :take     2
-                :title    "Two rings"
-                :sections [{:heading "Rings"                      :each :items
-                            :item    {:title :name :body :effect}}]}
-          vm   (data/generate spec ctx)
-          items (-> vm :loot/sections first :section/items)]
-      (is (schema/validate ::schema/view-model vm))
-      (is (= "Two rings" (:loot/title vm)))
-      (is (= 2 (count items)))
-      (is (every? :item/title items)))))
+(deftest draw-renders-each-entry
+  (let [spec  {:tables     {:rings [{:name "A"} {:name "B"} {:name "C"}]}
+               :let        {:rings {:draw :rings :n 2}}
+               :view-model {:loot/title    "Two rings"
+                            :loot/sections [{:section/items {:data/each :rings
+                                                             :data/as   {:item/title "Ring: {{name}}"
+                                                                         :item/body  {:data/field :name}}}}]}}
+        vm    (data/generate spec ctx)]
+    (is (schema/validate ::schema/view-model vm))
+    (is (= 2 (count (items vm))))
+    (is (= 2 (count (set (map :item/body (items vm))))) "without replacement")
+    (testing "each item carries its element's fields as context vars"
+      (is (every? #(= (:item/body %) (-> % :item/vars :name :value)) (items vm))))))
 
-(deftest multi-draw-works-with-the-engine-rng
+(deftest draw-works-with-the-engine-rng
   ;; Regression: drawing many without replacement used randy's shuffle, which
   ;; throws for any rng but a java.util.Random, like the engine's.
-  (testing "a small pool (so the shuffle strategy is chosen) draws with the engine's rng"
-    (let [spec  {:items    [{:name "A"} {:name "B"} {:name "C"}]
-                 :take     2
-                 :title    "Two rings"
-                 :sections [{:each :items :item {:body :name}}]}
-          rng   (.create (RandomGeneratorFactory/of "L64X128MixRandom"))
-          items (-> (data/generate spec (assoc ctx :rng rng))
-                    :loot/sections first :section/items)]
-      (is (= 2 (count items)))
-      (is (= 2 (count (set (map :item/body items))))))))
+  (let [spec {:tables     {:rings [{:name "A"} {:name "B"} {:name "C"}]}
+              :let        {:rings {:draw :rings :n 2}}
+              :view-model {:loot/title    "Two rings"
+                           :loot/sections [{:section/items {:data/each :rings
+                                                            :data/as   {:item/body {:data/field :name}}}}]}}
+        rng  (.create (RandomGeneratorFactory/of "L64X128MixRandom"))
+        vm   (data/generate spec (assoc ctx :rng rng))]
+    (is (= 2 (count (set (map :item/body (items vm))))))))
 
-(deftest enabled-filtering-and-loaded-from-file
-  (testing "the shipped uniques.edn loads and produces a valid view-model"
-    (let [spec (data/load-spec "data/uniques.edn")
-          gen  (data/generator :uniques spec)
-          vm   (sns.sdk.protocols/generate gen ctx)]
-      (is (schema/validate ::schema/view-model vm))
-      (is (seq (:loot/title vm))))))
+(deftest take-samples-with-replacement
+  (let [spec {:tables     {:rings [{:name "A"} {:name "B"}]}
+              :let        {:rings {:take :rings :n 3}}
+              :view-model {:loot/title    "Rings"
+                           :loot/sections [{:section/items {:data/each :rings
+                                                            :data/as   {:item/body {:data/field :name}}}}]}}]
+    (is (= ["A" "A" "A"] (map :item/body (items (data/generate spec (assoc ctx :rng stub-rng))))))))
 
-(deftest json-spec-coerces-keyword-positions
-  (testing "a .json spec decodes the positions the DSL reads as keywords"
-    (let [spec (data/load-spec "test/resources/json-spec.json")]
-      (is (= :mods (-> spec :sections first :each)))
-      (is (= :tags (-> spec :sections first :item :metadata)))
-      (is (= [:who :text] (-> spec :inputs first ((juxt :id :type)))))
-      (testing "and produces the same template + vars an EDN spec would"
-        (let [vm (data/generate spec (assoc ctx :inputs {:who "Thoros"}))]
-          (is (schema/validate ::schema/view-model vm))
-          (is (= "{{name}} for {{who}}" (:loot/title vm)))
-          (is (= {:name "Only One" :who "Thoros"}
-                 (update-vals (select-keys (:loot/vars vm) [:name :who]) :value)))
-          (let [item (-> vm :loot/sections first :section/items first)]
-            (is (= "Effect A" (:item/body item)))
-            (is (= ["accuracy"] (:item/metadata item)))))))))
+(deftest drawn-vars-are-rolled-once-per-element
+  (testing "iterating a let twice shows the same rolled values"
+    (let [spec {:tables     {:rings [{:name "A" :data/vars {:feat {:random :literal :options (range 1000)}}}]}
+                :let        {:rings {:draw :rings :n 1}}
+                :view-model {:loot/title    "Rings"
+                             :loot/sections [{:section/items {:data/each :rings :data/as {:item/body "{{feat}}"}}}
+                                             {:section/items {:data/each :rings :data/as {:item/body "{{feat}}"}}}]}}
+          vm   (data/generate spec ctx)
+          feat #(-> vm :loot/sections (nth %) :section/items first :item/vars :feat :value)]
+      (is (= (feat 0) (feat 1))))))
 
-(deftest json-body-that-is-a-template-stays-one
-  (testing "a JSON body naming no field on the entry is the template itself —
-            regression: `{{result}}` decoded to the keyword `:{{result}}`, read
-            as a field reference, and every such item rendered blank"
-    (let [spec {:items    [{:result "Draw 2 tarot cards."}]
-                :title    "Tarot"
-                :sections [{:each :items :item {:body "{{result}}"}}]}
-          vm   (data/generate (assoc spec :items [{:result "Draw 2 tarot cards."}]) ctx)
-          item (-> vm :loot/sections first :section/items first)]
-      (is (= "{{result}}" (:item/body item)) "handed to the browser to render")
-      (is (= "Draw 2 tarot cards." (-> item :item/vars :result :value))))))
+(deftest static-view-model-needs-no-tables
+  (let [vm (data/generate {:view-model {:loot/title    "Tarot cards"
+                                        :loot/sections [{:section/items [{:item/body "Draw 1 tarot card"}]}]}}
+                          ctx)]
+    (is (schema/validate ::schema/view-model vm))
+    (is (= "Draw 1 tarot card" (-> vm items first :item/body)))))
+
+(deftest each-splices-into-a-literal-list
+  (let [spec {:tables     {:rings [{:name "A"} {:name "B"}]}
+              :let        {:rings {:draw :rings :n 2}}
+              :view-model {:loot/title    "Rings"
+                           :loot/sections [{:section/items [{:item/body "First"}
+                                                            {:data/each :rings
+                                                             :data/as   {:item/body {:data/field :name}}}]}]}}]
+    (is (= 3 (count (items (data/generate spec ctx)))))))
+
+(deftest items-see-enclosing-elements
+  (testing "a section built per element passes that element's fields to its items"
+    (let [spec {:tables     {:rings [{:name "A" :mods [{:effect "e"}]}]}
+                :let        {:rings {:draw :rings :n 1}}
+                :view-model {:loot/title    "Rings"
+                             :loot/sections {:data/each :rings
+                                             :data/as   {:section/heading {:data/field :name}
+                                                         :section/items   {:data/each :mods
+                                                                           :data/as   {:item/body {:data/field :effect}}}}}}}
+          item (-> (data/generate spec ctx) items first)]
+      (is (= "e" (:item/body item)))
+      (is (= "A" (-> item :item/vars :name :value)))
+      (is (= "e" (-> item :item/vars :effect :value))))))
+
+(deftest data-var-exposes-a-draw
+  (let [spec {:tables     {:rings [{:name "A" :data/vars {:x 1}} {:name "B"}]}
+              :let        {:rings {:draw :rings :n 2}}
+              :view-model {:loot/title "{{pluck drawn \"name\"}}"
+                           :loot/vars  {:drawn {:data/var :rings}}}}
+        v    (-> (data/generate spec ctx) :loot/vars :drawn)]
+    (is (:context? v))
+    (is (= #{{:name "A"} {:name "B"}} (set (:value v))) "without :data/vars")))
+
+(deftest clashing-chosen-vars-fail
+  (let [spec {:tables     {:a [{:data/vars {:x 1}}] :b [{:data/vars {:x 2}}]}
+              :let        {:a {:choose :a} :b {:choose :b}}
+              :view-model {:loot/title "t"}}]
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"same var" (data/generate spec ctx)))))
+
+(defn- are-invalid [specs]
+  (doseq [s specs]
+    (is (not (schema/validate ::schema/data-spec s)) (pr-str s))))
+
+(deftest spec-validation
+  (testing "lets must name one known table, and :draw/:take need an :n"
+    (are-invalid [{:tables {:t [{}]} :let {:x {:draw :t}} :view-model {}}
+                  {:tables {:t [{}]} :let {:x {:choose :t :draw :t :n 1}} :view-model {}}
+                  {:tables {:t [{}]} :let {:x {:choose :missing}} :view-model {}}
+                  {:tables {:t [{}]}}])))
+
+(deftest shipped-data-loads
+  (doseq [f ["data/uniques.edn" "data/rings.edn"]]
+    (let [vm (sns.sdk.protocols/generate (data/generator :x (data/load-spec f)) ctx)]
+      (is (schema/validate ::schema/view-model vm) f))))
+
+(deftest json-spec-decodes
+  (let [spec (data/load-spec "test/resources/json-spec.json")]
+    (is (= :uniques (-> spec :let :unique :choose)))
+    (is (= [:who :text] (-> spec :inputs first ((juxt :id :type)))))
+    (testing "and produces the same template + vars an EDN spec would"
+      (let [vm   (data/generate spec (assoc ctx :inputs {:who "Thoros"}))
+            item (first (items vm))]
+        (is (schema/validate ::schema/view-model vm))
+        (is (= "{{unique.name}} for {{who}}" (:loot/title vm)))
+        (is (= "Thoros" (-> vm :loot/vars :who :value)))
+        (is (= "Effect A" (:item/body item)))
+        (is (= ["accuracy"] (:item/metadata item)))))))
 
 (deftest history-override-surfaces-in-loot-spec
-  (let [gen (data/generator :tools {:history :never :items [{:name "x"}] :title "t"})]
+  (let [gen (data/generator :tools {:history :never :view-model {:loot/title "t"}})]
     (is (= :never (:history (sns.sdk.protocols/loot-spec gen))))))
 
 (deftest honours-injected-rng
-  (testing "draws use the rng threaded through the context, not the global default"
-    (let [spec {:items [{:name "A"} {:name "B"} {:name "C"}] :title "{{name}}"}
-          ;; a stub rng that always returns index 2 -> "C"
-          rng  (reify randy.rng/RandomNumberGenerator
-                 (next-int [_ _] 2)
-                 (next-int [_ _ _] 2))
-          vm   (data/generate spec (assoc ctx :rng rng))]
-      (is (= "C" (-> vm :loot/vars :name :value))))))
+  (let [spec {:tables     {:t [{:name "A"} {:name "B"}]}
+              :let        {:pick {:choose :t}}
+              :view-model {:loot/title "{{pick.name}}"}}
+        vm   (data/generate spec (assoc ctx :rng stub-rng))]
+    (is (= "A" (-> vm :loot/vars :pick :value :name)))))
 
 (deftest inputs-available-to-templates
-  (testing "input values are interpolable in templates"
-    (let [spec {:items [{:name "x"}]
-                :title "Hail, {{who}}"}
-          vm   (data/generate spec (assoc ctx :inputs {:who "Thoros"}))]
-      (is (= "Hail, {{who}}" (:loot/title vm)))
-      (is (= "Thoros" (-> vm :loot/vars :who :value))))))
+  (let [vm (data/generate {:view-model {:loot/title "Hail, {{who}}"}} (assoc ctx :inputs {:who "Thoros"}))]
+    (is (= "Thoros" (-> vm :loot/vars :who :value)))))
+
+(defn- spec-file [title]
+  (doto (java.io.File/createTempFile "data-test" ".edn") .deleteOnExit (spit (pr-str {:view-model {:loot/title title}}))))
 
 (deftest file-generator-exposes-reload-input
-  (testing "the reload field is prepended to the spec's own inputs"
-    (let [f    (doto (java.io.File/createTempFile "data-test" ".edn") .deleteOnExit)
-          _    (spit f (pr-str {:items [{:name "x"}] :title "Hail"}))
-          gen  (data/file-generator :greeting (.getPath f))
-          spec (sns.sdk.protocols/loot-spec gen)]
-      (is (= [:__reload?] (map :id (:inputs spec)))))))
+  (let [gen (data/file-generator :greeting (.getPath (spec-file "Hail")))]
+    (is (= [:__reload?] (map :id (:inputs (sns.sdk.protocols/loot-spec gen)))))))
 
 (deftest file-generator-reloads-on-request
-  (testing "generating with :__reload? true re-reads the source file"
-    (let [f   (doto (java.io.File/createTempFile "data-test" ".edn") .deleteOnExit)
-          _   (spit f (pr-str {:items [{:name "x"}] :title "Before"}))
-          gen (data/file-generator :greeting (.getPath f))]
-      (is (= "Before" (:loot/title (sns.sdk.protocols/generate gen ctx))))
-      (spit f (pr-str {:items [{:name "x"}] :title "After"}))
-      (is (= "Before" (:loot/title (sns.sdk.protocols/generate gen ctx)))
-          "without the reload flag, the stale in-memory spec is used")
-      (is (= "After" (:loot/title (sns.sdk.protocols/generate gen (assoc ctx :inputs {:__reload? true}))))
-          "with the reload flag, the file is re-read"))))
+  (let [f   (spec-file "Before")
+        gen (data/file-generator :greeting (.getPath f))]
+    (is (= "Before" (:loot/title (sns.sdk.protocols/generate gen ctx))))
+    (spit f (pr-str {:view-model {:loot/title "After"}}))
+    (is (= "Before" (:loot/title (sns.sdk.protocols/generate gen ctx)))
+        "without the reload flag, the stale in-memory spec is used")
+    (is (= "After" (:loot/title (sns.sdk.protocols/generate gen (assoc ctx :inputs {:__reload? true}))))
+        "with the reload flag, the file is re-read")))

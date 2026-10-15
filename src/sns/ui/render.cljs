@@ -139,9 +139,10 @@
 ;; An item's vars shadow the `:loot/vars` shared by every item. An item whose
 ;; body renders blank, like one gated on a higher rank, is hidden.
 (defn- entry [spies changed? loot-vars {:item/keys [title body metadata vars]}]
-  (let [vars  (merge loot-vars vars)
-        title (some-> title (template/render vars))
-        body  (template/render body vars)]
+  (let [vars     (merge loot-vars vars)
+        title    (some-> title (template/render vars))
+        body     (template/render body vars)
+        metadata (map #(template/render % vars) metadata)]
     (when-not (str/blank? body)
       [:li.entry
        (when title (marked changed? title [:h4.entry__title (linked spies title)]))
@@ -152,7 +153,7 @@
 (defn- block [spies changed? loot-vars {:section/keys [heading items]}]
   (when-let [entries (seq (keep (partial entry spies changed? loot-vars) items))]
     [:section.block
-     (when heading [:h3.block__heading heading])
+     (when heading [:h3.block__heading (template/render heading loot-vars)])
      [:ul.entries entries]]))
 
 (defn- clip [s]
@@ -174,7 +175,7 @@
                       items)]
         :when (seq shown)]
     {:value (str s)
-     :label (or heading (str "Section " (inc s)))
+     :label (or (some-> heading (template/render (:loot/vars vm))) (str "Section " (inc s)))
      :items shown}))
 
 (defn- action

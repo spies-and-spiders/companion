@@ -96,9 +96,10 @@
           :id        :omens
           :label     "Omen"
           :generator {:hidden? true}
-          :data      {:inline {:items [{:text "A crow lands on the wagon."}
-                                       {:text "The lanterns gutter without wind."}]
-                               :title "{{text}}"}}}
+          :data      {:inline {:tables     {:omens [{:text "A crow lands on the wagon."}
+                                                    {:text "The lanterns gutter without wind."}]}
+                               :let        {:omen {:choose :omens}}
+                               :view-model {:loot/title "{{omen.text}}"}}}}
             ;; A loot generator in any language. :cli's :command is the program
             ;; plus args; the engine pipes the request context as JSON on stdin and
             ;; reads a friendly view-model as JSON on stdout. :label is what the
@@ -162,7 +163,7 @@
 
  ;; --- randoms ---------------------------------------------------------------
  ;; Optional. Named lists any plugin can draw a value from. A plugin *declares*
- ;; a variable — in a mod's :vars, or a :data entry's :item/vars — and its
+ ;; a variable — in a mod's :vars, or a :data entry's :data/vars — and its
  ;; template refers to it by name:
  ;;
  ;;   {:vars     {:feat {:random :feats}}

@@ -3,11 +3,19 @@
   "inputs": [
     {"id": "who", "label": "Who", "type": "text"}
   ],
-  "items": [
-    {"name": "Only One", "mods": [{"effect": "Effect A", "tags": ["accuracy"]}]}
-  ],
-  "title": "{{name}} for {{who}}",
-  "sections": [
-    {"heading": "Mods", "each": "mods", "item": {"body": "effect", "metadata": "tags"}}
-  ]
+  "tables": {
+    "uniques": [
+      {"name": "Only One", "mods": [{"effect": "Effect A", "tags": ["accuracy"]}]}
+    ]
+  },
+  "let": {"unique": {"choose": "uniques"}},
+  "view-model": {
+    "loot/title": "{{unique.name}} for {{who}}",
+    "loot/sections": [
+      {"section/heading": "Mods",
+       "section/items": {"data/each": ["unique", "mods"],
+                         "data/as": {"item/body": {"data/field": "effect"},
+                                     "item/metadata": {"data/field": "tags"}}}}
+    ]
+  }
 }

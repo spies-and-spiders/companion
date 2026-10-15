@@ -85,9 +85,10 @@
   [{:loot/keys [vars] :as vm}]
   (letfn [(item [i]
             (let [vars (merge vars (:item/vars i))]
-              (-> i
-                  (update :item/body render vars)
-                  (update :item/title render vars))))]
+              (cond-> (-> i
+                          (update :item/body render vars)
+                          (update :item/title render vars))
+                      (:item/metadata i) (update :item/metadata (partial mapv #(render % vars))))))]
     (-> vm
         (update :loot/title render vars)
         (update :loot/subtitle render vars)
@@ -98,5 +99,6 @@
                                 (let [items (into [] (comp (map item) (remove blank-item?))
                                                   (:section/items section))]
                                   (when (seq items)
-                                    (assoc section :section/items items)))))
+                                    (cond-> (assoc section :section/items items)
+                                            (:section/heading section) (update :section/heading render vars))))))
                         sections))))))

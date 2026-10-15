@@ -35,17 +35,17 @@
     (is (= [{:id :dust :ranges [[1 98] [99 100]]}] (:loot-table (config/load-config f))))))
 
 (deftest json-data-plugin-keeps-its-templates
-  (testing "a JSON :data item's title/body stay strings — regression: they
-            decoded to keywords, and `{{result}}` read as a field reference to
-            `:{{result}}`, which no entry has, so every such item rendered blank"
-    (let [f   (write-temp-json
-                (str "{\"tools\":[{\"type\":\"data\",\"id\":\"cards\",\"data\":{\"inline\":"
-                     "{\"label\":\"Cards\",\"items\":[{\"result\":\"Draw 2.\"}],"
-                     "\"title\":\"Tarot\",\"sections\":[{\"each\":\"items\","
-                     "\"item\":{\"title\":\"A card\",\"body\":\"{{result}}\"}}]}}}]}"))
-          item (-> (config/load-config f) :tools first :data :inline :sections first :item)]
-      (is (= "{{result}}" (:body item)))
-      (is (= "A card" (:title item))))))
+  (testing "a JSON :data view-model's templates stay strings, and its lets decode
+            to keywords"
+    (let [f    (write-temp-json
+                 (str "{\"tools\":[{\"type\":\"data\",\"id\":\"cards\",\"data\":{\"inline\":"
+                      "{\"tables\":{\"cards\":[{\"result\":\"Draw 2.\"}]},"
+                      "\"let\":{\"card\":{\"choose\":\"cards\"}},"
+                      "\"view-model\":{\"loot/title\":\"Tarot\",\"loot/sections\":[{\"section/items\":"
+                      "[{\"item/title\":\"A card\",\"item/body\":\"{{card.result}}\"}]}]}}}}]}"))
+          spec (-> (config/load-config f) :tools first :data :inline)]
+      (is (= :cards (-> spec :let :card :choose)))
+      (is (= "{{card.result}}" (-> spec :view-model :loot/sections first :section/items first :item/body))))))
 
 (deftest json-history-decodes-to-keywords
   (testing "the global setting and a plugin's override both arrive as keywords"
