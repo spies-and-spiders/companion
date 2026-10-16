@@ -33,7 +33,7 @@
  ;;              is device-local, so use the export button to take it with you.
  ;;
  ;; Settings only one backend understands nest under that backend's key; only
- ;; :file has any (:dir). See docs/storage.md.
+ ;; :file has any (:dir). See docs/state.md.
  :storage {:backend :file
            :file    {:dir "./state"}}
 
