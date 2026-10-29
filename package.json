@@ -3,7 +3,7 @@
   "private": true,
   "devDependencies": {
     "playwright": "^1.64.1",
-    "shadow-cljs": "3.5.7"
+    "shadow-cljs": "3.5.8"
   },
   "scripts": {
     "watch": "shadow-cljs watch app",
