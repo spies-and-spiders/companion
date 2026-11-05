@@ -5,8 +5,8 @@
          aero/aero                                           {:mvn/version "1.1.6"}
          org.flatland/ordered                                {:mvn/version "1.16.13"}
          metosin/jsonista                                    {:mvn/version "1.0.2"}
-         org.graalvm.polyglot/polyglot                       {:mvn/version "25.4.4.1.1"}
-         org.graalvm.wasm/wasm-language                      {:mvn/version "25.4.4.1.1"}
+         org.graalvm.polyglot/polyglot                       {:mvn/version "25.5.5.0.3"}
+         org.graalvm.wasm/wasm-language                      {:mvn/version "25.5.5.0.3"}
          hato/hato                                           {:mvn/version "1.0.0"}
          metosin/muuntaja                                    {:mvn/version "0.6.12"}
          metosin/reitit-ring                                 {:mvn/version "0.11.0"}
@@ -28,7 +28,7 @@
            :frontend {:extra-paths ["test"]
                       :extra-deps  {no.cjohansen/replicant {:mvn/version "2026.07.1"}
                                     no.cjohansen/nexus     {:mvn/version "2026.08.1"}
-                                    thheller/shadow-cljs   {:mvn/version "3.5.8"}}}
+                                    thheller/shadow-cljs   {:mvn/version "3.5.11"}}}
            :graalvm  {:extra-deps {com.github.clj-easy/graal-build-time {:mvn/version "1.0.6"}
                                    org.clojure/tools.namespace          {:mvn/version "1.5.1"}}}
            :test     {:extra-paths ["test"]
