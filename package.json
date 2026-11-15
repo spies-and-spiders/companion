@@ -2,8 +2,8 @@
   "name": "sns-companion",
   "private": true,
   "devDependencies": {
-    "playwright": "^1.64.1",
-    "shadow-cljs": "3.5.8"
+    "playwright": "^1.65.0",
+    "shadow-cljs": "3.5.11"
   },
   "scripts": {
     "watch": "shadow-cljs watch app",
