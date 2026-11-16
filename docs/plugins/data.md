@@ -81,6 +81,9 @@ items:
                 {:data/each :rings :data/as {:item/body {:data/field :effect}}}]
 ```
 
+A `{:data/field ...}` in a list works the same way: a field holding a list adds
+its entries, and a missing field adds nothing.
+
 ## Using fields in templates
 
 Fields can also be used in [templates](../templates.md) directly:

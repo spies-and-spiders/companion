@@ -113,13 +113,24 @@
         (cond-> m (seq item-vars) (assoc :item/vars item-vars)))
       m)))
 
+(defn- splice
+  "Expand a list element into the items it adds to the list. A `:data/each` or
+   a `:data/field` holding a list contributes its entries, and a missing field
+   contributes none."
+  [env x]
+  (let [r (expand env x)]
+    (cond
+      (directive? :data/each x)  r
+      (directive? :data/field x) (cond (sequential? r) r (some? r) [r])
+      :else                      [r])))
+
 (defn- expand [env v]
   (cond
     (directive? :data/field v) (lookup env (:data/field v))
     (directive? :data/var v)   (context-var (without-vars (lookup env (:data/var v))))
     (directive? :data/each v)  (expand-each env v)
     (map? v)                   (expand-map env v)
-    (sequential? v)            (into [] (mapcat #(if (directive? :data/each %) (expand env %) [(expand env %)])) v)
+    (sequential? v)            (into [] (mapcat #(splice env %)) v)
     :else                      v))
 
 (defn generate

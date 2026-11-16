@@ -108,6 +108,17 @@
                                                              :data/as   {:item/body {:data/field :name}}}]}]}}]
     (is (= 3 (count (items (data/generate spec ctx)))))))
 
+(deftest field-splices-into-a-literal-list
+  (let [spec {:tables     {:rings [{:name "A" :notes ["n1" "n2"]} {:name "B"}]}
+              :let        {:rings {:draw :rings :n 2}}
+              :view-model {:loot/title    "Rings"
+                           :loot/sections [{:section/items {:data/each :rings
+                                                            :data/as   {:item/body     "b"
+                                                                        :item/metadata ["P" {:data/field :notes}]}}}]}}
+        vm   (data/generate spec ctx)]
+    (is (schema/validate ::schema/view-model vm))
+    (is (= #{["P" "n1" "n2"] ["P"]} (set (map :item/metadata (items vm)))))))
+
 (deftest items-see-enclosing-elements
   (testing "a section built per element passes that element's fields to its items"
     (let [spec {:tables     {:rings [{:name "A" :mods [{:effect "e"}]}]}
