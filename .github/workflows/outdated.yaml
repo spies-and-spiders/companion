@@ -1,0 +1,47 @@
+name: Outdated
+
+on:
+  schedule:
+    - cron: '0 6 * * 4'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  outdated:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install clojure tools
+        uses: DeLaGuardo/setup-clojure@13.7.0
+        with:
+          cli: latest
+
+      - name: Upgrade dependencies
+        run: clojure -Moutdated --reporter=json | tee outdated.json
+
+      - name: Push branch and open PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git diff --quiet && exit 0
+          branch=update-clojure-deps
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          body="$(printf '```json\n%s\n```' "$(jq . outdated.json)")"
+          git commit -am "Update Clojure dependencies"
+          git push --force origin "$branch"
+          if gh pr view "$branch" >/dev/null 2>&1; then
+            gh pr edit "$branch" --body "$body"
+          else
+            gh pr create --head "$branch" --title "Update Clojure dependencies" --body "$body"
+          fi

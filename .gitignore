@@ -21,5 +21,6 @@ resources/public/js/
 schemas.json
 plugin-request.schema.json
 plugin-output.schema.json
+outdated.json
 # Local runtime config — not committed; a worked example lives in examples/
 /config.edn
