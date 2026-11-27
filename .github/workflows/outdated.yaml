@@ -37,10 +37,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B "$branch"
-          body="$(printf '```json\n%s\n```' "$(jq . outdated.json)")"
+          # antq writes "Upgraded ..." lines to stdout after the JSON
+          json="$(grep '^\[' outdated.json | jq .)"
+          body="$(printf '```json\n%s\n```' "$json")"
           git commit -am "Update Clojure dependencies"
           git push --force origin "$branch"
-          if gh pr view "$branch" >/dev/null 2>&1; then
+          if [ -n "$(gh pr list --head "$branch" --state open --json number --jq '.[]')" ]; then
             gh pr edit "$branch" --body "$body"
           else
             gh pr create --head "$branch" --title "Update Clojure dependencies" --body "$body"
